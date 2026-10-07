@@ -1,0 +1,70 @@
+# Настройки: ник, статус, аватар, смена пароля (старый не нужен).
+
+<SettingsScreen>:
+    nickname_field: nickname_field
+    status_field: status_field
+    password_field: password_field
+    password_repeat_field: password_repeat_field
+
+    FormScroll:
+        Box:
+            size_hint_y: None
+            height: self.minimum_height
+
+            TitleLabel:
+                text: 'Настройки'
+
+            BodyLabel:
+                text: 'Профиль'
+
+            Field:
+                id: nickname_field
+                hint_text: 'Ник'
+                disabled: root.is_teacher
+
+            Field:
+                id: status_field
+                hint_text: 'Статус (например: 9А класс)'
+
+            Btn:
+                text: 'Выбрать аватар'
+                on_release: root.choose_avatar()
+
+            BodyLabel:
+                text: root.avatar_hint
+
+            Btn:
+                text: 'Сохранить профиль'
+                on_release: root.save_profile()
+
+            BodyLabel:
+                text: 'Смена пароля'
+
+            Field:
+                id: password_field
+                hint_text: 'Новый пароль'
+                password: True
+
+            Field:
+                id: password_repeat_field
+                hint_text: 'Повторите новый пароль'
+                password: True
+
+            Btn:
+                text: 'Сменить пароль'
+                on_release: root.save_password()
+
+            BodyLabel:
+                text: 'Приложение'
+
+            Btn:
+                text: 'Логи приложения'
+                on_release: app.go('logs')
+
+            LinkButton:
+                text: 'Назад'
+                on_release: app.go('home')
+
+            LinkButton:
+                text: 'Выйти'
+                on_release: root.do_logout()

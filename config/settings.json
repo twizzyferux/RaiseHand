@@ -1,0 +1,95 @@
+{
+  "app_name": "RaiseHand",
+  "dev_mode": true,
+  "texts": {
+    "welcome_title": "Регистрация",
+    "welcome_student": "Я ученик",
+    "welcome_teacher": "Я учитель",
+    "welcome_login_hint": "Уже зарегистрировали аккаунт? Войти",
+    "remember_me": "Запомнить меня",
+    "log_in": "Вход выполнен",
+    "my_account": "Мой аккаунт",
+    "my_account_hint": "Логин и пароль для входа на этом устройстве",
+    "copy": "Скопировать",
+    "copied": "Скопировано",
+    "logs": "Логи приложения",
+    "logs_empty": "Лог пока пуст",
+    "logs_hint": "Последние записи из data/app.log"
+  },
+  "welcome_slide_seconds": 5.0,
+  "welcome_slides": [
+    {
+      "title": "Не бойся\nподнять руку",
+      "subtitle": "Отправляйте вопросы учителю\nв чате. Получайте ответы\nбыстро и без стеснения."
+    },
+    {
+      "title": "Задавай\nвопросы смело",
+      "subtitle": "Учитель ответит в чате\nкласса — быстро, понятно\nи без стеснения."
+    },
+    {
+      "title": "Помогай\nодноклассникам",
+      "subtitle": "Делись знаниями\nи поддерживай тех,\nкому сейчас трудно."
+    }
+  ],
+  "sprites": {
+    "logo": "assets/images/photo_2026-09-30_00-09-10.jpg",
+    "rh_phone": "assets/images/raisehand/phone.png",
+    "rh_logo": "assets/images/raisehand/logo.png",
+    "rh_wordmark": "assets/images/raisehand/wordmark.png",
+    "rh_check": "assets/images/raisehand/check.png",
+    "rh_eye": "assets/images/raisehand/eye.png",
+    "rh_eye_off": "assets/images/raisehand/eye-off.png",
+    "rh_avatar": "assets/images/raisehand/avatar.png",
+    "choice_primary": "assets/images/buttons/choice_primary.png",
+    "choice_primary_down": "assets/images/buttons/choice_primary_down.png",
+    "choice_secondary": "assets/images/buttons/choice_secondary.png",
+    "choice_secondary_down": "assets/images/buttons/choice_secondary_down.png",
+    "background": "assets/images/welcome_bg.png",
+    "button_normal": "assets/images/BarForText.png",
+    "button_pressed": "assets/images/BarForText_down.png",
+    "input_background": "",
+    "default_avatar": "",
+    "student_icon": "",
+    "teacher_icon": ""
+  },
+  "font": {
+    "name": "SFPro",
+    "file": "SF-Pro-Text-Regular.otf",
+    "bold_file": "SF-Pro-Text-Semibold.otf",
+    "size": 0
+  },
+  "remember_login": "ivan@example.com",
+  "teacher_platforms": [
+    "МЭШ",
+    "Российская электронная школа",
+    "Дневник.ру",
+    "Моя школа",
+    "Инфоурок",
+    "nsportal.ru",
+    "УРОК.РФ",
+    "Учи.ру",
+    "Электронная школа"
+  ],
+  "rules": {
+    "min_password_length": 6,
+    "nickname_min_length": 3,
+    "code_length": 6,
+    "code_lifetime_minutes": 10,
+    "student_id_digits": 7,
+    "teacher_id_prefix": "U"
+  },
+  "email": {
+    "enabled": false,
+    "smtp_host": "smtp.yandex.ru",
+    "smtp_port": 465,
+    "use_ssl": true,
+    "login": "",
+    "password": "",
+    "from_address": ""
+  },
+  "sms": {
+    "enabled": false,
+    "provider": "none",
+    "api_key": ""
+  }
+}

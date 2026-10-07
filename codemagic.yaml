@@ -1,0 +1,85 @@
+# Сборка iOS в облаке Codemagic.
+#
+# Зачем: .ipa можно собрать только на macOS с Xcode. Codemagic — это
+# облачные Mac-машины: код лежит в репозитории, ты нажимаешь кнопку,
+# получаешь готовый файл. Свой компьютер для этого не нужен.
+#
+# Как пользоваться:
+#   1. Залить код в репозиторий (GitHub/GitLab/Bitbucket).
+#   2. Создать аккаунт на codemagic.io и подключить репозиторий.
+#   3. В настройках проекта (Project settings -> codebase) указать:
+#        Build system:  Codemagic.yaml
+#        Build command: xcodebuild
+#   4. Запустить сборку. На выходе будет .ipa.
+#
+# Подробная инструкция для новичков — в PLATFORM.md, раздел «Сборка .ipa».
+# Файл экспериментальный: kivy-ios и Xcode на макетах Codemagic
+# обновляются, поэтому первую сборку нужно смотреть глазами по логу.
+
+workflows:
+  ios_debug:
+    name: iOS Debug (unsigned .ipa)
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+
+    environment:
+      # Ставим 0, потому что подписи у нас нет: файл пойдёт на телефон
+      # через Sideloadly, и он подпишет его бесплатным Apple ID.
+      ios_signing_enabled: false
+      # Каталог приложения внутри kivy-ios
+      APP_NAME: RaiseHand
+      BUNDLE_ID: org.school.raisehand
+
+    scripts:
+      - name: Install kivy-ios
+        script: |
+          brew install python@3.12 autoconf automake libtool pkg-config
+          brew install sdl2 sdl2_image sdl2_mixer sdl2_ttf
+          pip3 install --user --upgrade kivy-ios cython
+
+      - name: Create iOS app bundle
+        script: |
+          # kivy-ios создаёт заготовку приложения (папку RaiseHand.app)
+          export PATH="$HOME/Library/Python/3.12/bin:$PATH"
+          kivy-ios init $APP_NAME
+
+      - name: Copy project into the bundle
+        script: |
+          # Всё, что нужно приложению, кладём внутрь .app:
+          # код, настройки, ассеты и шрифты.
+          BUNDLE="$HOME/ios/$APP_NAME.app"
+          rsync -a --exclude '.git*' \
+                --exclude '.venv*' \
+                --exclude 'проект' \
+                --exclude '_shots' \
+                --exclude 'tools' \
+                --exclude '*.md' \
+                $CM_BUILD_DIR/ "$BUNDLE/"
+          echo "--- содержимое бандла ---"
+          ls -la "$BUNDLE" | head -30
+
+      - name: Build Python and dependencies for iOS
+        script: |
+          # Компилируем интерпретатор Python и все зависимости под iOS.
+          # Это самая долгая часть сборки (20-40 минут при первом запуске).
+          cd $HOME/ios
+          export PATH="$HOME/Library/Python/3.12/bin:$PATH"
+          toolchain build $APP_NAME
+
+      - name: Build app in Xcode
+        script: |
+          cd $HOME/ios
+          export PATH="$HOME/Library/Python/3.12/bin:$PATH"
+          toolchain create $APP_NAME $BUNDLE_ID $CM_BUILD_DIR/$APP_NAME.ipa
+
+      - name: Collect artifact
+        script: |
+          ls -la *.ipa || true
+          # Если toolchain не справился, ищем ipa в стандартных местах
+          find $HOME/ios -name '*.ipa' -o -name '*.app' | head -20
+
+    artifacts:
+      - path: $HOME/ios/*.ipa
+        name: raisehand-ios
+      - path: $HOME/ios/**/*.ipa
+        name: raisehand-ios-recursive

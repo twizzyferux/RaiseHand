@@ -1,0 +1,42 @@
+<RegisterTeacherScreen>:
+    first_name: first_name
+    last_name: last_name
+    password: password
+    password_repeat: password_repeat
+
+    FormScroll:
+        Box:
+            size_hint_y: None
+            height: self.minimum_height
+
+            TitleLabel:
+                text: 'Регистрация учителя'
+
+            MutedLabel:
+                text: 'У учителя ника нет — видны имя и фамилия'
+
+            Field:
+                id: first_name
+                hint_text: 'Имя'
+
+            Field:
+                id: last_name
+                hint_text: 'Фамилия'
+
+            Field:
+                id: password
+                hint_text: 'Пароль'
+                password: True
+
+            Field:
+                id: password_repeat
+                hint_text: 'Повторите пароль'
+                password: True
+
+            Btn:
+                text: 'Далее'
+                on_release: root.do_register()
+
+            LinkButton:
+                text: 'Назад'
+                on_release: app.go('welcome')

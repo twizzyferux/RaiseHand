@@ -1,0 +1,62 @@
+# Подтверждение учителя: одноразовый код или скриншот кабинета.
+
+<TeacherProofScreen>:
+    platform_spinner: platform_spinner
+    code_field: code_field
+
+    FormScroll:
+        Box:
+            size_hint_y: None
+            height: self.minimum_height
+
+            TitleLabel:
+                text: 'Подтверждение учителя'
+
+            MutedLabel:
+                text: 'Выберите площадку и подтвердите статус кодом или скриншотом кабинета'
+
+            ThemedSpinner:
+                id: platform_spinner
+                text: 'Выберите площадку'
+                values: app.teacher_platforms
+
+            BoxLayout:
+                size_hint_y: None
+                height: 48
+                spacing: 10
+
+                Btn:
+                    text: 'Одноразовый код'
+                    on_release: root.set_mode('code')
+
+                Btn:
+                    text: 'Скриншот'
+                    on_release: root.set_mode('screenshot')
+
+            BodyLabel:
+                text: 'Способ: ' + ('одноразовый код' if root.mode == 'code' else 'скриншот кабинета')
+
+            Field:
+                id: code_field
+                hint_text: 'Одноразовый код, например UCH-2024'
+                opacity: 1 if root.mode == 'code' else 0
+                disabled: root.mode != 'code'
+                height: 44 if root.mode == 'code' else 0
+
+            Btn:
+                text: 'Выбрать файл скриншота'
+                opacity: 1 if root.mode == 'screenshot' else 0
+                disabled: root.mode != 'screenshot'
+                height: 48 if root.mode == 'screenshot' else 0
+                on_release: root.open_file_chooser()
+
+            BodyLabel:
+                text: root.selected_file
+
+            Btn:
+                text: 'Подтвердить и продолжить'
+                on_release: root.do_submit()
+
+            LinkButton:
+                text: 'Назад'
+                on_release: app.go('register_teacher')

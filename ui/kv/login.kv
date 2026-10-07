@@ -1,0 +1,51 @@
+<LoginScreen>:
+    login_field: login_field
+    password_field: password_field
+    remember_toggle: remember_toggle
+
+    Box:
+        TitleLabel:
+            text: 'Вход'
+
+        MutedLabel:
+            text: 'Можно войти по ID, нику, почте или телефону'
+
+        Field:
+            id: login_field
+            hint_text: 'ID / ник / почта / телефон'
+
+        Field:
+            id: password_field
+            hint_text: 'Пароль'
+            password: True
+
+        # Галочка «Запомнить меня»: не вводить пароль при следующем запуске.
+        # Сессия лежит в data/session.json на этом устройстве.
+        # Высота фиксированная (size_hint_y: None), иначе Box растянет
+        # строку на всю оставшуюся высоту и текст съедет по центру.
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint_y: None
+            height: dp(40)
+            spacing: dp(10)
+            CheckToggle:
+                id: remember_toggle
+                size: dp(28), dp(28)
+                pos_hint: {'center_y': 0.5}
+            Label:
+                text: app.t('remember_me')
+                font_size: dp(15)
+                color: 0.15, 0.15, 0.16, 1
+                halign: 'left'
+                valign: 'middle'
+                text_size: self.width, None
+
+        Btn:
+            text: 'Войти'
+            on_release: root.do_login()
+
+        LinkButton:
+            text: 'Нет аккаунта? Зарегистрироваться'
+            on_release: app.go('welcome')
+
+        Widget:
