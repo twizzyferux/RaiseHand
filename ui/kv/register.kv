@@ -446,24 +446,12 @@
             next_label: 'Начать общение'
             next_callback: root.start
 
-        # аватар с градиентом и инициалами
-        Image:
+        # аватар: личный градиент пользователя + инициалы
+        GradientAvatar:
+            id: avatar
             size_hint: None, None
             pos: dp(166), dp(665)
             size: dp(120), dp(120)
-            source: app.sprite('rh_avatar')
-            mipmap: True
-
-        Label:
-            size_hint: None, None
-            pos: dp(166), dp(701)
-            size: dp(120), dp(48)
-            text: root.initials
-            font_size: dp(44)
-            bold: True
-            color: 1, 1, 1, 1
-            halign: 'center'
-            text_size: self.width, None
 
         # приветствие
         Label:

@@ -39,6 +39,7 @@ from kivy.uix.screenmanager import NoTransition, ScreenManager  # noqa: E402
 from core import auth, database, logs, session, teacher_proof  # noqa: E402
 from core.config import BASE_DIR, SETTINGS, sprite, text  # noqa: E402
 from ui import anim, screens  # noqa: E402
+from ui.avatar import GradientAvatar  # noqa: E402,F401  (регистрация для .kv)
 from ui.decor import DecorBackground
 
 KV_DIR = os.path.join(BASE_DIR, "ui", "kv")
