@@ -26,6 +26,13 @@
                 height: 44
                 on_release: app.go('home')
 
+            # Аватар собеседника: его личный градиент
+            GradientAvatar:
+                id: partner_avatar
+                size_hint: None, None
+                size: dp(36), dp(36)
+                pos_hint: {'center_y': 0.5}
+
             BodyLabel:
                 text: root.partner_title
 

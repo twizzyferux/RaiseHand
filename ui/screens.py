@@ -15,7 +15,7 @@ from kivy.uix.floatlayout import FloatLayout
 
 import os
 
-from core import logs, session
+from core import gradients, logs, session
 from ui import anim
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
@@ -456,12 +456,14 @@ class RegStep5Screen(BaseScreen):
         if user is None:
             self.app.go("welcome")
             return
-        first = user.first_name[:1] or "И"
-        last = user.last_name[:1] or ""
-        self.initials = (first + last).upper()
+        # Инициалы рисует сам аватар (GradientAvatar), здесь только текст.
+        self.initials = gradients.initials_for(user.first_name, user.last_name)
         self.welcome_text = f"Добро пожаловать,\n{user.first_name}!"
         self.class_value = user.class_name or DRAFT.get("class_name", "")
         self.school_value = user.school_name or DRAFT.get("school_name", "")
+        avatar = self.ids.get("avatar")
+        if avatar is not None:
+            avatar.set_user(user, initials=self.initials)
 
     def start(self):
         user = DRAFT.get("user")
@@ -638,6 +640,10 @@ class HomeScreen(BaseScreen):
         self.public_id = user.public_id
         self.avatar = user.avatar_path or sprite("default_avatar")
 
+        avatar_widget = self.ids.get("my_avatar")
+        if avatar_widget is not None:
+            avatar_widget.set_user(user)
+
         self.contacts_box.clear_widgets()
         contacts = chat.list_contacts(user.id)
         if not contacts:
@@ -687,6 +693,9 @@ class ChatScreen(BaseScreen):
             return
 
         self.partner_title = f"{self.partner.display_name} ({self.partner.public_id})"
+        avatar = self.ids.get("partner_avatar")
+        if avatar is not None:
+            avatar.set_user(self.partner)
         chat.mark_read(user.id, self.partner.id)
 
         self.messages_box.clear_widgets()

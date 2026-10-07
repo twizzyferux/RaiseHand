@@ -15,12 +15,12 @@
             height: 80
             spacing: 10
 
-            # Аватар: спрайт "default_avatar" или картинка, выбранная в настройках
-            Image:
-                source: root.avatar
-                size_hint_x: None
-                width: 80 if self.source else 0
-                opacity: 1 if self.source else 0
+            # Аватар: личный градиент с инициалами (или своя картинка,
+            # если она выбрана в настройках). Сам решает, что показать.
+            GradientAvatar:
+                id: my_avatar
+                size_hint: None, None
+                size: dp(64), dp(64)
 
             BoxLayout:
                 orientation: 'vertical'
