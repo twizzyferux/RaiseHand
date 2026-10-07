@@ -1,0 +1,56 @@
+# Переписка с одним человеком.
+
+<MessageBubble>:
+    # класс описан в ui/screens.py, свойство mine = True, если сообщение ваше
+    size_hint_y: None
+    text_size: self.width - 20, None
+    padding: [10, 8]
+    halign: 'left'
+    height: self.texture_size[1] + 16
+
+<ChatScreen>:
+    messages_box: messages_box
+    scroller: scroller
+    message_field: message_field
+
+    Box:
+        BoxLayout:
+            size_hint_y: None
+            height: 44
+            spacing: 10
+
+            Btn:
+                text: '<'
+                size_hint_x: None
+                width: 50
+                height: 44
+                on_release: app.go('home')
+
+            BodyLabel:
+                text: root.partner_title
+
+        FormScroll:
+            id: scroller
+            BoxLayout:
+                id: messages_box
+                orientation: 'vertical'
+                spacing: 6
+                size_hint_y: None
+                height: self.minimum_height
+
+        BoxLayout:
+            size_hint_y: None
+            height: 44
+            spacing: 10
+
+            Field:
+                id: message_field
+                hint_text: 'Сообщение...'
+                on_text_validate: root.do_send()
+
+            Btn:
+                text: 'Отправить'
+                size_hint_x: None
+                width: 120
+                height: 44
+                on_release: root.do_send()

@@ -1,0 +1,75 @@
+# Главный экран: профиль, поиск по ID, список чатов.
+
+<ContactRow@Btn>:
+    height: 60
+    halign: 'left'
+    text_size: self.width - 20, None
+
+<HomeScreen>:
+    search_field: search_field
+    contacts_box: contacts_box
+
+    Box:
+        BoxLayout:
+            size_hint_y: None
+            height: 80
+            spacing: 10
+
+            # Аватар: спрайт "default_avatar" или картинка, выбранная в настройках
+            Image:
+                source: root.avatar
+                size_hint_x: None
+                width: 80 if self.source else 0
+                opacity: 1 if self.source else 0
+
+            BoxLayout:
+                orientation: 'vertical'
+
+                BodyLabel:
+                    text: root.display_name
+
+                BodyLabel:
+                    text: root.role_line
+
+                BodyLabel:
+                    text: 'Ваш ID: ' + root.public_id
+
+        BoxLayout:
+            size_hint_y: None
+            height: 48
+            spacing: 10
+
+            Btn:
+                text: 'Настройки'
+                on_release: app.go('settings')
+
+            Btn:
+                text: 'Выйти'
+                on_release: app.logout()
+
+        BoxLayout:
+            size_hint_y: None
+            height: 44
+            spacing: 10
+
+            Field:
+                id: search_field
+                hint_text: 'Найти по ID (4820193 или U4820193)'
+
+            Btn:
+                text: 'Найти'
+                size_hint_x: None
+                width: 100
+                height: 44
+                on_release: root.do_search()
+
+        BodyLabel:
+            text: 'Чаты'
+
+        FormScroll:
+            BoxLayout:
+                id: contacts_box
+                orientation: 'vertical'
+                spacing: 6
+                size_hint_y: None
+                height: self.minimum_height

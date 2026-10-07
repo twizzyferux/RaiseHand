@@ -1,0 +1,51 @@
+# Подтверждение аккаунта: почта или телефон + код.
+
+<VerifyScreen>:
+    target_field: target_field
+    code_field: code_field
+
+    FormScroll:
+        Box:
+            size_hint_y: None
+            height: self.minimum_height
+
+            TitleLabel:
+                text: 'Подтверждение аккаунта'
+
+            MutedLabel:
+                text: 'Выберите, куда отправить код'
+
+            BoxLayout:
+                size_hint_y: None
+                height: 48
+                spacing: 10
+
+                Btn:
+                    text: 'Почта'
+                    on_release: root.set_channel('email')
+
+                Btn:
+                    text: 'Телефон'
+                    on_release: root.set_channel('phone')
+
+            BodyLabel:
+                text: 'Способ: ' + ('почта' if root.channel == 'email' else 'телефон')
+
+            Field:
+                id: target_field
+                hint_text: 'ivan@mail.ru' if root.channel == 'email' else '+79001234567'
+
+            Btn:
+                text: 'Отправить код'
+                on_release: root.send_code()
+
+            BodyLabel:
+                text: root.hint
+
+            Field:
+                id: code_field
+                hint_text: 'Код из сообщения'
+
+            Btn:
+                text: 'Подтвердить'
+                on_release: root.confirm()

@@ -1,0 +1,63 @@
+# Экран логов: показываем хвост data/app.log прямо в приложении.
+
+<LogsScreen>:
+    PhoneStage:
+        RegChrome:
+            back_to: 'settings'
+            header_title: 'Журнал'
+            title: 'Логи приложения'
+            subtitle_cy: 668
+            progress: 0
+            show_progress: False
+            show_consent: False
+            next_label: 'Обновить'
+            next_callback: root.reload_log
+
+        # Хвост лога — моноширинным шрифтом не нужен, читается обычным.
+        # Подпись: где лежит файл. Свой subtitle не нужен — он занял бы
+        # место лога, поэтому показываем одной строкой.
+        Label:
+            size_hint: None, None
+            pos: dp(24), dp(652)
+            size: dp(402), dp(24)
+            text: 'Что приложение делало — файл data/app.log'
+            font_size: dp(16)
+            color: 0.4, 0.4, 0.4, 1
+            halign: 'center'
+            text_size: self.width, None
+
+        ScrollView:
+            id: log_scroll
+            size_hint: None, None
+            pos: dp(24), dp(210)
+            size: dp(402), dp(420)
+            do_scroll_x: False
+            bar_width: dp(3)
+            bar_color: 0.29, 0.18, 0.88, 0.35
+            bar_inactive_color: 0.29, 0.18, 0.88, 0.12
+            Label:
+                id: log_body
+                size_hint_y: None
+                height: max(self.texture_size[1], log_scroll.height)
+                width: log_scroll.width - dp(10)
+                text: root.log_text
+                font_size: dp(12.5)
+                color: 0.22, 0.22, 0.24, 1
+                halign: 'left'
+                valign: 'top'
+                markup: False
+                text_size: self.width, None
+
+        # Кнопка «Обновить» из RegChrome стоит на dp(77..130), ссылку ставим выше.
+        # Цвет указываем явно: у LinkButton своего нет, и без него текст
+        # рисуется белым по белому — почти не виден.
+        LinkButton:
+            size_hint: None, None
+            pos: dp(24), dp(150)
+            size: dp(402), dp(40)
+            font_size: dp(17)
+            color: 0.294, 0.184, 0.878, 1
+            halign: 'center'
+            text_size: self.width, None
+            text: 'Открыть папку с логом'
+            on_release: root.open_logs_file()

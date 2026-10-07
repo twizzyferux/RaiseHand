@@ -1,0 +1,545 @@
+# Пошаговая регистрация ученика — макет проект/регистрация.svg, фреймы 2-6.
+# Общая «шапка» (назад / заголовок / прогресс / согласие / «Далее»)
+# вынесена в RegChrome (ui/screens.py), экраны добавляют только свои поля.
+
+# --- ДЕКОРАТИВНЫЕ ПИЛЛИ РАЗДЕЛА «Всё готово!» ----------------------------
+<DoneRows@Widget>:
+    canvas:
+        Color:
+            rgba: 0.937, 0.937, 0.957, 1
+        RoundedRectangle:
+            pos: dp(49), dp(400)
+            size: dp(350), dp(60)
+            radius: [dp(30), ]
+        RoundedRectangle:
+            pos: dp(50), dp(316)
+            size: dp(350), dp(60)
+            radius: [dp(30), ]
+        RoundedRectangle:
+            pos: dp(49), dp(232)
+            size: dp(350), dp(60)
+            radius: [dp(30), ]
+
+
+# --- ОБЩАЯ ШАПКА ШАГА ----------------------------------------------------
+<RegChrome>:
+    # «← Назад» (фиолетовый, слева)
+    LinkButton:
+        size_hint: None, None
+        pos: dp(36), dp(806)
+        size: dp(120), dp(36)
+        font_size: dp(18)
+        bold: True
+        color: 0.294, 0.184, 0.878, 1
+        halign: 'left'
+        text_size: self.width, None
+        text: '← Назад'
+        opacity: 1 if root.show_back else 0
+        disabled: not root.show_back
+        on_release: app.go(root.back_to)
+
+    # центральный заголовок строки
+    Label:
+        size_hint: None, None
+        pos: dp(115), dp(804)
+        size: dp(220), dp(38)
+        text: root.header_title
+        font_size: dp(18.5)
+        bold: True
+        color: 0, 0, 0, 1
+        halign: 'center'
+        text_size: self.width, None
+
+    # большой заголовок шага
+    Label:
+        size_hint: None, None
+        pos: dp(48), dp(718)
+        size: dp(355), dp(92)
+        text: root.title
+        font_size: dp(42.5)
+        bold: True
+        color: 0, 0, 0, 1
+        halign: 'left'
+        text_size: self.width, None
+
+    # подзаголовок (шаги 3 и 4)
+    # ВАЖНО: subtitle_cy задан в единицах макета (dp), поэтому и вычитание
+    # делаем внутри dp(). Если смешать сырое число с dp(40), то на плотности
+    # не равной 1 подпись «уедет» и накроет поле (так и случилось).
+    Label:
+        size_hint: None, None
+        pos: dp(57), dp(root.subtitle_cy - 40)
+        size: dp(336), dp(80)
+        text: root.subtitle
+        font_size: dp(20)
+        color: 0.4, 0.4, 0.4, 1
+        halign: 'center'
+        line_spacing: dp(1)
+        text_size: self.width, None
+        opacity: 1 if root.subtitle else 0
+
+    # прогресс
+    RegProgress:
+        pos: dp(77.5), dp(704.5)
+        value: root.progress
+        opacity: 1 if root.show_progress else 0
+
+    # согласие с правилами (2 строки, по левому краю)
+    Label:
+        size_hint: None, None
+        pos: dp(65), dp(151)
+        size: dp(325), dp(50)
+        text: 'Нажимая далее вы соглашаетесь\nс правилами RaiseHand'
+        font_size: dp(19.5)
+        color: 0.62, 0.62, 0.62, 1
+        halign: 'left'
+        line_spacing: dp(2)
+        text_size: self.width, None
+        opacity: 1 if root.show_consent else 0
+
+    # основная кнопка шага
+    PillButton:
+        pos: dp(64), dp(77)
+        size: dp(321), dp(53)
+        text: root.next_label
+        on_release: root.do_next()
+
+
+# --- ШАГ 1: «Как вас зовут?» --------------------------------------------
+<RegStep1Screen>:
+    first_name: first_name
+    last_name: last_name
+
+    canvas.before:
+        Color:
+            rgba: 1, 0.984, 0.969, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    PhoneStage:
+        RegChrome:
+            back_to: 'welcome'
+            title: 'Как вас зовут?'
+            progress: 55
+            next_callback: root.next
+
+        Label:
+            size_hint: None, None
+            pos: dp(95), dp(638)
+            size: dp(220), dp(23)
+            text: 'Имя'
+            font_size: dp(21)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        PillInput:
+            id: first_name
+            pos: dp(75), dp(584)
+            hint_text: 'Иван'
+
+        Label:
+            size_hint: None, None
+            pos: dp(90.5), dp(560)
+            size: dp(220), dp(20)
+            text: 'Видно всем'
+            font_size: dp(16)
+            color: 0.4, 0.4, 0.4, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        Label:
+            size_hint: None, None
+            pos: dp(89), dp(507)
+            size: dp(220), dp(23)
+            text: 'Фамилия'
+            font_size: dp(21)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        PillInput:
+            id: last_name
+            pos: dp(75), dp(453)
+            hint_text: 'Иванов'
+
+        Label:
+            size_hint: None, None
+            pos: dp(90.5), dp(429)
+            size: dp(220), dp(20)
+            text: 'Видно всем'
+            font_size: dp(16)
+            color: 0.4, 0.4, 0.4, 1
+            halign: 'left'
+            text_size: self.width, None
+
+
+# --- ШАГ 2: «Введите пароль» --------------------------------------------
+<RegStep2Screen>:
+    password: password
+    password_repeat: password_repeat
+    remember: remember
+
+    canvas.before:
+        Color:
+            rgba: 1, 0.984, 0.969, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    PhoneStage:
+        RegChrome:
+            back_to: 'reg_step1'
+            title: 'Введите пароль'
+            progress: 115
+            next_callback: root.next
+
+        Label:
+            size_hint: None, None
+            pos: dp(95), dp(639)
+            size: dp(220), dp(23)
+            text: 'Пароль'
+            font_size: dp(21)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        PillInput:
+            id: password
+            pos: dp(75), dp(585)
+            hint_text: '••••••••'
+            font_size: dp(33.5)
+            padding: [dp(16.5), (self.height - self.line_height) / 2 - dp(3)]
+            password: True
+
+        Image:
+            size_hint: None, None
+            pos: dp(333), dp(600)
+            size: dp(25), dp(19)
+            source: app.sprite('rh_eye')
+            mipmap: True
+            fit_mode: 'contain'
+
+        Label:
+            size_hint: None, None
+            pos: dp(95.5), dp(568)
+            size: dp(260), dp(20)
+            text: 'Минимум 6 символов'
+            font_size: dp(16.5)
+            color: 0.4, 0.4, 0.4, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        Label:
+            size_hint: None, None
+            pos: dp(90), dp(510)
+            size: dp(300), dp(23)
+            text: 'Подтверждение пароль'
+            font_size: dp(21)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        PillInput:
+            id: password_repeat
+            pos: dp(75), dp(454)
+            hint_text: '••••••••'
+            font_size: dp(33.5)
+            padding: [dp(16.5), (self.height - self.line_height) / 2 - dp(3)]
+            password: True
+
+        Image:
+            size_hint: None, None
+            pos: dp(333), dp(469)
+            size: dp(25), dp(19)
+            source: app.sprite('rh_eye')
+            mipmap: True
+            fit_mode: 'contain'
+
+        CheckToggle:
+            id: remember
+            pos: dp(91), dp(404)
+            state: 'down'
+
+        Label:
+            size_hint: None, None
+            pos: dp(128.8), dp(407)
+            size: dp(260), dp(23)
+            text: 'Запомнить меня'
+            font_size: dp(22.5)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            text_size: self.width, None
+
+
+# --- ШАГ 3: «Где вы учитесь?» -------------------------------------------
+<RegStep3Screen>:
+    city: city
+    invite_code: invite_code
+
+    canvas.before:
+        Color:
+            rgba: 1, 0.984, 0.969, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    PhoneStage:
+        RegChrome:
+            back_to: 'reg_step2'
+            title: 'Где вы учитесь?'
+            subtitle: 'Введите город и код от учителя,\nчтобы присоединиться к классу'
+            subtitle_cy: 668
+            progress: 175
+            next_callback: root.next
+
+        Label:
+            size_hint: None, None
+            pos: dp(97.9), dp(569)
+            size: dp(220), dp(23)
+            text: 'Город'
+            font_size: dp(21)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        PillInput:
+            id: city
+            pos: dp(76), dp(518)
+            hint_text: 'Москва'
+            font_size: dp(20)
+
+        Label:
+            size_hint: None, None
+            pos: dp(97.4), dp(499)
+            size: dp(220), dp(20)
+            text: 'Мин. 2 символа'
+            font_size: dp(16.5)
+            color: 0.4, 0.4, 0.4, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        Label:
+            size_hint: None, None
+            pos: dp(99), dp(445)
+            size: dp(260), dp(23)
+            text: 'Код приглашения'
+            font_size: dp(22.5)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        PillInput:
+            id: invite_code
+            pos: dp(74), dp(390)
+            hint_text: 'A12-3B4'
+
+        Label:
+            size_hint: None, None
+            pos: dp(96.2), dp(353)
+            size: dp(260), dp(36)
+            text: 'Код можно узнать от учителя\nили в чате класса'
+            font_size: dp(16.5)
+            color: 0.4, 0.4, 0.4, 1
+            halign: 'left'
+            line_spacing: dp(1)
+            text_size: self.width, None
+
+
+# --- ШАГ 4: «Подтверждение» ---------------------------------------------
+<RegStep4Screen>:
+    contact: contact
+    code_field: code_field
+
+    canvas.before:
+        Color:
+            rgba: 1, 0.984, 0.969, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    PhoneStage:
+        RegChrome:
+            back_to: 'reg_step3'
+            header_title: 'Последний этап!'
+            title: 'Подтверждение'
+            subtitle: 'Впишите свой адрес электронной\nпочты, либо номер телефона,\nчтобы подтвердить свой аккаунт'
+            subtitle_cy: 654.5
+            progress: 235
+            next_callback: root.next
+
+        Label:
+            size_hint: None, None
+            pos: dp(92.7), dp(572)
+            size: dp(260), dp(23)
+            text: 'E-mail/Телефон'
+            font_size: dp(21)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        PillInput:
+            id: contact
+            pos: dp(73), dp(518)
+            hint_text: 'ivan@example.com'
+
+        PillButton:
+            pos: dp(117), dp(460)
+            size: dp(211), dp(50)
+            text: 'Получить код'
+            on_release: root.send_code()
+
+        Label:
+            size_hint: None, None
+            pos: dp(97), dp(415)
+            size: dp(250), dp(40)
+            text: 'Код придет вам на почту либо\nна ваш номер телефона'
+            font_size: dp(16.5)
+            color: 0.4, 0.4, 0.4, 1
+            halign: 'center'
+            line_spacing: dp(1)
+            text_size: self.width, None
+
+        Label:
+            size_hint: None, None
+            pos: dp(99.1), dp(371)
+            size: dp(280), dp(23)
+            text: 'Код подтверждения'
+            font_size: dp(23.5)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        PillInput:
+            id: code_field
+            pos: dp(75), dp(315)
+            hint_text: '123ABC'
+
+
+# --- ШАГ 5: «Всё готово!» ------------------------------------------------
+<RegStep5Screen>:
+    canvas.before:
+        Color:
+            rgba: 1, 0.984, 0.969, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    PhoneStage:
+        DoneRows:
+
+        RegChrome:
+            header_title: 'Всё готово!'
+            show_back: False
+            show_progress: False
+            show_consent: False
+            next_label: 'Начать общение'
+            next_callback: root.start
+
+        # аватар с градиентом и инициалами
+        Image:
+            size_hint: None, None
+            pos: dp(166), dp(665)
+            size: dp(120), dp(120)
+            source: app.sprite('rh_avatar')
+            mipmap: True
+
+        Label:
+            size_hint: None, None
+            pos: dp(166), dp(701)
+            size: dp(120), dp(48)
+            text: root.initials
+            font_size: dp(44)
+            bold: True
+            color: 1, 1, 1, 1
+            halign: 'center'
+            text_size: self.width, None
+
+        # приветствие
+        Label:
+            size_hint: None, None
+            pos: dp(41), dp(551)
+            size: dp(360), dp(88)
+            text: root.welcome_text
+            font_size: dp(34)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'center'
+            line_height: 1.15
+            text_size: self.width, None
+
+        # строки: Класс / Школа / Роль
+        Label:
+            size_hint: None, None
+            pos: dp(104.7), dp(421)
+            size: dp(140), dp(23)
+            text: 'Класс'
+            font_size: dp(28)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        Label:
+            size_hint: None, None
+            pos: dp(207), dp(421)
+            size: dp(200), dp(23)
+            text: root.class_value
+            font_size: dp(28)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'center'
+            text_size: self.width, None
+
+        Label:
+            size_hint: None, None
+            pos: dp(104.6), dp(338)
+            size: dp(140), dp(23)
+            text: 'Школа'
+            font_size: dp(28)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        Label:
+            size_hint: None, None
+            pos: dp(207), dp(338)
+            size: dp(200), dp(21)
+            text: root.school_value
+            font_size: dp(19.5)
+            color: 0, 0, 0, 1
+            halign: 'center'
+            text_size: self.width, None
+
+        Label:
+            size_hint: None, None
+            pos: dp(104.6), dp(254)
+            size: dp(140), dp(23)
+            text: 'Роль'
+            font_size: dp(28)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            text_size: self.width, None
+
+        Label:
+            size_hint: None, None
+            pos: dp(207), dp(254)
+            size: dp(200), dp(23)
+            text: 'Ученик'
+            font_size: dp(28)
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'center'
+            text_size: self.width, None
