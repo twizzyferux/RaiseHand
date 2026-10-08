@@ -180,12 +180,17 @@ def register_student(first_name: str, last_name: str,
 
 
 def find_class(invite_code: str):
-    """Код приглашения -> строка таблицы classes (class_name, school_name)."""
+    """Код приглашения -> строка таблицы classes (class_name, school_name).
+
+    Регистр не важен: код из макета «A12-3B4», а человек может
+    набрать «a12-3b4» — сравниваем без учёта регистра.
+    """
     invite_code = invite_code.strip()
     if not invite_code:
         raise AuthError("Введите код приглашения")
     row = db.query_one(
-        "SELECT * FROM classes WHERE invite_code = ?", (invite_code,))
+        "SELECT * FROM classes WHERE UPPER(invite_code) = ?",
+        (invite_code.upper(),))
     if row is None:
         raise AuthError("Код не найден — узнайте его у учителя или в чате класса")
     return row
