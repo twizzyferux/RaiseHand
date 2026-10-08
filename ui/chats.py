@@ -1,33 +1,43 @@
 # -*- coding: utf-8 -*-
 """Экран чатов по макету «проект/проект экран/основной экран чаты».
 
-Макет пришёл четырьмя вырезками Figma: «основной интерфейс» (шапка с
-заголовком и круглой кнопкой «+»), «чаты (закреп)», «чаты (не закреп)»
-и «панель управления». Холст макета — 404x874, сцена приложения —
-450x920, поэтому каждая координата переведена:
+Источник истины — полный экран Face ID.svg (холст 408x874). Отдельные
+вырезки из него («основной интерфейс», «чаты (закреп)», «чаты (не
+закреп)», «панель управления») идут с обрезкой — 404 вместо 408 по
+ширине и с подрезанным верхом, из-за чего координаты в них разошлись с
+полным макетом и экран «съезжал». Все числа ниже посчитаны по полному
+макету и переведены в сцену приложения (450x920):
 
-    x_сцены = x_макета * 450 / 404
-    y_сцены = y_макета * 920 / 874
+    x_сцены = x_макета * 450 / 408
+    y_сцены = (874 - y_макета) * 920 / 874
 
-Геометрия ряда, шапки и панели — здесь, потому что ряд рисуется целиком
-в своём canvas (см. почему ниже).
+Кегли подобраны не «на глаз», а по фактическим размерам букв в макете:
+_measure_mock.py рендерит эталон, снимает габариты чернил и подбирает
+кегль, при котором тот же текст тем же шрифтом совпадает по ширине и
+высоте. Пересчитать всё: .venv312\\Scripts\\python.exe _measure_mock.py
+
+Позиции значков и разделителей пересчитываются из координат макета же:
+_offset-инструменты того же набора (_offsets.py, _values.py).
+
+Геометрия ряда, шапки и панели живёт здесь, а не в .kv, потому что ряд
+рисуется целиком в своём canvas (см. ниже).
 
 ПОЧЕМУ РЯД РИСУЕТСЯ САМ, А НЕ ЧЕРЕЗ ДЕТЕЙ-WIDGETОВ
 -------------------------------------------------
 В этой версии Kivy содержимое виджета не смещается вместе с ним: если
 родитель стоит на (0, 100), а ребёнок на (0, 0), ребёнок всё равно
-рисуется на нуле (проверено опытом _exp3.py — красный квадрат внутри
-сдвинутого контейнера остался внизу окна). Поэтому все экраны этого
-приложения держат координаты абсолютными, а у ряда чата в разметке
-вообще нет вложенных виджетов: аватар, тексты, галочки и значки — это
-инструкции canvas плюс текстуры шрифта (core.text). Такой ряд скроллится
-вместе со списком как обычно.
+рисуется на нуле — проверено отдельным опытом: квадрат внутри
+сдвинутого на 100 контейнера остался внизу окна. Поэтому все экраны
+этого приложения держат координаты абсолютными, а у ряда чата в
+разметке вообще нет вложенных виджетов: аватар, тексты, галочки и
+значки — это инструкции canvas плюс текстуры шрифта (core.text). Такой
+ряд скроллится вместе со списком как обычно.
 """
 import os
 
 from kivy.core.text import Label as CoreLabel
 from kivy.factory import Factory
-from kivy.graphics import Color, Ellipse, Line, Rectangle, RoundedRectangle
+from kivy.graphics import Color, Line, Rectangle, RoundedRectangle
 from kivy.metrics import dp
 from kivy.properties import (BooleanProperty, NumericProperty, ObjectProperty,
                              StringProperty)
@@ -35,7 +45,7 @@ from kivy.uix.widget import Widget
 
 from ui.anim import PressButton
 
-MOCK_W, MOCK_H = 404.0, 874.0          # холст макета
+MOCK_W, MOCK_H = 408.0, 874.0          # холст макета (Face ID.svg)
 STAGE_W, STAGE_H = 450.0, 920.0        # холст сцены приложения
 
 # --- цвета макета ----------------------------------------------------------- #
@@ -47,32 +57,62 @@ LINE_GREY = "#C5C5C5"                  # разделитель ряда
 TINT = "#F3F1FF"                       # подложка закреплённых чатов
 CREAM = "#FFFBF7"                      # фон экрана
 
-# --- геометрия ряда (координаты сцены, посчитаны из макета) ---------------- #
-ROW_H = 94                             # макет 84 -> 94 (450x920 против 404x874)
+# --- нижняя панель ---------------------------------------------------------- #
+# Плашка в макете: 360x60 в (24, 780) -> в сцене x 26.5, y 35.8,
+# размер 397.1 x 63.2, радиус 31.6.
+PANEL = (26.5, 35.8, 397.1, 63.2)
+PANEL_RADIUS = 31.6
+PANEL_X, PANEL_Y = PANEL[0], PANEL[1]   # начало плашки в сцене
+# Подписи панели: кегль один на все четыре — в макете так же.
+# «Поиск» -> 40, «Чаты» -> 32, «Группы» -> 49, «Настройки» -> 69
+# (макетные ширины 40, 32, 48, 67).
+CAPTION_BASE = 42.0
+CAPTION_SIZE = 13.0
+
+# --- геометрия ряда ---------------------------------------------------------- #
+# Все значения — из Face ID.svg (408x874), переведены в сцену 450x920.
+# Координаты считаются ОТ НИЗА РЯДА: так список скроллится и не зависит
+# от того, какой ряд первый. В скобках — координаты макета.
+# Пересчитать: .venv312\\Scripts\\python.exe _measure_mock.py
+ROW_H = 88.4                           # шаг ряда (макет 84 -> 88.4)
 ROW_W = 450
-AVATAR_SIZE = 76                       # макет 68 -> 76
-AVATAR_POS = (10, 8)                   # макет 9, 8
-NAME_LEFT = 98                         # макет 88
-NAME_BASELINE = 66                     # макет 27.6 сверху ряда
-PREVIEW_BASELINE = 29                  # макет 63.2 сверху ряда
-TIME_BASELINE = 66                     # макет 26.6 сверху ряда
-TIME_RIGHT = 428                       # макет 383
-DIVIDER_LEFT = 92                      # макет 83
-PIN_POS, PIN_SIZE = (405, 38), (33, 32)
-BADGE_HEIGHT = 26
-TICK_SIZE = (31, 21)                   # макет 28x20
-TICK_GAP = 14                          # макет 13
-NAME_SIZE = 22.5                       # макет 19.3
-PREVIEW_SIZE = 18                      # макет 15.5
-TIME_SIZE = 17                         # макет 14.5
-BADGE_SIZE = 16
-# Инициалы в макете на 33% стороны аватара: у букв SF Pro cap-height
-# равен 0.714 кегля, значит кегль = 0.33 / 0.714.
-INITIALS_RATIO = 0.462
+AVATAR_SIZE = (75.0, 71.6)             # макет 68x68 -> 75.0 x 71.6
+AVATAR_POS = (13.2, 9.0)               # макет 12, 246 (низ аватара)
+# Инициалы стоят по центру аватара: центр букв в макете (41.7, 207.6),
+# в сцене (46.0, 698.0) — на 4.7 левее центра аватара, ровно как в макете.
+INITIALS_CENTER = (46.0, 698.0)
+# Базовые линии текстов ряда 1 (макет 196.21 / 229.97 / 195.27), переведённые
+# в сцену и отсчитанные от низа ряда (652.1):
+NAME_BASELINE = 61.4
+PREVIEW_BASELINE = 25.8
+TIME_BASELINE = 62.4
+NAME_LEFT = 100.0                      # макет 91.2 (измерено по чернилам)
+PREVIEW_LEFT = 102.0                   # макет 92.6
+TIME_RIGHT = 424.0                     # макет 385.8 (правый край времени)
+DIVIDER_LEFT = 94.9                    # макет 86
+# Значки. Галочки в макете стоят на одной линии со ВРЕМЕНем, слева от
+# него (серые 28x20 в x 315, фиолетовые 34x25 в x 309), а не под
+# текстом превью.
+PIN_POS, PIN_SIZE = (404.8, 19.5), (33.1, 31.6)          # макет 367,206
+BADGE_POS, BADGE_SIZE = (407.0, 20.5), (27.6, 26.3)      # макет 369,294
+TICK_POS, TICK_SIZE = (347.4, 56.3), (30.9, 21.0)        # макет 315,347
+TICK_BIG_POS, TICK_BIG_SIZE = (340.8, 55.3), (37.5, 26.3)  # макет 309,429
+BADGE_SIZE_WIDE = 32.0                  # счётчик от двух цифр (макет 29)
+# Кегли подобраны по ширине текста тем же шрифтом, каким он рисуется в
+# приложении (_probe_type.py — по текстурам Kivy, не по PIL: у PIL и Kivy
+# разная метрика, и кегль из PIL в приложении даёт текст уже макетного).
+NAME_SIZE = 21.0                       # «Иван Иванов» -> 136 при макетных 137
+PREVIEW_SIZE = 17.0                     # «Hello, Vinograd!» -> 125 при 129
+TIME_SIZE = 16.0                        # «19:36» -> 41 при 43
+INITIALS_SIZE = 23.0                    # «ИИ» -> 34 при макетных 34
+BADGE_TEXT_SIZE = 16
 
 # Доля высоты текстуры, приходящаяся на нижний выносной элемент: текст
 # ставим по базовой линии, а текстура включает и выносные.
-DESCENT = 0.24
+# У SF Pro Text выносной элемент — примерно 0.21 кегля, а текстура при
+# кегле 21 выше 26, то есть доля 0.17. При 0.24 весь текст садился ниже
+# макета на 3..4 пикселя.
+DESCENT = 0.17
 
 FONT_NAME = "SFPro"
 
@@ -204,24 +244,29 @@ class ChatRow(Widget):
                 Rectangle(pos=self.pos, size=self.size)
 
             # Аватар: круг с личным градиентом, поверх инициалы
+            avatar_w, avatar_h = dp(AVATAR_SIZE[0]), dp(AVATAR_SIZE[1])
+            avatar_x = left + dp(AVATAR_POS[0])
+            avatar_y = bottom + dp(AVATAR_POS[1])
             if self.avatar_source:
                 Color(rgba=(1, 1, 1, 1))
                 Rectangle(source=self.avatar_source,
-                          pos=(left + dp(AVATAR_POS[0]), bottom + dp(AVATAR_POS[1])),
-                          size=(dp(AVATAR_SIZE), dp(AVATAR_SIZE)))
+                          pos=(avatar_x, avatar_y),
+                          size=(avatar_w, avatar_h))
             if self.initials:
-                texture, height = self._texture(
-                    self.initials, dp(AVATAR_SIZE) * INITIALS_RATIO,
-                    "#FDFCFF", bold=False, align="center")
+                texture, height = self._texture(self.initials,
+                                                dp(INITIALS_SIZE),
+                                                "#FDFCFF", bold=False,
+                                                align="center")
                 if texture is not None:
-                    # Центр инициалов — центр АВАТАРА, а не ряда
+                    # Центр инициалов — точка из макета, а не середина
+                    # текстуры: в макете буквы сбиты чуть влево.
                     Color(rgba=hex_rgba("#FDFCFF"))
-                    Rectangle(texture=texture,
-                              pos=(left + dp(AVATAR_POS[0])
-                                   + (dp(AVATAR_SIZE) - texture.width) / 2,
-                                   bottom + dp(AVATAR_POS[1])
-                                   + (dp(AVATAR_SIZE) - height) / 2),
-                              size=texture.size)
+                    Rectangle(
+                        texture=texture,
+                        pos=(left + dp(INITIALS_CENTER[0]) - texture.width / 2,
+                             bottom + dp(INITIALS_CENTER[1])
+                             - height * DESCENT),
+                        size=texture.size)
 
             # Имя — чёрным, как в макете
             texture, height = self._texture(self.peer_name, dp(NAME_SIZE),
@@ -233,15 +278,16 @@ class ChatRow(Widget):
                                bottom + dp(NAME_BASELINE) - height * DESCENT),
                           size=texture.size)
 
-            # Время — по правому краю, на одной базовой линии с именем
-            texture, height = self._texture(self.stamp, dp(TIME_SIZE),
-                                            "#000000", align="right")
-            if texture is not None:
+            # Время — по правому краю
+            stamp_texture, stamp_height = self._texture(
+                self.stamp, dp(TIME_SIZE), "#000000", align="right")
+            if stamp_texture is not None:
                 Color(rgba=(0, 0, 0, 1))
-                Rectangle(texture=texture,
-                          pos=(left + dp(TIME_RIGHT) - texture.width,
-                               bottom + dp(TIME_BASELINE) - height * DESCENT),
-                          size=texture.size)
+                Rectangle(texture=stamp_texture,
+                          pos=(left + dp(TIME_RIGHT) - stamp_texture.width,
+                               bottom + dp(TIME_BASELINE)
+                               - stamp_height * DESCENT),
+                          size=stamp_texture.size)
 
             # Превью: у непрочитанного чата текст темнее (макет)
             tone = DARK_TEXT if self.unread else GREY_TEXT
@@ -249,17 +295,20 @@ class ChatRow(Widget):
             if texture is not None:
                 Color(rgba=hex_rgba(tone))
                 Rectangle(texture=texture,
-                          pos=(left + dp(NAME_LEFT),
+                          pos=(left + dp(PREVIEW_LEFT),
                                bottom + dp(PREVIEW_BASELINE) - height * DESCENT),
                           size=texture.size)
 
-                # Галочка своего сообщения: серым «отправлено»,
-                # фиолетовым «прочитано» — сразу за текстом
-                if self.mine and not self.unread:
-                    source = "status_read.png" if self.read else "status_sent.png"
-                    self._icon(source,
-                               left + dp(NAME_LEFT) + texture.width + dp(TICK_GAP),
-                               bottom + dp(PREVIEW_BASELINE) + 3, TICK_SIZE)
+            # Галочка статуса своего сообщения: на линии со временем, слева
+            # от него — серым «отправлено» (28x20), фиолетовым «прочитано»
+            # (34x25). Ровно так в макете.
+            if self.mine and not self.unread:
+                if self.read:
+                    self._icon("status_read.png", left + dp(TICK_BIG_POS[0]),
+                               bottom + dp(TICK_BIG_POS[1]), TICK_BIG_SIZE)
+                else:
+                    self._icon("status_sent.png", left + dp(TICK_POS[0]),
+                               bottom + dp(TICK_POS[1]), TICK_SIZE)
 
             # Закрепление
             if self.pinned:
@@ -268,7 +317,7 @@ class ChatRow(Widget):
 
             # Счётчик новых: круг на одну цифру, овал на две
             if self.unread:
-                self._badge(bottom)
+                self._badge(left, bottom)
 
             # Разделитель #C5C5C5 — от края аватара до правого края
             Color(rgba=hex_rgba(LINE_GREY))
@@ -283,22 +332,31 @@ class ChatRow(Widget):
         Color(rgba=(1, 1, 1, 1))
         Rectangle(texture=texture, pos=(x, y), size=size)
 
-    def _badge(self, bottom):
-        """Плашка со счётчиком новых сообщений."""
+    def _badge(self, left, bottom):
+        """Плашка со счётчиком новых сообщений.
+
+        В макете 25x25 на одну цифру (макет 369,294) и 29x25 на две
+        (макет 365,630) — ширина растёт вместе с числом знаков, высота
+        остаётся. Правый край плашки в макете один и тот же: 434.5 в
+        сцене (макет 394) — и у короткой, и у длинной.
+        """
         digits = "99+" if self.unread >= 100 else str(int(self.unread))
-        texture, height = self._texture(digits, dp(BADGE_SIZE), "#FFFFFF",
+        texture, height = self._texture(digits, dp(BADGE_TEXT_SIZE), "#FFFFFF",
                                         bold=True, align="center")
-        width = max(dp(BADGE_HEIGHT), (texture.width if texture else 0) + dp(12))
-        x = self.x + self.width - dp(20) - width
-        y = bottom + dp(PIN_POS[1])
+        text_w = texture.width if texture else dp(BADGE_SIZE[0])
+        width = text_w + dp(BADGE_SIZE[0]) / 3      # запас по бокам
+        height_badge = dp(BADGE_SIZE[1])
+        # правый край плашки — 434.5 в сцене, как в макете
+        x = left + dp(BADGE_POS[0]) + dp(BADGE_SIZE[0]) - width
+        y = bottom + dp(BADGE_POS[1])
         Color(rgba=hex_rgba(PINK))
-        RoundedRectangle(pos=(x, y), size=(width, dp(BADGE_HEIGHT)),
-                         radius=[dp(BADGE_HEIGHT) / 2, ])
+        RoundedRectangle(pos=(x, y), size=(width, height_badge),
+                         radius=[height_badge / 2, ])
         if texture is not None:
             Color(rgba=hex_rgba("#FFFFFF"))
             Rectangle(texture=texture,
                       pos=(x + (width - texture.width) / 2,
-                           y + (dp(BADGE_HEIGHT) - height) / 2),
+                           y + (height_badge - height) / 2),
                       size=texture.size)
 
     # -- нажатие ------------------------------------------------------------- #
@@ -326,46 +384,9 @@ class ChatRow(Widget):
 Factory.register("ChatRow", cls=ChatRow)
 
 
-class UnreadBadge(Widget):
-    """Плашка со счётчиком: та же отрисовка, что в ряду, но отдельным
-    виджетом — для мест, где ряд не подходит (например, в поиске)."""
-
-    count = NumericProperty(0)
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.size_hint = (None, None)
-        self.size = (dp(BADGE_HEIGHT), dp(BADGE_HEIGHT))
-        self.bind(count=self._redraw, pos=self._redraw, size=self._redraw)
-
-    def show(self, count: int) -> None:
-        self.count = count or 0
-        self.opacity = 1 if self.count else 0
-
-    def _redraw(self, *_):
-        self.canvas.clear()
-        count = int(self.count)
-        if not count:
-            self.opacity = 0
-            return
-        digits = "99+" if count >= 100 else str(count)
-        label = CoreLabel(text=digits, font_size=dp(BADGE_SIZE),
-                          font_name=FONT_NAME, color=(1, 1, 1, 1), bold=True)
-        label.refresh()
-        width = max(self.height, label.texture.width + dp(12))
-        self.width = width
-        with self.canvas:
-            Color(rgba=hex_rgba(PINK))
-            RoundedRectangle(pos=self.pos, size=self.size,
-                             radius=[self.height / 2, ])
-            Color(rgba=(1, 1, 1, 1))
-            Rectangle(texture=label.texture,
-                      pos=(self.x + (width - label.texture.width) / 2,
-                           self.y + (self.height - label.texture.height) / 2),
-                      size=label.texture.size)
-
-
-Factory.register("UnreadBadge", cls=UnreadBadge)
+# UnreadBadge удалён: счётчик новых рисует сам ряд (ChatRow._badge), и там
+# он уже по координатам макета — круг на одну цифру, овал на две. Отдельный
+# виджет с собственным позиционированием всё равно расходился бы с макетом.
 
 
 class NavItem(PressButton):
@@ -381,26 +402,41 @@ class NavItem(PressButton):
     caption = StringProperty("")
     active_t = NumericProperty(0.0)
     active = BooleanProperty(False)
-    icon_size = NumericProperty(42.0)      # сторона иконки (у каждой своя)
-    magnifier = BooleanProperty(False)      # рисовать лупу линиями
+    # Размер иконки и её положение — из макета (у каждой вкладки своё):
+    #   Поиск      лупа 21x21 в (59, 790) -> центр (72, 800) r 8
+    #   Чаты      38x38 в (139, 785) -> x 153.3 y 53.7
+    #   Группы    44x44 в (226, 782) -> x 249.3 y 50.5
+    #   Настройки 34x34 в (322, 787) -> x 355.1 y 55.8
+    icon_size = NumericProperty(41.9)      # макет 38x38
+    icon_x = NumericProperty(153.3)        # макет 139
+    icon_y = NumericProperty(53.7)         # макет 785 (низ иконки)
+    caption_x = NumericProperty(173.0)     # центр подписи, макет 157..189
+    caption_size = NumericProperty(13.0)   # один на все подписи
+    magnifier = BooleanProperty(False)     # рисовать лупу линиями
     idle_source = StringProperty("")
     active_source = StringProperty("")
 
-    ICON_TOP = 47                          # макет: иконка по центру плашки
-    CAPTION_TOP = 17
-    CAPTION_SIZE = 12
+    # Лупа «Поиска» в макете: круг (72, 800) r 8 и ручка (66, 806)->(59, 813)
+    GLASS = (79.4, 77.9, 8.8)             # центр и радиус в сцене
+    GLASS_HANDLE = ((72.8, 71.5), (65.2, 64.2))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.size_hint = (None, None)
-        self.size = (dp(100), dp(63))
+        self.size = (dp(100), dp(63.2))
         self.background_normal = ""
         self.background_down = ""
         self.background_color = 0, 0, 0, 0
         self.border = 0, 0, 0, 0
         self._labels = []
+        # Перерисовываем при смене любого влияющего на рисунок свойства:
+        # иначе, например, magnifier=True после caption не отразился бы —
+        # лупа так и осталась бы ненарисованной.
         self.bind(pos=self._redraw, size=self._redraw, active_t=self._redraw,
-                  icon_size=self._redraw, caption=self._redraw)
+                  icon_size=self._redraw, icon_x=self._redraw,
+                  icon_y=self._redraw, caption_x=self._redraw,
+                  caption_size=self._redraw, caption=self._redraw,
+                  magnifier=self._redraw)
 
     def set_icon(self, idle_source: str, active_source: str) -> None:
         """Картинки для обычного и активного состояния."""
@@ -418,20 +454,27 @@ class NavItem(PressButton):
         self._labels = []
         if not self.width:
             return
-        size = dp(self.icon_size)
-        icon_x = self.x + (self.width - size) / 2
-        icon_y = self.y + dp(self.ICON_TOP)
         tint = self.active_t
+        # Иконка стоит на своём месте в макете, а не по центру пункта:
+        # пункты в макете смещены друг относительно друга.
+        icon_x = self.x + dp(self.icon_x) - dp(PANEL_X)
+        icon_y = self.y + dp(self.icon_y) - dp(PANEL_Y)
+        size = dp(self.icon_size)
 
         with self.canvas:
             if self.magnifier:
-                # Лупа из макета: круг 72,36 r8 и ручка 66,42 -> 59,49
+                # Лупа нарисована линиями — ровно как в макете
+                cx = self.x + dp(self.GLASS[0]) - dp(PANEL_X)
+                cy = self.y + dp(self.GLASS[1]) - dp(PANEL_Y)
+                radius = dp(self.GLASS[2])
                 Color(rgba=(0.294 * tint, 0.184 * tint, 0.878 * tint, 1))
-                Line(circle=(icon_x + size / 2 + dp(2), icon_y + dp(8.9),
-                             dp(8.9)), width=dp(3.4), cap="round")
-                Line(points=[icon_x + size / 2 - dp(2.8), icon_y + dp(17.4),
-                             icon_x + size / 2 - dp(11), icon_y + dp(25.8)],
-                     width=dp(3.4), cap="round")
+                Line(circle=(cx, cy, radius), width=dp(3.2), cap="round")
+                (x1, y1), (x2, y2) = self.GLASS_HANDLE
+                Line(points=[self.x + dp(x1) - dp(PANEL_X),
+                             self.y + dp(y1) - dp(PANEL_Y),
+                             self.x + dp(x2) - dp(PANEL_X),
+                             self.y + dp(y2) - dp(PANEL_Y)],
+                     width=dp(3.2), cap="round")
             else:
                 source = self.active_source if self.active else self.idle_source
                 texture = _icon_texture(source)
@@ -442,7 +485,7 @@ class NavItem(PressButton):
 
             if self.caption:
                 label = CoreLabel(
-                    text=self.caption, font_size=dp(self.CAPTION_SIZE),
+                    text=self.caption, font_size=dp(self.caption_size),
                     font_name=FONT_NAME, color=(1, 1, 1, 1),
                     halign="center", anchor_x="center")
                 label.refresh()
@@ -451,8 +494,10 @@ class NavItem(PressButton):
                 # вдвое темнее (см. ChatRow._texture).
                 Color(rgba=(0.294 * tint, 0.184 * tint, 0.878 * tint, 1))
                 Rectangle(texture=label.texture,
-                          pos=(self.x + (self.width - label.texture.width) / 2,
-                               self.y + dp(self.CAPTION_TOP)),
+                          pos=(self.x + dp(self.caption_x) - dp(PANEL_X)
+                               - label.texture.width / 2,
+                               self.y + dp(CAPTION_BASE) - dp(PANEL_Y)
+                               - label.texture.height * DESCENT),
                           size=label.texture.size)
 
 
