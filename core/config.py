@@ -40,7 +40,10 @@ def sprite(name: str) -> str:
     return path if os.path.exists(path) else ""
 
 
-DB_PATH = os.path.join(DATA_DIR, "messenger.db")
+# Свою базу можно указать переменной RH_DB — этим пользуются проверочные
+# прогоны (_probe*.py): они создают временных собеседников в отдельном
+# файле и не трогают настоящие данные.
+DB_PATH = os.environ.get("RH_DB") or os.path.join(DATA_DIR, "messenger.db")
 UPLOADS_DIR = os.path.join(DATA_DIR, "uploads")
 OUTBOX_PATH = os.path.join(DATA_DIR, "outbox.log")
 

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Скриншоты экранов, которых нет в _probe.py: настройки и регистрация учителя.
+r"""Скриншоты настроек и регистрации учителя.
 
-ВНИМАНИЕ: заходит тестовым аккаунтом (логин 4874691 / raisehand2026) и
-временно меняет его ник, но в конце возвращает как было.
+Работает на своей базе (_shots/probe.db), чтобы не трогать настоящие
+данные: тестовый логин создаётся при первом прогоне.
 
 Запуск:  .venv312\Scripts\python.exe _probe_extra.py   (из корня проекта)
 """
@@ -12,12 +12,16 @@ import sys
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
 os.chdir(BASE)
+os.environ['RH_DB'] = os.path.join(BASE, '_shots', 'probe.db')
 
-from main import MessengerApp  # noqa: E402
-from kivy.clock import Clock  # noqa: E402
-from kivy.core.window import Window  # noqa: E402
+from main import MessengerApp                      # noqa: E402
+from kivy.clock import Clock                       # noqa: E402
+from kivy.core.window import Window                # noqa: E402
+from kivy.uix.modalview import ModalView           # noqa: E402
 
-LOG = r'_shots\_extra.log'
+from _probe_account import ensure_account          # noqa: E402
+
+LOG = os.path.join('_shots', '_extra.log')
 app = MessengerApp()
 
 
@@ -26,32 +30,30 @@ def log(*parts):
         f.write(' '.join(str(p) for p in parts) + '\n')
 
 
-def shot(name):
-    path = Window.screenshot(name='_shots/{}.png'.format(name))
-    log('SHOT', path)
+def snap(name):
+    """Снимок без всплывающих окон: они закрывают экран."""
+    for child in list(Window.children):
+        if isinstance(child, ModalView):
+            child.dismiss(animation=False)
+            Window.remove_widget(child)
+
+    def _take(_dt):
+        path = Window.screenshot(name=os.path.join('_shots', name + '.png'))
+        log('SHOT', os.path.basename(path))
+    Clock.schedule_once(_take, 0.45)
 
 
 def open_settings(dt):
-    app.go('login')
-    scr = app.manager.get_screen('login')
-    scr.login_field.text = '4874691'
-    scr.password_field.text = 'raisehand2026'
-    scr.do_login()
-    Clock.schedule_once(after_login, 1.0)
-
-
-def after_login(dt):
     app.go('settings')
-    Clock.schedule_once(show_settings, 0.8)
+    Clock.schedule_once(show_settings, 0.9)
 
 
 def show_settings(dt):
     scr = app.manager.get_screen('settings')
     scr.nickname_field.text = 'новый_ник'
     scr.status_field.text = '10Б класс'
-    shot('settings')
-    log('поле ника доступно учителю/ученику:',
-        scr.nickname_field.disabled, '| текст:', repr(scr.nickname_field.text))
+    snap('settings')
+    log('поле ника доступно:', not scr.nickname_field.disabled)
     scr.save_profile()
     Clock.schedule_once(saved, 0.8)
 
@@ -78,15 +80,32 @@ def teacher(dt):
     scr = app.manager.get_screen('register_teacher')
     scr.ids['first_name'].text = 'Мария2'
     scr.ids['last_name'].text = 'Петрова7'
-    shot('register_teacher')
+    snap('register_teacher')
     log('имя учителя:', repr(scr.ids['first_name'].text),
         '| фамилия:', repr(scr.ids['last_name'].text))
-    scr2 = app.manager.get_screen('settings'); scr2.nickname_field.text = 'ivan'; scr2.save_profile(); log('ник тестового аккаунта возвращён:', repr(app.current_user.nickname)); log('готово')
+
+    # ник тестового аккаунта возвращаем как было
+    back = app.manager.get_screen('settings')
+    back.nickname_field.text = 'probe'
+    back.save_profile()
+    Clock.schedule_once(finish, 0.8)
 
 
-open(LOG, 'w', encoding='utf-8').close()
-Clock.schedule_once(open_settings, 2.4)
-try:
-    app.run()
-except Exception as exc:
-    log('ПАДЕНИЕ:', exc)
+def finish(dt):
+    log('готово')
+    app.stop()
+
+
+def start(dt):
+    app.current_user = ensure_account()
+    open_settings(None)
+
+
+if __name__ == '__main__':
+    open(LOG, 'w', encoding='utf-8').close()
+    Clock.schedule_once(start, 2.4)
+    try:
+        app.run()
+    except Exception:
+        import traceback
+        log('ПАДЕНИЕ:\n' + traceback.format_exc())

@@ -4,6 +4,7 @@
 Круг с личным градиентом и инициалами поверх. Если пользователь
 загрузил свою картинку — показываем её, иначе рисуем градиент.
 """
+from kivy.properties import BooleanProperty, NumericProperty
 from kivy.uix.image import Image
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget
@@ -17,7 +18,15 @@ class GradientAvatar(Widget):
     У пользователя каждый раз один и тот же градиент — он считается из
     его ID (см. core/gradients.py), поэтому не «прыгает» между запусками.
     Инициалы не дублируются в разметке: аватар сам решает, что показать.
+
+    Кегль и начертание инициалов настраиваются: на разных экранах они
+    разные (в списке чатов макет требует тонкие и крупные, на остальных
+    — полужирные и компактные).
     """
+
+    # доля кегля от стороны аватара и жирность инициалов
+    initials_ratio = NumericProperty(0.36)
+    initials_bold = BooleanProperty(True)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -63,4 +72,5 @@ class GradientAvatar(Widget):
         self._label.size = self.size
         # инициалы — примерно 36% от стороны аватара: на 36% буквы
         # не вылезают за круг, а на 40% двузначные уже тесновато
-        self._label.font_size = self.width * 0.36
+        self._label.font_size = self.width * self.initials_ratio
+        self._label.bold = self.initials_bold
