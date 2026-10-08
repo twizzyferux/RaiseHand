@@ -15,13 +15,13 @@
     человека градиент всегда один и тот же — и на этом устройстве, и
     на другом, и после перезапуска. Случайности, которая «прыгает», нет.
 
+Аватар — чистый круг с градиентом: ни букв, ни точек на нём нет,
+только цвет. Инициалы сверху рисует ui/avatar.py.
+
 Картинка рисуется сама: чистый Python пишет PNG (никаких Pillow в
 приложении не нужно — иначе на телефоне пришлось бы ставить
 дополнительный пакет). Файлы кэшируются в data/avatars/, поэтому
 считаются один раз на пользователя.
-
-Акцентная точка (маленькая точка рядом с буквой) тоже своя: она
-взята из того же набора и гарантированно контрастна своему градиенту.
 """
 import os
 import struct
@@ -56,13 +56,12 @@ BLACK = (0, 0, 0)
 def _build_palette():
     """12 сочетаний: 6 фирменных пар + 6 их светлых версий."""
     palette = []
-    for top, bottom, accent in KIT_PAIRS:
-        palette.append({"top": top, "bottom": bottom, "accent": accent})
-    for top, bottom, accent in KIT_PAIRS:
+    for top, bottom, _accent in KIT_PAIRS:
+        palette.append({"top": top, "bottom": bottom})
+    for top, bottom, _accent in KIT_PAIRS:
         palette.append({
             "top": _mix(top, WHITE, 0.30),
             "bottom": _mix(bottom, WHITE, 0.16),
-            "accent": _mix(accent, WHITE, 0.20),
         })
     return palette
 
@@ -139,14 +138,8 @@ def _render(path: str, colors: dict) -> None:
     size = AVATAR_SIZE
     top = colors["top"]
     bottom = colors["bottom"]
-    accent = colors["accent"]
     center = (size - 1) / 2.0
     radius = size / 2.0 - 1.0
-
-    # точка в правом верхнем углу, как в иконке приложения
-    dot_cx = size * 0.79
-    dot_cy = size * 0.21
-    dot_r = size * 0.075
 
     buf = bytearray(size * size * 4)
     for y in range(size):
@@ -164,16 +157,10 @@ def _render(path: str, colors: dict) -> None:
             alpha = 255 if dist <= radius - 1 else int(
                 max(0.0, min(1.0, radius - dist)) * 255)
 
-            color = base
-            ddx = x - dot_cx
-            ddy = y - dot_cy
-            if ddx * ddx + ddy * ddy <= dot_r * dot_r:
-                color = accent
-
             i = row + x * 4
-            buf[i] = color[0]
-            buf[i + 1] = color[1]
-            buf[i + 2] = color[2]
+            buf[i] = base[0]
+            buf[i + 1] = base[1]
+            buf[i + 2] = base[2]
             buf[i + 3] = alpha
 
     _write_png(path, size, bytes(buf))

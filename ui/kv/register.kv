@@ -278,6 +278,23 @@
             text_size: self.width, None
 
 
+# Строка подсказки города: нажал — город подставился в поле.
+<CityRow@Btn>:
+    size_hint_y: None
+    height: dp(40)
+    font_size: dp(18)
+    color: 0.1, 0.1, 0.12, 1
+    halign: 'left'
+    text_size: self.width - dp(28), None
+    canvas.before:
+        Color:
+            rgba: 0.945, 0.941, 1, 1 if self.state == 'down' else 0
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(12), ]
+
+
 # --- ШАГ 3: «Где вы учитесь?» -------------------------------------------
 <RegStep3Screen>:
     city: city
@@ -315,6 +332,9 @@
             pos: dp(76), dp(518)
             hint_text: 'Москва'
             font_size: dp(20)
+            # Подсказки городов появляются, пока печатаешь
+            on_text: root.on_city_typed(self.text)
+            on_text_validate: root.pick_city(root.city_suggestions[0])
 
         Label:
             size_hint: None, None
@@ -341,6 +361,9 @@
             id: invite_code
             pos: dp(74), dp(390)
             hint_text: 'A12-3B4'
+            # Код всегда заглавными: и при вводе с клавиатуры, и при
+            # вставке из буфера обмена.
+            on_text: root.format_invite(self.text)
 
         Label:
             size_hint: None, None
@@ -352,6 +375,36 @@
             halign: 'left'
             line_spacing: dp(1)
             text_size: self.width, None
+
+        # Подсказки городов: появляются под полем, пока печатаешь,
+        # и исчезают, когда город выбран. Список строк собирает
+        # RegStep3Screen.on_city_typed (см. ui/screens.py).
+        BoxLayout:
+            id: city_box
+            orientation: 'vertical'
+            size_hint: None, None
+            # верх списка прижат к низу поля города: список появляется
+            # ровно под ним, какой бы высоты ни оказался
+            pos: dp(76), city.y - self.height
+            width: dp(300)
+            # высота по содержимому, но не больше пяти строк
+            height: min(self.minimum_height, dp(228))
+            spacing: dp(2)
+            padding: dp(6)
+            opacity: 0 if not root.city_suggestions else 1
+            disabled: not root.city_suggestions
+            canvas.before:
+                Color:
+                    rgba: 1, 1, 1, 1
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [dp(18), ]
+                Color:
+                    rgba: 0.87, 0.87, 0.91, 1
+                Line:
+                    rounded_rectangle: (self.x, self.y, self.width, self.height, dp(18))
+                    width: dp(1)
 
 
 # --- ШАГ 4: «Подтверждение» ---------------------------------------------
@@ -391,6 +444,8 @@
             id: contact
             pos: dp(73), dp(518)
             hint_text: 'ivan@example.com'
+            # Заглавные буквы + тире между 3-м и 4-м символом
+            on_text: root.format_contact(self.text)
 
         PillButton:
             pos: dp(117), dp(460)

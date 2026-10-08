@@ -9,13 +9,13 @@
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.factory import Factory
-from kivy.properties import (BooleanProperty, NumericProperty, ObjectProperty,
-                             StringProperty)
+from kivy.properties import (BooleanProperty, ListProperty, NumericProperty,
+                             ObjectProperty, StringProperty)
 from kivy.uix.floatlayout import FloatLayout
 
 import os
 
-from core import gradients, logs, session
+from core import formatters, gradients, logs, session
 from ui import anim
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
@@ -362,6 +362,47 @@ class RegStep3Screen(BaseScreen):
 
     city = ObjectProperty(None)
     invite_code = ObjectProperty(None)
+    # подсказки городов под полем ввода
+    city_suggestions = ListProperty([])
+
+    def format_invite(self, text):
+        """Код приглашения всегда заглавными.
+
+        Пришлось текст поправить — ставим обратно; повторный вызов уже
+        ничего не меняет, поэтому рекурсии не будет.
+        """
+        formatted = formatters.uppercase(text)
+        if formatted != text:
+            self.invite_code.text = formatted
+
+    # -- подсказки городов -------------------------------------------------- #
+
+    def on_city_typed(self, text):
+        """Показать города, подходящие под ввод."""
+        found = (formatters.city_suggestions(text, limit=5)
+                 if (text or "").strip() else [])
+        self.city_suggestions = found
+        self._rebuild_city_box()
+
+    def pick_city(self, name):
+        """Город выбран — подставляем и прячем список."""
+        if not name:
+            return
+        self.city.text = name
+        self.city_suggestions = []
+        self._rebuild_city_box()
+
+    def _rebuild_city_box(self):
+        """Пересобрать строки списка подсказок."""
+        box = self.ids.get("city_box")
+        if box is None:
+            return
+        box.clear_widgets()
+        for name in self.city_suggestions:
+            row = Factory.CityRow(text=name, on_release=lambda n=name: self.pick_city(n))
+            box.add_widget(row)
+
+    # -- переход дальше ---------------------------------------------------- #
 
     def next(self):
         city = self.city.text.strip()
@@ -389,6 +430,17 @@ class RegStep4Screen(BaseScreen):
 
     contact = ObjectProperty(None)
     code_field = ObjectProperty(None)
+
+    def format_contact(self, text):
+        """Почта/телефон: заглавные буквы и тире между 3-м и 4-м символом.
+
+        Вызывается из .kv на каждое изменение текста. Если пришлось текст
+        поправить, ставим его обратно — повторный вызов уже ничего
+        не меняет, поэтому рекурсии не возникает.
+        """
+        formatted = formatters.contact_format(text)
+        if formatted != text:
+            self.contact.text = formatted
 
     def send_code(self):
         value = self.contact.text.strip()
