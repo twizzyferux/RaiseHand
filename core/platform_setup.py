@@ -99,12 +99,16 @@ def fit_design_to_screen():
 
 
 def apply_window_size():
-    """Ставит размер окна сразу после его создания.
+    """Ставит размер окна сразу после его создания и центрирует его.
 
     Некоторые провайдеры окна (в том числе SDL2 на Windows) не берут
     размер из Config и открывают окно 800x600 — тогда макет 450x920 не
     влезает и низ экрана обрезается. Поэтому размер задаётся явно,
     до первого кадра: лишнего «мусорного» ресайза не будет.
+
+    Окно центрируется на экране, но с задержкой на кадр: система
+    применяет новый размер не мгновенно, и сразу после присваивания
+    координаты ещё старые.
     """
     global UI_SCALE
     if IS_MOBILE:
@@ -114,12 +118,57 @@ def apply_window_size():
     UI_SCALE = scale
     Metrics.density = scale
     try:
+        from kivy.clock import Clock
         from kivy.core.window import Window
         Window.size = (int(round(DESIGN_W * scale)),
                        int(round(DESIGN_H * scale)))
+        # центр — когда размер уже применён системой
+        Clock.schedule_once(lambda dt: _center_window(Window), 0)
+        Clock.schedule_once(lambda dt: _center_window(Window), 0.15)
     except Exception:
         pass
     return scale
+
+
+def _center_window(window) -> None:
+    """Поставить окно в середину экрана.
+
+    У Kivy на настольных компьютерах нет готового метода (Window.x/y и
+    Window.center есть только на телефонах), поэтому пробуем известные
+    пути по очереди: сначала штатный pos провайдера окна, потом —
+    напрямую через Win32.
+    """
+    area_w, area_h = _desktop_size()
+    try:
+        size = window.system_size
+    except Exception:
+        size = window.size
+    w, h = int(size[0]), int(size[1])
+    x = max(0, (area_w - w) // 2)
+    y = max(0, (area_h - h) // 2)
+
+    # 1) штатные методы провайдера (SDL2)
+    for holder, setter in ((getattr(window, "_win", None), "set_window_pos"),
+                           (window, "_set_window_pos")):
+        if holder is None or not hasattr(holder, setter):
+            continue
+        try:
+            getattr(holder, setter)(x, y)
+            return
+        except Exception:
+            continue
+
+    # 2) Windows: двигаем окно системным вызовом
+    try:
+        import ctypes
+        import win32con
+        info = window._win.get_window_info()
+        hwnd = info.window if hasattr(info, "window") else info
+        ctypes.windll.user32.SetWindowPos(
+            hwnd, win32con.HWND_TOP, x, y, 0, 0,
+            win32con.SWP_NOSIZE | win32con.SWP_NOZORDER)
+    except Exception:
+        pass
 
 
 def init_window():
