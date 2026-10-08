@@ -278,6 +278,23 @@
             text_size: self.width, None
 
 
+# Страна в подсказке номера: нажал — код подставился в поле.
+<CountryChip@Btn>:
+    size_hint_y: None
+    height: dp(30)
+    font_size: dp(17)
+    color: 0.1, 0.1, 0.12, 1
+    halign: 'left'
+    text_size: self.width - dp(20), None
+    canvas.before:
+        Color:
+            rgba: 0.945, 0.941, 1, 1 if self.state == 'down' else 0
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(12), ]
+
+
 # Строка подсказки города: нажал — город подставился в поле.
 <CityRow@Btn>:
     size_hint_y: None
@@ -360,8 +377,8 @@
             id: invite_code
             pos: dp(74), dp(390)
             hint_text: 'A12-3B4'
-            # Код всегда заглавными: и при вводе с клавиатуры, и при
-            # вставке из буфера обмена.
+            # Регистр не трогаем — набирают как удобно, но тире между
+            # 3-м и 4-м символом подставляется само.
             on_text: root.format_invite(self.text)
 
         Label:
@@ -429,10 +446,13 @@
             next_callback: root.next
 
         Label:
+            id: contact_label
             size_hint: None, None
             pos: dp(92.7), dp(572)
             size: dp(260), dp(23)
             text: 'E-mail/Телефон'
+            # когда открыт выбор страны, подпись не нужна
+            opacity: 0 if root.show_countries else 1
             font_size: dp(21)
             bold: True
             color: 0, 0, 0, 1
@@ -443,8 +463,9 @@
             id: contact
             pos: dp(73), dp(518)
             hint_text: 'ivan@example.com'
-            # Только заглавные буквы: тире в адрес почты ставить нельзя
-            on_text: root.format_contact(self.text)
+            # Ничего не форматируем: в почте регистр важен, а тире
+            # внутри адреса его ломает
+            on_text: root.on_contact_typed(self.text)
 
         PillButton:
             pos: dp(117), dp(460)
@@ -480,6 +501,35 @@
             hint_text: '123ABC'
             # Код подтверждения: заглавные буквы + тире между 3-м и 4-м
             on_text: root.format_code(self.text)
+
+
+        # Выбор страны: появляется над полем, когда начали набирать
+        # номер. Пока список открыт, подпись «E-mail/Телефон» скрыта.
+        BoxLayout:
+            id: country_box
+            orientation: 'vertical'
+            size_hint: None, None
+            # низ списка — верх поля, список растёт вверх
+            pos: dp(73), contact.top
+            width: dp(304)
+            # не выше полоски прогресса (она на dp(704.5))
+            height: min(self.minimum_height, dp(136))
+            spacing: dp(2)
+            padding: dp(6)
+            opacity: 0 if not root.show_countries else 1
+            disabled: not root.show_countries
+            canvas.before:
+                Color:
+                    rgba: 1, 1, 1, 1
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [dp(18), ]
+                Color:
+                    rgba: 0.87, 0.87, 0.91, 1
+                Line:
+                    rounded_rectangle: (self.x, self.y, self.width, self.height, dp(18))
+                    width: dp(1)
 
 
 # --- ШАГ 5: «Всё готово!» ------------------------------------------------

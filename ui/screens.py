@@ -16,7 +16,7 @@ from kivy.uix.floatlayout import FloatLayout
 import os
 import random
 
-from core import formatters, gradients, logs, session
+from core import countries, formatters, gradients, logs, session
 from ui import anim
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
@@ -86,6 +86,7 @@ class WelcomeScreen(BaseScreen):
             self.slide_seconds = self.SLIDE_SECONDS
         self._apply_slide(0, animate=False)
         self._timer = None
+        self._intro_played = False      # анимация появления — раз за сеанс
 
     @staticmethod
     def _load_slides():
@@ -183,6 +184,14 @@ class WelcomeScreen(BaseScreen):
             decor.stop_floating()
 
     def _play_intro(self):
+        """Показать появление содержимого — только один раз за сеанс.
+
+        При возврате «Назад» с регистрации экран открывается снова, но
+        анимация повторяться не должна: человек уже всё видел.
+        """
+        if self._intro_played:
+            return
+        self._intro_played = True
         if not self.ids:
             return
         widgets = [self.ids.get(name) for name in self.INTRO]
@@ -366,12 +375,12 @@ class RegStep3Screen(BaseScreen):
     city_suggestions = ListProperty([])
 
     def format_invite(self, text):
-        """Код приглашения всегда заглавными.
+        """Код приглашения: как набирают + тире после 3-го символа.
 
         Пришлось текст поправить — ставим обратно; повторный вызов уже
         ничего не меняет, поэтому рекурсии не будет.
         """
-        formatted = formatters.uppercase(text)
+        formatted = formatters.invite_format(text)
         if formatted != text:
             self.invite_code.text = formatted
 
@@ -453,17 +462,50 @@ class RegStep4Screen(BaseScreen):
 
     contact = ObjectProperty(None)
     code_field = ObjectProperty(None)
+    # подсказка со странами появляется, когда набирают номер
+    show_countries = ListProperty([])
 
-    def format_contact(self, text):
-        """Почта/телефон: только заглавные буквы, без разделителей.
+    def on_contact_typed(self, text):
+        """Появилась подсказка стран, если набирают номер.
 
-        Вызывается из .kv на каждое изменение текста. Если пришлось текст
-        поправить, ставим его обратно — повторный вызов уже ничего
-        не меняет, поэтому рекурсии не возникает.
+        Поле не форматируем: в адресе почты регистр важен, а тире
+        внутри адреса его ломает.
         """
-        formatted = formatters.contact_format(text)
-        if formatted != text:
-            self.contact.text = formatted
+        if countries.looks_like_phone(text):
+            self.show_countries = list(countries.COUNTRIES[:4])
+        else:
+            self.show_countries = []
+        self._rebuild_countries()
+
+    def pick_country(self, country):
+        """Страна выбрана — подставляем её код в поле."""
+        field = self._contact_field()
+        if field is None:
+            return
+        field.text = country.dial + " "
+        field.cursor = (len(field.text), 0)
+        self.show_countries = []
+        self._rebuild_countries()
+
+    def _contact_field(self):
+        """Поле контакта — по id, чтобы не путать со свойством экрана."""
+        return self.ids.get("contact")
+
+    def _rebuild_countries(self):
+        """Пересобрать чипы стран (список короткий, делаем целиком)."""
+        row = self.ids.get("country_box")
+        if row is None:
+            return
+        row.clear_widgets()
+        for country in self.show_countries:
+            chip = Factory.CountryChip(text=country.label)
+            chip.bind(on_release=self._make_country_handler(country))
+            row.add_widget(chip)
+
+    def _make_country_handler(self, country):
+        def handler(_widget, *_args):
+            self.pick_country(country)
+        return handler
 
     def format_code(self, text):
         """Код подтверждения: заглавные буквы + тире между 3-м и 4-м."""
@@ -472,7 +514,8 @@ class RegStep4Screen(BaseScreen):
             self.code_field.text = formatted
 
     def send_code(self):
-        value = self.contact.text.strip()
+        field = self._contact_field()
+        value = (field.text if field is not None else "").strip()
         contact_type = _detect_contact(value)
         if contact_type is None:
             self.error("Введите почту (ivan@example.com) или номер телефона")
