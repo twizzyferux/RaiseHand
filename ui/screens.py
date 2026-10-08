@@ -14,6 +14,7 @@ from kivy.properties import (BooleanProperty, ListProperty, NumericProperty,
 from kivy.uix.floatlayout import FloatLayout
 
 import os
+import random
 
 from core import formatters, gradients, logs, session
 from ui import anim
@@ -21,7 +22,7 @@ from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
 
 from core import auth, chat, teacher_proof, verification
-from core.config import SETTINGS, sprite
+from core.config import OUTBOX_PATH, SETTINGS, save_settings
 from ui.dialogs import choose_file, show_message
 
 
@@ -543,11 +544,9 @@ def _detect_contact(value: str):
 
 
 def _generate_code() -> str:
-    import random
     length = SETTINGS.get("rules", {}).get("code_length", 6)
     code = "".join(str(random.randint(0, 9)) for _ in range(length))
     try:
-        from core.config import OUTBOX_PATH
         with open(OUTBOX_PATH, "a", encoding="utf-8") as f:
             f.write(f"[код подтверждения] {code}\n")
     except OSError:
@@ -557,11 +556,10 @@ def _generate_code() -> str:
 
 def _save_remember(remember: bool, login_value: str) -> None:
     """«Запомнить меня»: запомнить/забыть логин для экрана входа."""
-    from core.config import save_settings, SETTINGS as S
     if remember:
-        S["remember_login"] = login_value
+        SETTINGS["remember_login"] = login_value
     else:
-        S.pop("remember_login", None)
+        SETTINGS.pop("remember_login", None)
     save_settings()
 
 
@@ -679,7 +677,6 @@ class HomeScreen(BaseScreen):
     display_name = StringProperty("")
     role_line = StringProperty("")
     public_id = StringProperty("")
-    avatar = StringProperty("")
     search_field = ObjectProperty(None)
     contacts_box = ObjectProperty(None)
 
@@ -696,7 +693,6 @@ class HomeScreen(BaseScreen):
         self.role_line = ("Учитель" if user.is_teacher else "Ученик") + \
                          (f" • {user.full_name}" if user.nickname else "")
         self.public_id = user.public_id
-        self.avatar = user.avatar_path or sprite("default_avatar")
 
         avatar_widget = self.ids.get("my_avatar")
         if avatar_widget is not None:

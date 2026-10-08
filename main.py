@@ -1,34 +1,34 @@
-"""Точка входа приложения «ШколаЧат».
+"""Точка входа приложения RaiseHand.
 
 Запуск на ПК:      python main.py
 Запуск на Android: собрать APK через buildozer (см. README.md).
+Сборка iOS:        см. PLATFORM.md.
 
-Файл делает три вещи:
- 1) создаёт базу данных, если её ещё нет;
- 2) загружает все файлы оформления ui/kv/*.kv;
- 3) собирает экраны в ScreenManager и запускает окно.
+Файл делает четыре вещи:
+  1) подбирает размер окна под экран (настольный компьютер или телефон);
+  2) создаёт базу данных, если её ещё нет, и включает логирование;
+  3) подключает шрифт и загружает все файлы оформления ui/kv/*.kv;
+  4) собирает экраны в ScreenManager и запускает окно.
 """
 
-import ctypes
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from kivy.config import Config  # noqa: E402,F401
-
 from core import platform_setup  # noqa: E402
-from core.platform_setup import (DESIGN_H, DESIGN_W, IS_ANDROID,  # noqa: E402
-                                 IS_IOS, IS_MOBILE, Metrics,
-                                 apply_window_size, fit_design_to_screen,
-                                 init_window)
+from core.platform_setup import init_window  # noqa: E402
 
 # --- РАЗРЕШЕНИЕ ОКНА ------------------------------------------------------
-# ПК:      масштаб подбирается под свободное место на экране.
+# ПК:        масштаб подбирается под свободное место на экране.
 # iOS/Android: масштаб подбирается под реальный экран устройства.
 # Подробности и ручное переопределение (RH_UI_SCALE) — core/platform_setup.py.
 init_window()
 UI_SCALE = platform_setup.UI_SCALE
+
+# Дальше импорты идут после init_window(): Kivy читает размер окна из
+# Config при создании окна, и настройка должна быть раньше этого.
+
 
 from kivy.app import App  # noqa: E402
 from kivy.core.text import LabelBase  # noqa: E402
@@ -39,8 +39,8 @@ from kivy.uix.screenmanager import NoTransition, ScreenManager  # noqa: E402
 from core import auth, database, logs, session, teacher_proof  # noqa: E402
 from core.config import BASE_DIR, SETTINGS, sprite, text  # noqa: E402
 from ui import anim, screens  # noqa: E402
-from ui.avatar import GradientAvatar  # noqa: E402,F401  (регистрация для .kv)
-from ui.decor import DecorBackground
+from ui.avatar import GradientAvatar  # noqa: E402,F401  (нужен .kv)
+from ui.bubbles import WelcomeDecor  # noqa: E402,F401  (нужен .kv)
 
 KV_DIR = os.path.join(BASE_DIR, "ui", "kv")
 KV_FILES = [
@@ -95,7 +95,7 @@ class MessengerApp(App):
         # Размер окна/масштаб подбираем после создания окна: на ПК
         # провайдер окна не берёт размер из Config, на телефоне размер
         # экрана известен только к этому моменту.
-        UI_SCALE = platform_setup.apply_window_size()
+        platform_setup.apply_window_size()
 
         database.init_db()
         self._register_fonts()

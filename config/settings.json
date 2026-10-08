@@ -33,24 +33,16 @@
   ],
   "sprites": {
     "logo": "assets/images/photo_2026-09-30_00-09-10.jpg",
-    "rh_phone": "assets/images/raisehand/phone.png",
     "rh_logo": "assets/images/raisehand/logo.png",
     "rh_wordmark": "assets/images/raisehand/wordmark.png",
     "rh_check": "assets/images/raisehand/check.png",
     "rh_eye": "assets/images/raisehand/eye.png",
     "rh_eye_off": "assets/images/raisehand/eye-off.png",
-    "rh_avatar": "assets/images/raisehand/avatar.png",
     "choice_primary": "assets/images/buttons/choice_primary.png",
     "choice_primary_down": "assets/images/buttons/choice_primary_down.png",
     "choice_secondary": "assets/images/buttons/choice_secondary.png",
     "choice_secondary_down": "assets/images/buttons/choice_secondary_down.png",
-    "background": "assets/images/welcome_bg.png",
-    "button_normal": "assets/images/BarForText.png",
-    "button_pressed": "assets/images/BarForText_down.png",
-    "input_background": "",
-    "default_avatar": "",
-    "student_icon": "",
-    "teacher_icon": ""
+    "default_avatar": ""
   },
   "font": {
     "name": "SFPro",
