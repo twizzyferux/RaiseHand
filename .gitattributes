@@ -1,0 +1,10 @@
+# Текст всегда хранится с LF, иначе приложение (оно дописывает
+# «запомненный логин» в settings.json с CRLF) превращает любую правку
+# в замену всех строк файла.
+*.json text eol=lf
+*.py text eol=lf
+*.kv text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
