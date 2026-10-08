@@ -361,7 +361,6 @@ class RegStep2Screen(BaseScreen):
 class RegStep3Screen(BaseScreen):
     """Шаг 3 — «Где вы учитесь?» (город и код приглашения)."""
 
-    city = ObjectProperty(None)
     invite_code = ObjectProperty(None)
     # подсказки городов под полем ввода
     city_suggestions = ListProperty([])
@@ -378,6 +377,15 @@ class RegStep3Screen(BaseScreen):
 
     # -- подсказки городов -------------------------------------------------- #
 
+    def _city_field(self):
+        """Поле города — по id, а не через self.city.
+
+        В .kv у экрана написано `city: city`, и это имя перехватывается
+        виджетами-строками подсказок. Поэтому в Python обращаемся
+        к полю только через ids — так однозначно.
+        """
+        return self.ids.get("city")
+
     def on_city_typed(self, text):
         """Показать города, подходящие под ввод."""
         found = (formatters.city_suggestions(text, limit=5)
@@ -389,24 +397,38 @@ class RegStep3Screen(BaseScreen):
         """Город выбран — подставляем и прячем список."""
         if not name:
             return
-        self.city.text = name
+        field = self._city_field()
+        if field is None:
+            return
+        field.text = name
+        field.cursor = (len(name), 0)      # курсор в конец, как при вводе
         self.city_suggestions = []
         self._rebuild_city_box()
 
     def _rebuild_city_box(self):
-        """Пересобрать строки списка подсказок."""
         box = self.ids.get("city_box")
         if box is None:
             return
         box.clear_widgets()
         for name in self.city_suggestions:
-            row = Factory.CityRow(text=name, on_release=lambda n=name: self.pick_city(n))
+            row = Factory.CityRow(text=name)
+            # Через bind, а не kwarg on_release: обработчик,
+            # заданный kwarg, получает первым аргументом сам
+            # виджет-строку, и город в него не попадал.
+            row.bind(on_release=self._make_pick_handler(name))
             box.add_widget(row)
+
+    def _make_pick_handler(self, name):
+        """Обработчик нажатия на строку с городом `name`."""
+        def handler(_widget, *_args):
+            self.pick_city(name)
+        return handler
 
     # -- переход дальше ---------------------------------------------------- #
 
     def next(self):
-        city = self.city.text.strip()
+        field = self._city_field()
+        city = (field.text if field is not None else "").strip()
         if len(city) < 2:
             self.error("Город: минимум 2 символа")
             return
@@ -423,7 +445,7 @@ class RegStep3Screen(BaseScreen):
         self.app.go("reg_step4")
 
     def on_pre_enter(self, *args):
-        clear_if_fresh(self, self.city, self.invite_code)
+        clear_if_fresh(self, self._city_field(), self.invite_code)
 
 
 class RegStep4Screen(BaseScreen):
