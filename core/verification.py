@@ -115,7 +115,10 @@ def check_code(user_id: int, code: str) -> None:
         raise VerificationError("Код не запрашивался. Нажмите «Отправить код»")
     if datetime.strptime(row["expires_at"], "%Y-%m-%d %H:%M:%S") < datetime.now():
         raise VerificationError("Срок действия кода истёк, запросите новый")
-    if code.strip() != row["code"]:
+    # разделители не важны: код могли вставить из буфера обмена
+    # как «123 456» или «123-456»
+    entered = "".join(ch for ch in code if ch.isalnum()).upper()
+    if entered != row["code"].strip().upper():
         raise VerificationError("Неверный код")
 
     db.execute("UPDATE verification SET used = 1 WHERE id = ?", (row["id"],))

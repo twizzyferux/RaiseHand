@@ -508,7 +508,7 @@ class RegStep4Screen(BaseScreen):
         return handler
 
     def format_code(self, text):
-        """Код подтверждения: заглавные буквы + тире между 3-м и 4-м."""
+        """Код подтверждения: заглавные буквы, без разделителей."""
         formatted = formatters.code_format(text)
         if formatted != text:
             self.code_field.text = formatted
@@ -539,7 +539,7 @@ class RegStep4Screen(BaseScreen):
         if DRAFT.get("code") is None:
             self.error("Сначала запросите код")
             return
-        entered = self.code_field.text.strip()
+        entered = formatters.code_format(self.code_field.text)
         if entered != str(DRAFT["code"]):
             self.error("Код не совпадает. Проверьте и попробуйте ещё раз")
             return
