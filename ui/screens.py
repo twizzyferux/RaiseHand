@@ -874,20 +874,34 @@ class HomeScreen(BaseScreen):
         self._nav_ready = True
 
     def _setup_nav(self):
-        """Иконки нижней панели: из макета, свои для каждой вкладки."""
-        size_map = {"nav_chats": 42, "nav_groups": 49, "nav_settings": 38}
-        for name, size in size_map.items():
+        """Иконки нижней панели: размеры и смещения — из макета.
+
+        В макете у каждой вкладки своя иконка и своё место: «Чаты» 38x38
+        в (139, 785), «Группы» 44x44 в (226, 782), «Настройки» 34x34
+        в (322, 787), лупа нарисована линиями. Переведено в сцену в
+        ui/chats.py.
+        """
+        places = {
+            "nav_chats": (41.9, 153.3, 53.7, 173.0),
+            "nav_groups": (48.5, 249.3, 50.5, 272.0),
+            "nav_settings": (37.5, 355.1, 55.8, 372.5),
+        }
+        for name, (size, x, y, caption_x) in places.items():
             item = self.ids[name]
             item.icon_size = size
+            item.icon_x = x
+            item.icon_y = y
+            item.caption_x = caption_x
             stem = name.replace("nav_", "")
             item.set_icon(self.app.sprite("nav_%s_black" % stem),
                           self.app.sprite("nav_%s_violet" % stem))
-        search = self.ids["nav_search"]
-        search.caption = "Поиск"
-        search.magnifier = True
         self.ids["nav_chats"].caption = "Чаты"
         self.ids["nav_groups"].caption = "Группы"
         self.ids["nav_settings"].caption = "Настройки"
+        search = self.ids["nav_search"]
+        search.caption = "Поиск"
+        search.caption_x = 78.0            # макет: подпись x 58..98
+        search.magnifier = True
 
     # -- поиск --------------------------------------------------------------- #
 

@@ -106,14 +106,20 @@ def first_shot(dt):
 
 def report(dt):
     scr = app.manager.get_screen('home')
+    scroll = scr.ids['chats_scroll']
     log('вкладка:', scr.tab, '| рядов:', len(scr.chats_box.children))
-    log('скролл:', round(scr.ids['chats_scroll'].height),
-        '| список:', round(scr.chats_box.height),
-        '| scroll_y:', round(scr.ids['chats_scroll'].scroll_y, 2))
-    row = scr.chats_box.children[0] if scr.chats_box.children else None
-    if row is not None:
-        log('верхний ряд: имя=%r превью=%r время=%r пин=%s' % (
-            row.peer_name, row.preview, row.stamp, row.pinned))
+    log('окно:', round(Window.width), 'x', round(Window.height),
+        '| масштаб сцены: %.4f' % (Window.width / 450.0))
+    log('скролл: pos y=%.1f height=%.1f scroll_y=%.2f' % (
+        scroll.y, scroll.height, scroll.scroll_y))
+    log('список: pos=(%.1f, %.1f) size=(%.1f, %.1f)' % (
+        scr.chats_box.x, scr.chats_box.y, scr.chats_box.width,
+        scr.chats_box.height))
+    for index, row in enumerate(scr.chats_box.children):
+        log('  ряд %d: pos y=%.1f height=%.1f верх=%.1f имя=%r пин=%s '
+            'непрочитанных=%s' % (index, row.y, row.height,
+                                  row.y + row.height, row.peer_name,
+                                  row.pinned, row.unread))
     scr.switch_tab('search')
     Clock.schedule_once(search_shot, 0.9)
 
