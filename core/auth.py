@@ -26,6 +26,10 @@ class AuthError(Exception):
     """Ошибка, текст которой можно прямо показать пользователю."""
 
 
+# «Поле не трогать» — нужно там, где пустое значение значит удаление.
+KEEP = object()
+
+
 @dataclass
 class User:
     id: int
@@ -50,8 +54,12 @@ class User:
 
     @property
     def display_name(self) -> str:
-        """Что показывать в профиле и в списке чатов."""
-        if self.role == ROLE_STUDENT and self.nickname:
+        """Что показывать в профиле и в списке чатов.
+
+        Ник, если человек его поставил, — ученику или учителю;
+        без ника остаётся имя и фамилия.
+        """
+        if self.nickname:
             return self.nickname
         return self.full_name
 
@@ -141,15 +149,27 @@ def generate_public_id(role: str) -> str:
 def _validate_name(first_name: str, last_name: str) -> None:
     if len(first_name.strip()) < 2 or len(last_name.strip()) < 2:
         raise AuthError("Введите имя и фамилию (минимум 2 символа)")
+    # в имени цифр не бывает: поле чистит их при вводе, а здесь
+    # подстраховка на случай вставки мимо поля
+    if any(ch.isdigit() for ch in first_name + last_name):
+        raise AuthError("В имени и фамилии не может быть цифр")
 
 
-def _validate_nickname(nickname: str) -> None:
+def _validate_nickname(nickname: str, user_id: Optional[int] = None) -> None:
     min_len = rule("nickname_min_length")
     if len(nickname) < min_len:
         raise AuthError(f"Ник должен быть не короче {min_len} символов")
     if not re.fullmatch(r"[A-Za-zА-Яа-я0-9_.]+", nickname):
         raise AuthError("В нике можно использовать только буквы, цифры, _ и .")
-    if db.query_one("SELECT 1 FROM users WHERE nickname = ?", (nickname,)):
+    # регистр не различаем: иначе «Иван» и «иван» считались бы разными
+    # никами, а войти по нику можно было бы не тем.
+    # py_upper, а не UPPER: встроенная функция SQLite не знает кириллицу
+    clash = db.query_one(
+        """SELECT id FROM users
+           WHERE py_upper(nickname) = py_upper(?) AND id != ?""",
+        (nickname, user_id if user_id is not None else -1),
+    )
+    if clash is not None:
         raise AuthError("Такой ник уже занят")
 
 
@@ -189,8 +209,8 @@ def find_class(invite_code: str):
     if not invite_code:
         raise AuthError("Введите код приглашения")
     row = db.query_one(
-        "SELECT * FROM classes WHERE UPPER(invite_code) = ?",
-        (invite_code.upper(),))
+        "SELECT * FROM classes WHERE py_upper(invite_code) = py_upper(?)",
+        (invite_code,))
     if row is None:
         raise AuthError("Код не найден — узнайте его у учителя или в чате класса")
     return row
@@ -231,11 +251,17 @@ def _create_user(role: str, first_name: str, last_name: str,
 # --------------------------------------------------------------------------- #
 
 def login(login_value: str, password: str) -> User:
-    """Войти можно по ID, по нику или по почте/телефону."""
+    """Войти можно по ID, по нику или по почте/телефону.
+
+    Ник ищется без учёта регистра: зарегистрировался как «Иван»,
+    а человек может набрать «иван» — это он же.
+    """
     login_value = login_value.strip()
     row = db.query_one(
         """SELECT * FROM users
-           WHERE public_id = ? OR nickname = ? OR contact_value = ?""",
+           WHERE public_id = ?
+              OR py_upper(nickname) = py_upper(?)
+              OR contact_value = ?""",
         (login_value.upper() if login_value[:1].upper() == "U" else login_value,
          login_value, login_value),
     )
@@ -269,13 +295,22 @@ def change_password(user_id: int, new_password: str, repeat: str) -> None:
                (password_hash, salt, user_id))
 
 
-def update_profile(user_id: int, nickname: Optional[str] = None,
+def update_profile(user_id: int, nickname=KEEP,
                    avatar_path: Optional[str] = None,
                    status_text: Optional[str] = None) -> User:
+    """Обновить профиль.
+
+    Для ника пустая строка значит «убери ник», поэтому «не трогать»
+    здесь — отдельный маркер KEEP. Для аватара и статуса None означает
+    «оставить как есть».
+    """
     user = get_user_by_id(user_id)
-    if nickname is not None and nickname != user.nickname:
-        _validate_nickname(nickname)
-        db.execute("UPDATE users SET nickname = ? WHERE id = ?", (nickname, user_id))
+    if nickname is not KEEP:
+        value = (nickname or "").strip() or None
+        if value != user.nickname:
+            if value:
+                _validate_nickname(value, user_id=user_id)
+            db.execute("UPDATE users SET nickname = ? WHERE id = ?", (value, user_id))
     if avatar_path is not None:
         db.execute("UPDATE users SET avatar_path = ? WHERE id = ?", (avatar_path, user_id))
     if status_text is not None:

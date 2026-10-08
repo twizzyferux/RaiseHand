@@ -98,7 +98,15 @@ def get_connection() -> sqlite3.Connection:
         _connection = sqlite3.connect(DB_PATH, check_same_thread=False)
         _connection.row_factory = sqlite3.Row
         _connection.execute("PRAGMA foreign_keys = ON")
+        # Встроенный UPPER() в SQLite умеет только латиницу: «МОЙ_НИК» он
+        # не трогает, и поиск без учёта регистра молча не находит ник.
+        # Своя функция работает со всеми буквами.
+        _connection.create_function("py_upper", 1, _py_upper)
     return _connection
+
+
+def _py_upper(value):
+    return value.upper() if isinstance(value, str) else value
 
 
 def init_db() -> None:

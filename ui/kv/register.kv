@@ -139,6 +139,8 @@
             id: first_name
             pos: dp(75), dp(584)
             hint_text: 'Иван'
+            # цифры в имени не пропускаем
+            on_text: root.format_name('first', self.text)
 
         Label:
             size_hint: None, None
@@ -165,6 +167,8 @@
             id: last_name
             pos: dp(75), dp(453)
             hint_text: 'Иванов'
+            # цифры в фамилии не пропускаем
+            on_text: root.format_name('last', self.text)
 
         Label:
             size_hint: None, None
