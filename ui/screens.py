@@ -432,7 +432,7 @@ class RegStep4Screen(BaseScreen):
     code_field = ObjectProperty(None)
 
     def format_contact(self, text):
-        """Почта/телефон: заглавные буквы и тире между 3-м и 4-м символом.
+        """Почта/телефон: только заглавные буквы, без разделителей.
 
         Вызывается из .kv на каждое изменение текста. Если пришлось текст
         поправить, ставим его обратно — повторный вызов уже ничего
@@ -441,6 +441,12 @@ class RegStep4Screen(BaseScreen):
         formatted = formatters.contact_format(text)
         if formatted != text:
             self.contact.text = formatted
+
+    def format_code(self, text):
+        """Код подтверждения: заглавные буквы + тире между 3-м и 4-м."""
+        formatted = formatters.code_format(text)
+        if formatted != text:
+            self.code_field.text = formatted
 
     def send_code(self):
         value = self.contact.text.strip()
