@@ -39,46 +39,10 @@
     text_size: self.width - dp(10), None
 
 
-<FabButton@PressButton>:
-    size_hint: None, None
-    size: dp(59), dp(58)
-    background_normal: ''
-    background_down: ''
-    background_color: 0, 0, 0, 0
-    border: 0, 0, 0, 0
-
-    canvas.before:
-        # #4B2FE0 при 88% + белая обводка — как в макете.
-        # ВНИМАНИЕ: рисунок берём из canvas.after, а не before: в before
-        # лежит матрица нажатия, и всё, что ниже PopMatrix, рисуется
-        # мимо позиции виджета.
-        Color:
-            rgba: 1, 1, 1, 1
-
-    canvas.after:
-        Color:
-            rgba: 0.294 - 0.07 * self.press_tint, 0.184 - 0.05 * self.press_tint, 0.878 - 0.1 * self.press_tint, 0.88
-        Ellipse:
-            pos: self.pos
-            size: self.size
-        Color:
-            rgba: 1, 1, 1, 0.9
-        Line:
-            circle: (self.center_x, self.center_y, self.width / 2)
-            width: dp(1.4)
-        # Плюс: две линии с круглыми концами. В макете горизонталь
-        # x 344.5..371.5 на y 114.5, вертикаль x 358, y 99..129 —
-        # в сцене от центра это ±14.9 по X и ±15.8 по Y.
-        Color:
-            rgba: 1, 1, 1, 1
-        Line:
-            points: self.center_x - dp(14.9), self.center_y, self.center_x + dp(14.9), self.center_y
-            width: dp(3.3)
-            cap: 'round'
-        Line:
-            points: self.center_x, self.center_y - dp(15.8), self.center_x, self.center_y + dp(15.8)
-            width: dp(3.3)
-            cap: 'round'
+# Кнопка «+» и плашка нижней панели — со стеклом на плагине
+# kivy-garden.frostedglass (ui/glass_widget.py). Классы нужны, а не .kv:
+# плагин нельзя собирать в разметке (размер задаётся после создания),
+# и он умеет размывать то, что позади.
 
 
 # --- ЭКРАН ------------------------------------------------------------------
@@ -89,10 +53,10 @@
     class_code: class_code
 
     PhoneStage:
+        id: stage
         # Шапка. В макете заголовок «Чаты» занимает x 25..193 по горизонтали,
         # буквы y 89..137 -> в сцене базовая линия y 783. Кнопка «+»:
-        # круг r 29.5 в (357.5, 114.5) -> в сцене 65.1 x 62.1
-        # в (361.8, 768.4).
+        # круг r 29.5 в (357.5, 114.5) -> в сцене 59 x 58 в (366, 775).
         Label:
             id: tab_title
             size_hint: None, None
@@ -111,12 +75,8 @@
             halign: 'left'
             valign: 'bottom'
 
-        FabButton:
+        GlassFab:
             id: fab
-            # Макет: круг r 29.5 в (357.5, 114.5) -> в сцене
-            # 59 x 58 в (366, 775). Размер и положение — из Face ID.svg.
-            size: dp(59), dp(58)
-            pos: dp(366), dp(775)
             on_release: root.new_chat()
 
         # --- вкладка «Чаты» ---
@@ -236,47 +196,37 @@
                     spacing: dp(8)
 
         # --- нижняя панель ---
-        # Плашка: белый 60% + обводка чёрным 6%. Размеры — из макета:
-        # 360x60 в (24, 780) -> в сцене 397x63 в (26.5, 35.8).
-        Widget:
+        # Плашка — стекло на плагине (ui/glass_widget.py): размеры из
+        # макета, 360x60 в (24, 780) -> в сцене 397.1 x 63.2 в (26.5, 35.8).
+        GlassPanel:
             id: navbar
-            size_hint: None, None
-            pos: dp(26.5), dp(35.8)
-            width: dp(397)
-            height: dp(63.2)
 
-            canvas.after:
-                # Рисуем в canvas.after: в before у PressButton лежит
-                # матрица нажатия, и всё после PopMatrix рисуется мимо
-                # позиции виджета (см. FabButton выше).
-                Color:
-                    rgba: 1, 1, 1, 0.6
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [self.height / 2, ]
-                Color:
-                    rgba: 0, 0, 0, 0.06
-                Line:
-                    rounded_rectangle: (self.x, self.y, self.width, self.height, self.height / 2)
-                    width: dp(1)
-
-        # Пункты панели — прямые потомки сцены (координаты абсолютные),
-        # начало у всех одно: левый край плашки. Иконки и подписи рисует
-        # сам NavItem по координатам макета (ui/chats.py).
+        # Пункты панели — прямые потомки сцены (координаты абсолютные).
+        # Иконки и подписи рисует сам NavItem по координатам макета
+        # (ui/chats.py), а pos/size задают только зону нажатия: пункты
+        # стоят друг на друге, поэтому каждая четверть плашки должна
+        # иметь свою границу, иначе верхний пункт («Настройки»)
+        # перехватывал бы нажатия по всей панели, и «Поиск» открывал бы
+        # настройки.
+        # Обработчик on_release нужен КАЖДОМУ пункту: без него пункт
+        # просто молча не нажимается. Три вкладки переключают панели
+        # экрана, четвёртая («Настройки») уходит на отдельный экран.
         NavItem:
             id: nav_search
             pos: dp(26.5), dp(35.8)
+            on_release: root.switch_tab('search')
 
         NavItem:
             id: nav_chats
-            pos: dp(26.5), dp(35.8)
+            pos: dp(125.8), dp(35.8)
+            on_release: root.switch_tab('chats')
 
         NavItem:
             id: nav_groups
-            pos: dp(26.5), dp(35.8)
+            pos: dp(225.1), dp(35.8)
+            on_release: root.switch_tab('groups')
 
         NavItem:
             id: nav_settings
-            pos: dp(26.5), dp(35.8)
+            pos: dp(324.4), dp(35.8)
             on_release: app.go('settings')
