@@ -62,7 +62,6 @@ CREAM = "#FFFBF7"                      # фон экрана
 # размер 397.1 x 63.2, радиус 31.6.
 PANEL = (26.5, 35.8, 397.1, 63.2)
 PANEL_RADIUS = 31.6
-PANEL_X, PANEL_Y = PANEL[0], PANEL[1]   # начало плашки в сцене
 # Подписи панели: кегль один на все четыре — в макете так же.
 # «Поиск» -> 40, «Чаты» -> 32, «Группы» -> 49, «Настройки» -> 69
 # (макетные ширины 40, 32, 48, 67).
@@ -133,7 +132,12 @@ _TEXT_CACHE = {}
 
 
 def _icon_texture(source: str):
-    """Текстура иконки из assets/images/chats (с кэшем: перерисовка частая)."""
+    """Текстура иконки из assets/images/chats (с кэшем: перерисовка частая).
+
+    mipmap=True обязателен: текстуры рендерятся с запасом (иконка 42 px на
+    экране лежит картинкой 167 px), и без мипмапов такое уменьшение даёт
+    рваный край — иконки выглядят «грязными» на любом размере.
+    """
     if not source:
         return None
     path = os.path.join(ICON_DIR, os.path.basename(source))
@@ -141,7 +145,7 @@ def _icon_texture(source: str):
         return None
     if path not in _icon_cache:
         from kivy.core.image import Image as CoreImage
-        _icon_cache[path] = CoreImage(path).texture
+        _icon_cache[path] = CoreImage(path, mipmap=True).texture
     return _icon_cache[path]
 
 
@@ -403,7 +407,8 @@ class NavItem(PressButton):
     active_t = NumericProperty(0.0)
     active = BooleanProperty(False)
     # Размер иконки и её положение — из макета (у каждой вкладки своё):
-    #   Поиск      лупа 21x21 в (59, 790) -> центр (72, 800) r 8
+    #   Поиск      лупа: круг (72, 800) r 8 и ручка до (59, 813)
+    #              -> в сцене x 65.1, y 64.2, размер 23.1 x 22.1
     #   Чаты      38x38 в (139, 785) -> x 153.3 y 53.7
     #   Группы    44x44 в (226, 782) -> x 249.3 y 50.5
     #   Настройки 34x34 в (322, 787) -> x 355.1 y 55.8
@@ -412,7 +417,7 @@ class NavItem(PressButton):
     icon_y = NumericProperty(53.7)         # макет 785 (низ иконки)
     caption_x = NumericProperty(173.0)     # центр подписи, макет 157..189
     caption_size = NumericProperty(13.0)   # один на все подписи
-    magnifier = BooleanProperty(False)     # рисовать лупу линиями
+    magnifier = BooleanProperty(False)     # запасной путь, если нет текстуры
     idle_source = StringProperty("")
     active_source = StringProperty("")
 
@@ -422,8 +427,13 @@ class NavItem(PressButton):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        # Зона нажатия — четверть плашки, а не весь ряд: пункты стоят
+        # друг на друге (см. NavItem ниже), и при одинаковых границах
+        # верхний перехватывал бы касания всех — «Поиск» открывал
+        # «Настройки». Размер здесь — только для попадания пальцем,
+        # рисунок всё равно рисуется по координатам макета.
         self.size_hint = (None, None)
-        self.size = (dp(100), dp(63.2))
+        self.size = (dp(99.3), dp(63.2))
         self.background_normal = ""
         self.background_down = ""
         self.background_color = 0, 0, 0, 0
@@ -455,25 +465,21 @@ class NavItem(PressButton):
         if not self.width:
             return
         tint = self.active_t
-        # Иконка стоит на своём месте в макете, а не по центру пункта:
-        # пункты в макете смещены друг относительно друга.
-        icon_x = self.x + dp(self.icon_x) - dp(PANEL_X)
-        icon_y = self.y + dp(self.icon_y) - dp(PANEL_Y)
+        # Иконка и подпись стоят на своих местах макета (сцена 450x920), а
+        # не по центру пункта: в макете пункты смещены друг относительно
+        # друга, и зона нажатия у пункта своя (см. __init__).
+        icon_x = dp(self.icon_x)
+        icon_y = dp(self.icon_y)
         size = dp(self.icon_size)
 
         with self.canvas:
             if self.magnifier:
                 # Лупа нарисована линиями — ровно как в макете
-                cx = self.x + dp(self.GLASS[0]) - dp(PANEL_X)
-                cy = self.y + dp(self.GLASS[1]) - dp(PANEL_Y)
-                radius = dp(self.GLASS[2])
                 Color(rgba=(0.294 * tint, 0.184 * tint, 0.878 * tint, 1))
-                Line(circle=(cx, cy, radius), width=dp(3.2), cap="round")
+                Line(circle=(dp(self.GLASS[0]), dp(self.GLASS[1]),
+                             dp(self.GLASS[2])), width=dp(3.2), cap="round")
                 (x1, y1), (x2, y2) = self.GLASS_HANDLE
-                Line(points=[self.x + dp(x1) - dp(PANEL_X),
-                             self.y + dp(y1) - dp(PANEL_Y),
-                             self.x + dp(x2) - dp(PANEL_X),
-                             self.y + dp(y2) - dp(PANEL_Y)],
+                Line(points=[dp(x1), dp(y1), dp(x2), dp(y2)],
                      width=dp(3.2), cap="round")
             else:
                 source = self.active_source if self.active else self.idle_source
@@ -494,9 +500,8 @@ class NavItem(PressButton):
                 # вдвое темнее (см. ChatRow._texture).
                 Color(rgba=(0.294 * tint, 0.184 * tint, 0.878 * tint, 1))
                 Rectangle(texture=label.texture,
-                          pos=(self.x + dp(self.caption_x) - dp(PANEL_X)
-                               - label.texture.width / 2,
-                               self.y + dp(CAPTION_BASE) - dp(PANEL_Y)
+                          pos=(dp(self.caption_x) - label.texture.width / 2,
+                               dp(CAPTION_BASE)
                                - label.texture.height * DESCENT),
                           size=label.texture.size)
 

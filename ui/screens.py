@@ -786,7 +786,26 @@ class HomeScreen(BaseScreen):
         self._nav_ready = False
         self._setup_nav()
         self.refresh()
+        self._setup_glass()
         self._paint_tabs(self.tab, animate=False)
+
+    def _setup_glass(self):
+        """Сказать стеклу, что размывать.
+
+        Плагину frostedglass нужно знать, что лежит ПОД ним: без этого он
+        показывает только шум и выглядит серым прямоугольником. Под панелью
+        и кнопкой «+» лежит сцена — её canvas содержит кремовую заливку
+        всего экрана.
+        """
+        from ui.glass_widget import attach_background
+
+        stage = self.ids.get("stage")
+        if stage is None:
+            return
+        for name in ("navbar", "fab"):
+            widget = self.ids.get(name)
+            if widget is not None:
+                attach_background(widget, stage)
 
     def refresh(self):
         user = self.app.current_user
@@ -876,12 +895,15 @@ class HomeScreen(BaseScreen):
     def _setup_nav(self):
         """Иконки нижней панели: размеры и смещения — из макета.
 
-        В макете у каждой вкладки своя иконка и своё место: «Чаты» 38x38
-        в (139, 785), «Группы» 44x44 в (226, 782), «Настройки» 34x34
-        в (322, 787), лупа нарисована линиями. Переведено в сцену в
-        ui/chats.py.
+        В макете у каждой вкладки своя иконка и своё место: «Поиск» 23x23
+        в (65.1, 64.2), «Чаты» 38x38 в (153.3, 53.7), «Группы» 44x44
+        в (249.3, 50.5), «Настройки» 34x34 в (355.1, 55.8). Переведено
+        в сцену в ui/chats.py. Все четыре иконки — из векторного кита
+        (tools/chat_icons.py), а не рисованые линиями: линии выходили
+        грубыми, а растр из макета мыл.
         """
         places = {
+            "nav_search": (23.1, 65.1, 64.2, 78.0),
             "nav_chats": (41.9, 153.3, 53.7, 173.0),
             "nav_groups": (48.5, 249.3, 50.5, 272.0),
             "nav_settings": (37.5, 355.1, 55.8, 372.5),
@@ -898,10 +920,7 @@ class HomeScreen(BaseScreen):
         self.ids["nav_chats"].caption = "Чаты"
         self.ids["nav_groups"].caption = "Группы"
         self.ids["nav_settings"].caption = "Настройки"
-        search = self.ids["nav_search"]
-        search.caption = "Поиск"
-        search.caption_x = 78.0            # макет: подпись x 58..98
-        search.magnifier = True
+        self.ids["nav_search"].caption = "Поиск"
 
     # -- поиск --------------------------------------------------------------- #
 

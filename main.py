@@ -42,6 +42,7 @@ from ui import anim, screens  # noqa: E402
 from ui.avatar import GradientAvatar  # noqa: E402,F401  (нужен .kv)
 from ui.bubbles import WelcomeDecor  # noqa: E402,F401  (нужен .kv)
 from ui.chats import ChatRow, NavItem                # noqa: E402,F401  (нужны .kv)
+from ui.glass_widget import GlassFab, GlassPanel   # noqa: E402,F401  (нужен .kv)
 
 KV_DIR = os.path.join(BASE_DIR, "ui", "kv")
 KV_FILES = [
