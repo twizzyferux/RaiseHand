@@ -284,6 +284,31 @@ def clear_if_fresh(screen, *fields) -> None:
             field.text = ""
 
 
+class NameFieldsMixin:
+    """Имя и фамилия без цифр.
+
+    Поля чистятся прямо при вводе: цифра просто не появляется,
+    и ничего исправлять вручную не нужно. Из .kv вызывается как
+    ``on_text: root.format_name('first', self.text)``.
+    """
+
+    _NAME_IDS = {"first": "first_name", "last": "last_name"}
+
+    def format_name(self, which: str, text: str) -> None:
+        field = self.ids.get(self._NAME_IDS.get(which, ""))
+        if field is None:
+            return
+        formatted = formatters.name_only(text)
+        if formatted == text:
+            return
+        # поле перезаписываем целиком, поэтому курсор возвращаем на
+        # прежнее место — иначе при правке в середине строки он бы
+        # прыгнул в конец
+        column, row = field.cursor
+        field.text = formatted
+        field.cursor = (min(column, len(formatted)), row)
+
+
 class RegChrome(FloatLayout):
     """Общая «шапка» шагов регистрации: назад, заголовок, прогресс,
     текст-подпись, согласие и кнопка «Далее →».
@@ -323,7 +348,7 @@ class RegChrome(FloatLayout):
             self.next_callback()
 
 
-class RegStep1Screen(BaseScreen):
+class RegStep1Screen(NameFieldsMixin, BaseScreen):
     """Шаг 1 — «Как вас зовут?» (имя и фамилия)."""
 
     first_name = ObjectProperty(None)
@@ -628,7 +653,7 @@ def _save_remember(remember: bool, login_value: str) -> None:
     save_settings()
 
 
-class RegisterTeacherScreen(BaseScreen):
+class RegisterTeacherScreen(NameFieldsMixin, BaseScreen):
     first_name = ObjectProperty(None)
     last_name = ObjectProperty(None)
     password = ObjectProperty(None)
@@ -847,7 +872,6 @@ class ChatScreen(BaseScreen):
 
 
 class SettingsScreen(BaseScreen):
-    is_teacher = BooleanProperty(False)
     avatar_hint = StringProperty("")
     nickname_field = ObjectProperty(None)
     status_field = ObjectProperty(None)
@@ -860,7 +884,6 @@ class SettingsScreen(BaseScreen):
         if user is None:
             self.app.go("welcome")
             return
-        self.is_teacher = user.is_teacher
         self.nickname_field.text = user.nickname or ""
         self.status_field.text = user.status_text
         self.avatar_hint = user.avatar_path or "Аватар не выбран"
@@ -874,10 +897,12 @@ class SettingsScreen(BaseScreen):
 
     def save_profile(self):
         user = self.app.current_user
+        # ник можно поменять и учителю; пустое поле — значит убрать ник
+        nickname = self.nickname_field.text.strip()
         try:
             auth.update_profile(
                 user.id,
-                nickname=None if user.is_teacher else self.nickname_field.text.strip(),
+                nickname=nickname,
                 avatar_path=self._new_avatar or None,
                 status_text=self.status_field.text.strip(),
             )

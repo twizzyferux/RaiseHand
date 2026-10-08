@@ -19,10 +19,14 @@
             Field:
                 id: first_name
                 hint_text: 'Имя'
+                # цифры в имени не пропускаем
+                on_text: root.format_name('first', self.text)
 
             Field:
                 id: last_name
                 hint_text: 'Фамилия'
+                # цифры в фамилии не пропускаем
+                on_text: root.format_name('last', self.text)
 
             Field:
                 id: nickname
