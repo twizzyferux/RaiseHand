@@ -35,10 +35,6 @@ COUNTRIES = (
     Country("+1", "США"),
 )
 
-BY_DIAL = {}
-for _country in COUNTRIES:
-    BY_DIAL.setdefault(_country.dial, _country)
-
 
 def looks_like_phone(text: str) -> bool:
     """Человек набирает номер, а не почту.
@@ -50,21 +46,3 @@ def looks_like_phone(text: str) -> bool:
     if not value or "@" in value:
         return False
     return all(ch.isdigit() or ch in "+- ()" for ch in value)
-
-
-def dial_for(text: str) -> str:
-    """Код страны, который уже набран в начале строки (если есть)."""
-    value = (text or "").strip()
-    if not value.startswith("+"):
-        return ""
-    digits = ""
-    for ch in value[1:]:
-        if not ch.isdigit():
-            break
-        digits += ch
-    # ищем самый длинный подходящий код: +375 важнее, чем +3
-    for length in (4, 3, 2, 1):
-        candidate = "+" + digits[:length]
-        if candidate in BY_DIAL:
-            return candidate
-    return ""
