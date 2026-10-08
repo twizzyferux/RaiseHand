@@ -41,6 +41,7 @@ from core.config import BASE_DIR, SETTINGS, sprite, text  # noqa: E402
 from ui import anim, screens  # noqa: E402
 from ui.avatar import GradientAvatar  # noqa: E402,F401  (нужен .kv)
 from ui.bubbles import WelcomeDecor  # noqa: E402,F401  (нужен .kv)
+from ui.chats import ChatRow, NavItem, UnreadBadge  # noqa: E402,F401  (нужны .kv)
 
 KV_DIR = os.path.join(BASE_DIR, "ui", "kv")
 KV_FILES = [

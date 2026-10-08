@@ -86,6 +86,16 @@ CREATE TABLE IF NOT EXISTS messages (
     FOREIGN KEY (sender_id)   REFERENCES users (id) ON DELETE CASCADE,
     FOREIGN KEY (receiver_id) REFERENCES users (id) ON DELETE CASCADE
 );
+
+-- Что человек сделал с чатом: закрепил его или нет.
+CREATE TABLE IF NOT EXISTS chats (
+    owner_id    INTEGER NOT NULL,
+    peer_id     INTEGER NOT NULL,
+    pinned      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (owner_id, peer_id),
+    FOREIGN KEY (owner_id) REFERENCES users (id) ON DELETE CASCADE,
+    FOREIGN KEY (peer_id)  REFERENCES users (id) ON DELETE CASCADE
+);
 """
 
 _connection: Optional[sqlite3.Connection] = None

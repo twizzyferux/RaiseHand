@@ -9,6 +9,7 @@
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.factory import Factory
+from kivy.metrics import dp
 from kivy.properties import (BooleanProperty, ListProperty, NumericProperty,
                              ObjectProperty, StringProperty)
 from kivy.uix.floatlayout import FloatLayout
@@ -16,12 +17,12 @@ from kivy.uix.floatlayout import FloatLayout
 import os
 import random
 
-from core import countries, formatters, gradients, logs, session
-from ui import anim
+from core import auth, chat, countries, formatters, gradients, logs, session
+from ui import anim, chats
 from kivy.uix.label import Label
 from kivy.uix.screenmanager import Screen
 
-from core import auth, chat, teacher_proof, verification
+from core import teacher_proof, verification
 from core.config import OUTBOX_PATH, SETTINGS, save_settings
 from ui.dialogs import choose_file, show_message
 
@@ -764,14 +765,28 @@ class VerifyScreen(BaseScreen):
 # --------------------------------------------------------------------------- #
 
 class HomeScreen(BaseScreen):
-    display_name = StringProperty("")
-    role_line = StringProperty("")
-    public_id = StringProperty("")
+    """Главный экран по макету «основной экран чаты».
+
+    Три вкладки (Поиск / Чаты / Группы) живут на одном экране: в макете
+    нарисован только активный пункт, поэтому переключение — мягкая
+    смена прозрачности, без перезагрузки экрана.
+    """
+
+    TAB_TITLES = {"search": "Поиск", "chats": "Чаты", "groups": "Группы"}
+
+    tab = StringProperty("chats")
     search_field = ObjectProperty(None)
-    contacts_box = ObjectProperty(None)
+    chats_box = ObjectProperty(None)
+    group_box = ObjectProperty(None)
+    class_code = ObjectProperty(None)
+
+    # -- вход на экран ------------------------------------------------------- #
 
     def on_pre_enter(self, *args):
+        self._nav_ready = False
+        self._setup_nav()
         self.refresh()
+        self._paint_tabs(self.tab, animate=False)
 
     def refresh(self):
         user = self.app.current_user
@@ -779,45 +794,152 @@ class HomeScreen(BaseScreen):
             self.app.go("welcome")
             return
 
-        self.display_name = user.display_name
-        self.role_line = ("Учитель" if user.is_teacher else "Ученик") + \
-                         (f" • {user.full_name}" if user.nickname else "")
-        self.public_id = user.public_id
+        self.chats_box.clear_widgets()
 
-        avatar_widget = self.ids.get("my_avatar")
-        if avatar_widget is not None:
-            avatar_widget.set_user(user)
-
-        self.contacts_box.clear_widgets()
-        contacts = chat.list_contacts(user.id)
-        if not contacts:
-            label = Factory.MutedLabel(text="Пока нет чатов. Найдите человека по ID выше.")
-            self.contacts_box.add_widget(label)
+        # chat_list уже отдаёт закреплённые сверху, остальные — по свежести.
+        # Ряд рисует себя сам (ui/chats.py), поэтому позиции ставлю явно:
+        # в Kivy содержимое контейнера не смещается вместе с контейнером.
+        items = chat.chat_list(user.id)
+        if not items:
+            self.chats_box.add_widget(
+                Factory.ChatEmpty(text="Пока нет чатов. Найдите человека по ID "
+                                      "или нажмите «+»."))
+            self.chats_box.height = dp(chats.ROW_H)
+            self.refresh_groups()
             return
 
-        for contact in contacts:
-            last = chat.last_message(user.id, contact.id)
-            unread = chat.unread_count(user.id, contact.id)
-            preview = last["body"] if last else "Нет сообщений"
-            if len(preview) > 40:
-                preview = preview[:40] + "..."
-            caption = f"{contact.display_name}  ({contact.public_id})\n{preview}"
-            if unread:
-                caption += f"   • новых: {unread}"
-            row = Factory.ContactRow(text=caption)
-            row.bind(on_release=lambda _btn, c=contact: self.app.open_chat(c))
-            self.contacts_box.add_widget(row)
+        for index, item in enumerate(items):
+            row = self._make_row(item)
+            self.chats_box.add_widget(row)
+            row.pos = (dp(0), dp(chats.ROW_H) * (len(items) - index - 1))
+        self.chats_box.height = dp(chats.ROW_H * len(items))
+
+        self.refresh_groups()
+
+    def _make_row(self, item: dict):
+        """Один ряд списка: аватар, имя, превью, время, значки."""
+        person = item["user"]
+        row = Factory.ChatRow(
+            peer_name=person.display_name,
+            preview=item["preview"] or "Нет сообщений",
+            stamp=item["time"],
+            initials=gradients.initials_for(person.first_name, person.last_name),
+            avatar_source=person.avatar_path or gradients.avatar_path(
+                person.public_id or str(person.id)),
+            unread=item["unread"],
+            pinned=item["pinned"],
+            mine=item["mine"],
+            read=item["read"],
+        )
+        row.on_release = lambda person=person: self.app.open_chat(person)
+        return row
+
+    # -- вкладки ------------------------------------------------------------- #
+
+    def switch_tab(self, name: str):
+        if name not in self.TAB_TITLES:
+            return
+        self._paint_tabs(name)
+
+    def new_chat(self):
+        """Кнопка «+» в шапке — новый чат, то есть поиск человека."""
+        self.switch_tab("search")
+
+    def _pane(self, name):
+        return self.ids[{"search": "search_pane", "chats": "chats_scroll",
+                         "groups": "groups_pane"}[name]]
+
+    def _paint_tabs(self, current: str, animate: bool = True):
+        """Показать нужную вкладку, спрятать остальные (мягко).
+
+        Кнопка «+» в шапке есть только у вкладки «Чаты» — в макете она
+        нарисована вместе с ней, и на «Поиске»/«Группы» она бы вводила в
+        заблуждение (там и так поле для ввода).
+        """
+        self.tab = current
+        self.ids["tab_title"].text = self.TAB_TITLES[current]
+        self.ids["fab"].opacity = 1 if current == "chats" else 0
+        self.ids["fab"].disabled = current != "chats"
+        for name in self.TAB_TITLES:
+            pane = self._pane(name)
+            target = 1 if name == current else 0
+            pane.disabled = name != current
+            if animate and hasattr(self, "_nav_ready"):
+                anim.fade_to(pane, "opacity", target, duration=0.2)
+            else:
+                pane.opacity = target
+        for name, key in (("nav_search", "search"), ("nav_chats", "chats"),
+                          ("nav_groups", "groups"), ("nav_settings", None)):
+            self.ids[name].active = (key == current)
+        self._nav_ready = True
+
+    def _setup_nav(self):
+        """Иконки нижней панели: из макета, свои для каждой вкладки."""
+        size_map = {"nav_chats": 42, "nav_groups": 49, "nav_settings": 38}
+        for name, size in size_map.items():
+            item = self.ids[name]
+            item.icon_size = size
+            stem = name.replace("nav_", "")
+            item.set_icon(self.app.sprite("nav_%s_black" % stem),
+                          self.app.sprite("nav_%s_violet" % stem))
+        search = self.ids["nav_search"]
+        search.caption = "Поиск"
+        search.magnifier = True
+        self.ids["nav_chats"].caption = "Чаты"
+        self.ids["nav_groups"].caption = "Группы"
+        self.ids["nav_settings"].caption = "Настройки"
+
+    # -- поиск --------------------------------------------------------------- #
 
     def do_search(self):
         user = self.app.current_user
+        value = self.search_field.text
         try:
-            found = chat.add_contact(user.id, self.search_field.text)
+            found = chat.add_contact(user.id, value)
         except chat.ChatError as exc:
             self.error(str(exc))
             return
         self.search_field.text = ""
         self.refresh()
+        self.ids["search_hint"].text = "Добавлен: %s (%s)" % (
+            found.display_name, found.public_id)
         self.info(f"Добавлен: {found.display_name} ({found.public_id})")
+
+    # -- группы -------------------------------------------------------------- #
+
+    def format_class_code(self, text):
+        """Код класса — как код приглашения: тире само, регистр как набирают."""
+        formatted = formatters.invite_format(text)
+        if formatted != text:
+            self.class_code.text = formatted
+
+    def join_class(self):
+        user = self.app.current_user
+        try:
+            name = chat.join_class(user.id, self.class_code.text)
+        except auth.AuthError as exc:
+            self.error(str(exc))
+            return
+        self.class_code.text = ""
+        self.app.refresh_user()
+        self.refresh_groups()
+        self.info(f"Вы присоединились к классу {name}")
+
+    def refresh_groups(self):
+        box = self.group_box
+        if box is None:
+            return
+        box.clear_widgets()
+        user = self.app.current_user
+        my_class = (user.class_name if user else "") or ""
+        for item in chat.list_classes():
+            label = Factory.ClassRow(
+                text="%s · %s\nкод %s" % (item["class_name"],
+                                          item["school_name"] or "школа не указана",
+                                          item["invite_code"]))
+            label.color = (0, 0, 0, 1) if item["class_name"] == my_class \
+                else (0.4, 0.4, 0.4, 1)
+            box.add_widget(label)
 
 
 class ChatScreen(BaseScreen):

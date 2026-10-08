@@ -1,75 +1,260 @@
-# Главный экран: профиль, поиск по ID, список чатов.
+# === ЭКРАН ЧАТОВ ==========================================================
+# Макет: проект/проект экран/основной экран чаты — четыре вырезки Figma
+# («основной интерфейс», «чаты (закреп)», «чаты (не закреп)»,
+# «панель управления»). Холст макета 404x874, сцена приложения 450x920,
+# поэтому каждая координата переведена:
+#     x_сцены = x_макета * 450/404      y_сцены = y_макета * 920/874
+# В комментариях указаны координаты макета.
+#
+# ВАЖНО про координаты: в этой версии Kivy содержимое виджета не
+# смещается вместе с родителем, поэтому у контейнеров pos = (0, 0) —
+# тогда координаты детей совпадают с координатами сцены, а ряды чатов
+# (ui/chats.py) рисуются целиком в своём canvas.
+#
+# Ряд чата, кнопка «+» и пункты нижней панели описаны в ui/chats.py:
+# там же собраны все координаты макета.
 
-<ContactRow@Btn>:
-    height: 60
+# --- Пустые строки ---------------------------------------------------------
+
+# Список пуст: подсказка, что делать дальше.
+<ChatEmpty@Label>:
+    size_hint: None, None
+    size: dp(402), dp(88)
+    pos: dp(24), dp(600)
+    text: ''
+    font_size: dp(17)
+    color: 0.4, 0.4, 0.4, 1
+    halign: 'center'
+    valign: 'middle'
+
+# Класс во вкладке «Группы»: название, школа и код для входа.
+<ClassRow@Label>:
+    size_hint_y: None
+    height: dp(64)
+    text: ''
+    font_size: dp(17)
     halign: 'left'
-    text_size: self.width - 20, None
+    valign: 'middle'
+    text_size: self.width - dp(10), None
 
+
+<FabButton@PressButton>:
+    size_hint: None, None
+    size: dp(66), dp(66)
+    background_normal: ''
+    background_down: ''
+    background_color: 0, 0, 0, 0
+    border: 0, 0, 0, 0
+
+    canvas.before:
+        # #4B2FE0 при 88% + белая обводка — как в макете.
+        # ВНИМАНИЕ: рисунок берём из canvas.after, а не before: в before
+        # лежит матрица нажатия, и всё, что ниже PopMatrix, рисуется
+        # мимо позиции виджета.
+        Color:
+            rgba: 1, 1, 1, 1
+
+    canvas.after:
+        Color:
+            rgba: 0.294 - 0.07 * self.press_tint, 0.184 - 0.05 * self.press_tint, 0.878 - 0.1 * self.press_tint, 0.88
+        Ellipse:
+            pos: self.pos
+            size: self.size
+        Color:
+            rgba: 1, 1, 1, 0.9
+        Line:
+            circle: (self.center_x, self.center_y, self.width / 2)
+            width: dp(1.4)
+        # Плюс: две линии с круглыми концами, макет 343.5..370.5 и 30..60
+        Color:
+            rgba: 1, 1, 1, 1
+        Line:
+            points: self.center_x - dp(15), self.center_y, self.center_x + dp(15), self.center_y
+            width: dp(3.4)
+            cap: 'round'
+        Line:
+            points: self.center_x, self.center_y - dp(16), self.center_x, self.center_y + dp(16)
+            width: dp(3.4)
+            cap: 'round'
+
+
+# --- ЭКРАН ------------------------------------------------------------------
 <HomeScreen>:
     search_field: search_field
-    contacts_box: contacts_box
+    chats_box: chats_box
+    group_box: group_box
+    class_code: class_code
 
-    Box:
-        BoxLayout:
-            size_hint_y: None
-            height: 80
-            spacing: 10
+    PhoneStage:
+        # Шапка: заголовок и кнопка «+» (слой «основной интерфейс»).
+        # Заголовок в макете от 78 до 124 по вертикали.
+        Label:
+            id: tab_title
+            size_hint: None, None
+            pos: dp(24), dp(779)
+            size: dp(320), dp(52)
+            text: 'Чаты'
+            font_size: dp(51)         # высота букв 34.7 в макете
+            bold: True
+            color: 0, 0, 0, 1
+            halign: 'left'
+            valign: 'bottom'
 
-            # Аватар: личный градиент с инициалами (или своя картинка,
-            # если она выбрана в настройках). Сам решает, что показать.
-            GradientAvatar:
-                id: my_avatar
+        FabButton:
+            id: fab
+            pos: dp(364), dp(773)
+            on_release: root.new_chat()
+
+        # --- вкладка «Чаты» ---
+        # Закреплённые идут первыми (их подложка — в самом ряду),
+        # остальные ниже — так же, как в макете и в Телеграме.
+        ScrollView:
+            id: chats_scroll
+            size_hint: None, None
+            pos: dp(0), dp(97)
+            width: dp(450)
+            height: dp(639)          # от низа плашки (dp 97) до первого ряда
+            do_scroll_x: False
+            bar_width: dp(3)
+            bar_color: 0.294, 0.184, 0.878, 0.25
+            bar_inactive_color: 0.294, 0.184, 0.878, 0.08
+
+            Widget:
+                id: chats_box
                 size_hint: None, None
-                size: dp(64), dp(64)
+                pos: dp(0), dp(0)
+                width: dp(450)
+                height: dp(88)
 
-            BoxLayout:
-                orientation: 'vertical'
+        # --- вкладка «Поиск» ---
+        Widget:
+            id: search_pane
+            size_hint: None, None
+            pos: dp(0), dp(0)
+            size: dp(450), dp(920)
+            opacity: 0
+            disabled: True
 
-                BodyLabel:
-                    text: root.display_name
-
-                BodyLabel:
-                    text: root.role_line
-
-                BodyLabel:
-                    text: 'Ваш ID: ' + root.public_id
-
-        BoxLayout:
-            size_hint_y: None
-            height: 48
-            spacing: 10
-
-            Btn:
-                text: 'Настройки'
-                on_release: app.go('settings')
-
-            Btn:
-                text: 'Выйти'
-                on_release: app.logout()
-
-        BoxLayout:
-            size_hint_y: None
-            height: 44
-            spacing: 10
+            Label:
+                size_hint: None, None
+                pos: dp(24), dp(700)
+                size: dp(402), dp(40)
+                text: 'Найдите человека по его ID'
+                font_size: dp(19)
+                color: 0.4, 0.4, 0.4, 1
+                halign: 'left'
+                valign: 'middle'
 
             Field:
                 id: search_field
-                hint_text: 'Найти по ID (4820193 или U4820193)'
+                pos: dp(24), dp(640)
+                size: dp(402), dp(48)
 
             Btn:
+                pos: dp(24), dp(572)
+                size: dp(402), dp(52)
                 text: 'Найти'
-                size_hint_x: None
-                width: 100
-                height: 44
                 on_release: root.do_search()
 
-        BodyLabel:
-            text: 'Чаты'
+            Label:
+                id: search_hint
+                size_hint: None, None
+                pos: dp(24), dp(470)
+                size: dp(402), dp(80)
+                text: ''
+                font_size: dp(16)
+                color: 0.4, 0.4, 0.4, 1
+                halign: 'left'
+                valign: 'top'
 
-        FormScroll:
-            BoxLayout:
-                id: contacts_box
-                orientation: 'vertical'
-                spacing: 6
-                size_hint_y: None
-                height: self.minimum_height
+        # --- вкладка «Группы» ---
+        Widget:
+            id: groups_pane
+            size_hint: None, None
+            pos: dp(0), dp(0)
+            size: dp(450), dp(920)
+            opacity: 0
+            disabled: True
+
+            Label:
+                size_hint: None, None
+                pos: dp(24), dp(700)
+                size: dp(402), dp(40)
+                text: 'Введите код класса, который дал учитель'
+                font_size: dp(19)
+                color: 0.4, 0.4, 0.4, 1
+                halign: 'left'
+                valign: 'middle'
+
+            Field:
+                id: class_code
+                pos: dp(24), dp(640)
+                size: dp(402), dp(48)
+                on_text: root.format_class_code(self.text)
+
+            Btn:
+                pos: dp(24), dp(572)
+                size: dp(402), dp(52)
+                text: 'Присоединиться'
+                on_release: root.join_class()
+
+            ScrollView:
+                id: groups_scroll
+                size_hint: None, None
+                pos: dp(24), dp(120)
+                width: dp(402)
+                height: dp(440)
+                do_scroll_x: False
+                bar_width: dp(3)
+                bar_color: 0.294, 0.184, 0.878, 0.25
+
+                BoxLayout:
+                    id: group_box
+                    orientation: 'vertical'
+                    size_hint_y: None
+                    height: self.minimum_height
+                    spacing: dp(8)
+
+        # --- нижняя панель ---
+        # Плашка: белый 60% + обводка чёрным 6%, макет 24,782 360x60
+        Widget:
+            id: navbar
+            size_hint: None, None
+            pos: dp(24), dp(34)
+            width: dp(401)
+            height: dp(63)
+
+            canvas.after:
+                # Рисуем в canvas.after: в before у PressButton лежит
+                # матрица нажатия, и всё после PopMatrix рисуется мимо
+                # позиции виджета (см. FabButton выше).
+                Color:
+                    rgba: 1, 1, 1, 0.6
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [self.height / 2, ]
+                Color:
+                    rgba: 0, 0, 0, 0.06
+                Line:
+                    rounded_rectangle: (self.x, self.y, self.width, self.height, self.height / 2)
+                    width: dp(1)
+
+        # Пункты панели — прямые потомки сцены (координаты абсолютные).
+        # Иконки и подписи рисует сам NavItem, см. ui/chats.py.
+        NavItem:
+            id: nav_search
+            pos: dp(28), dp(34)
+
+        NavItem:
+            id: nav_chats
+            pos: dp(124), dp(34)
+
+        NavItem:
+            id: nav_groups
+            pos: dp(224), dp(34)
+
+        NavItem:
+            id: nav_settings
+            pos: dp(325), dp(34)
+            on_release: app.go('settings')
