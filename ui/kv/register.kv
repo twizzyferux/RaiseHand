@@ -444,7 +444,7 @@
             id: contact
             pos: dp(73), dp(518)
             hint_text: 'ivan@example.com'
-            # Заглавные буквы + тире между 3-м и 4-м символом
+            # Только заглавные буквы: тире в адрес почты ставить нельзя
             on_text: root.format_contact(self.text)
 
         PillButton:
@@ -479,6 +479,8 @@
             id: code_field
             pos: dp(75), dp(315)
             hint_text: '123ABC'
+            # Код подтверждения: заглавные буквы + тире между 3-м и 4-м
+            on_text: root.format_code(self.text)
 
 
 # --- ШАГ 5: «Всё готово!» ------------------------------------------------
