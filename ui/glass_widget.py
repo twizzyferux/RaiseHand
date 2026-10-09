@@ -212,3 +212,28 @@ def attach_background(widget, background):
     """
     widget.background = background
     widget.request_update()
+
+
+def set_visible(widget, visible):
+    """Показать или убрать стекло.
+
+    Плагин умеет только НЕ ОБНОВЛЯТЬ стекло, когда его экран не текущий
+    (свойство not_current_screen), но не умеет его прятать: результат
+    размытия остаётся в буфере и продолжает рисоваться. Из-за этого
+    при уходе с экрана чатов нижняя панель на секунду оставалась поверх
+    настроек — её видно было как раздвоенную.
+
+    Поэтому убираем инструкцию отрисовки из canvas и возвращаем её
+    обратно. Проверено: opacity плагина не помогает — у него эффект
+    добавлен прямо в canvas, и прозрачность виджета его не гасит.
+    """
+    effect = getattr(widget, "frosted_glass_effect", None)
+    if effect is None:
+        return
+    children = widget.canvas.children
+    if visible:
+        if effect not in children:
+            widget.canvas.add(effect)
+            widget.request_update()
+    elif effect in children:
+        widget.canvas.remove(effect)
