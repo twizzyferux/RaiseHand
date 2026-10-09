@@ -9,6 +9,7 @@
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.factory import Factory
+from kivy.graphics import Color, Rectangle
 from kivy.metrics import dp
 from kivy.properties import (BooleanProperty, ListProperty, NumericProperty,
                              ObjectProperty, StringProperty)
@@ -41,7 +42,30 @@ Factory.register("MessageBubble", cls=MessageBubble)
 
 
 class BaseScreen(Screen):
-    """Небольшие удобства для всех экранов."""
+    """Общее для всех экранов: кремовый фон и удобства.
+
+    ФОН
+    ---
+    Раньше фон рисовала только PhoneStage — обёртка экрана, которая есть
+    не везде (в настройках, проверке и регистрации её нет). Экраны без
+    неё оставались без фона, и сквозь них был виден чёрный цвет окна.
+    Теперь фон рисует сам экран: так он есть везде и не зависит от того,
+    обёрнут ли экран в сцену.
+
+    Экраны со сценой дублировать фон не надо: он нарисован там же
+    (theme.kv, PhoneStage) и лежит под содержимым экрана.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        with self.canvas.before:
+            Color(rgba=(1, 0.984, 0.969, 1))      # кремовый #FFFBF7
+            self._screen_bg = Rectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self._sync_bg, size=self._sync_bg)
+
+    def _sync_bg(self, *_):
+        self._screen_bg.pos = self.pos
+        self._screen_bg.size = self.size
 
     @property
     def app(self):
@@ -789,15 +813,30 @@ class HomeScreen(BaseScreen):
         self._setup_glass()
         self._paint_tabs(self.tab, animate=False)
 
+    def on_leave(self, *args):
+        """Уходя с экрана, прячем стекло.
+
+        Плагин размывает «то, что позади», и рисует результат сам. Когда
+        экран уходит в настройки, панель оставалась висеть поверх них —
+        это и было раздваивание на секунду. Прячем её здесь, а вернём
+        в _setup_glass() при следующем входе.
+        """
+        from ui.glass_widget import set_visible
+
+        for name in ("navbar", "fab"):
+            widget = self.ids.get(name)
+            if widget is not None:
+                set_visible(widget, False)
+
     def _setup_glass(self):
-        """Сказать стеклу, что размывать.
+        """Сказать стеклу, что размывать, и показать его.
 
         Плагину frostedglass нужно знать, что лежит ПОД ним: без этого он
         показывает только шум и выглядит серым прямоугольником. Под панелью
         и кнопкой «+» лежит сцена — её canvas содержит кремовую заливку
         всего экрана.
         """
-        from ui.glass_widget import attach_background
+        from ui.glass_widget import attach_background, set_visible
 
         stage = self.ids.get("stage")
         if stage is None:
@@ -805,6 +844,7 @@ class HomeScreen(BaseScreen):
         for name in ("navbar", "fab"):
             widget = self.ids.get(name)
             if widget is not None:
+                set_visible(widget, True)
                 attach_background(widget, stage)
 
     def refresh(self):
