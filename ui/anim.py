@@ -195,9 +195,21 @@ Factory.register("SoftSlideTransition", cls=SoftSlideTransition)
 #  Мелкие помощники
 # --------------------------------------------------------------------------- #
 
+def cancel(widget, name):
+    """Гасить незавершённую анимацию свойства.
+
+    Нужна там, где значение ставится напрямую: анимация Kivy живёт по
+    часам и сама пишет свойство каждый кадр, поэтому не отменённая
+    анимация допишет своё старое значение уже после прямой установки
+    (см. HomeScreen._paint_tabs — оттуда и появлялись «случайные»
+    вкладки при возврате из настроек).
+    """
+    Animation.cancel_all(widget, name)
+
+
 def fade_to(widget, name, value, duration=FADE_IN, transition="out_quad"):
     """Плавно меняет числовое свойство виджета (цвет точки, прозрачность)."""
-    Animation.cancel_all(widget, name)
+    cancel(widget, name)
     Animation(**{name: value}, d=duration, t=transition).start(widget)
 
 
