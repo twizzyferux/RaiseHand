@@ -38,11 +38,16 @@ from kivy.uix.screenmanager import NoTransition, ScreenManager  # noqa: E402
 
 from core import auth, database, logs, session, teacher_proof  # noqa: E402
 from core.config import BASE_DIR, SETTINGS, sprite, text  # noqa: E402
-from ui import anim, screens  # noqa: E402
+from ui import anim, screens, touch_fix  # noqa: E402
 from ui.avatar import GradientAvatar  # noqa: E402,F401  (нужен .kv)
 from ui.bubbles import WelcomeDecor  # noqa: E402,F401  (нужен .kv)
-from ui.chats import ChatRow, NavItem                # noqa: E402,F401  (нужны .kv)
+from ui.chats import ChatList, ChatPane, ChatRow, NavItem  # noqa: E402,F401  (нужны .kv)
 from ui.glass_widget import GlassFab, GlassPanel   # noqa: E402,F401  (нужен .kv)
+
+# Захват касания в этой сборке Kivy не заполняет grab_current, а от него
+# зависит отпускание кнопок. Чиним до создания окна — иначе виджеты успеют
+# зарегистрировать обработчики. Подробности: ui/touch_fix.py
+touch_fix.install()
 
 KV_DIR = os.path.join(BASE_DIR, "ui", "kv")
 KV_FILES = [

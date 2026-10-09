@@ -903,7 +903,6 @@ class HomeScreen(BaseScreen):
         грубыми, а растр из макета мыл.
         """
         places = {
-            "nav_search": (23.1, 65.1, 64.2, 78.0),
             "nav_chats": (41.9, 153.3, 53.7, 173.0),
             "nav_groups": (48.5, 249.3, 50.5, 272.0),
             "nav_settings": (37.5, 355.1, 55.8, 372.5),
@@ -920,7 +919,10 @@ class HomeScreen(BaseScreen):
         self.ids["nav_chats"].caption = "Чаты"
         self.ids["nav_groups"].caption = "Группы"
         self.ids["nav_settings"].caption = "Настройки"
-        self.ids["nav_search"].caption = "Поиск"
+        search = self.ids["nav_search"]
+        search.caption = "Поиск"
+        search.caption_x = 78.0            # макет: подпись x 58..98
+        search.magnifier = True
 
     # -- поиск --------------------------------------------------------------- #
 

@@ -41,6 +41,7 @@ from kivy.graphics import Color, Line, Rectangle, RoundedRectangle
 from kivy.metrics import dp
 from kivy.properties import (BooleanProperty, NumericProperty, ObjectProperty,
                              StringProperty)
+from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
 from ui.anim import PressButton
@@ -132,12 +133,7 @@ _TEXT_CACHE = {}
 
 
 def _icon_texture(source: str):
-    """Текстура иконки из assets/images/chats (с кэшем: перерисовка частая).
-
-    mipmap=True обязателен: текстуры рендерятся с запасом (иконка 42 px на
-    экране лежит картинкой 167 px), и без мипмапов такое уменьшение даёт
-    рваный край — иконки выглядят «грязными» на любом размере.
-    """
+    """Текстура иконки из assets/images/chats (с кэшем: перерисовка частая)."""
     if not source:
         return None
     path = os.path.join(ICON_DIR, os.path.basename(source))
@@ -145,7 +141,7 @@ def _icon_texture(source: str):
         return None
     if path not in _icon_cache:
         from kivy.core.image import Image as CoreImage
-        _icon_cache[path] = CoreImage(path, mipmap=True).texture
+        _icon_cache[path] = CoreImage(path).texture
     return _icon_cache[path]
 
 
@@ -190,6 +186,7 @@ class ChatRow(Widget):
         self.size = (dp(ROW_W), dp(ROW_H))
         self._texts = []          # core-подписи живут, пока живёт ряд
         self._texture_updates = []
+        self._touch_pressed = False   # нажали на ряд (без grab, см. on_touch_down)
         for source in ("status_pin", "status_sent", "status_read"):
             pass                    # текстуры подтягиваются в _redraw
         self.bind(pos=self._redraw, size=self._redraw,
@@ -366,10 +363,16 @@ class ChatRow(Widget):
     # -- нажатие ------------------------------------------------------------- #
 
     def on_touch_down(self, touch):
+        """Запоминаем нажатие на ряду.
+
+        Без touch.grab(self) и проверки grab_current: касание перехватывает
+        ScrollView (он забирает его раньше списка), и grab_current достаётся
+        ему, а не ряду — тогда ряд не открывался бы никогда.
+        """
         if not self.collide_point(*touch.pos):
             return False
         from ui.anim import Animation
-        touch.grab(self)
+        self._touch_pressed = True
         Animation.cancel_all(self, "press_tint")
         Animation(press_tint=1.0, d=0.07, t="out_quad").start(self)
         return True
@@ -378,14 +381,95 @@ class ChatRow(Widget):
         from ui.anim import Animation
         Animation.cancel_all(self, "press_tint")
         Animation(press_tint=0.0, d=0.26, t="out_back").start(self)
-        if touch.grab_current is self:
-            touch.ungrab(self)
-            if self.collide_point(*touch.pos) and self.on_release is not None:
-                self.on_release()
+        if not self._touch_pressed:
+            return False
+        self._touch_pressed = False
+        # Отпустили прямо над рядом — открываем чат.
+        if self.collide_point(*touch.pos) and self.on_release is not None:
+            self.on_release()
         return True
 
 
 Factory.register("ChatRow", cls=ChatRow)
+
+
+class ChatList(ScrollView):
+    """Прокручиваемый список чатов.
+
+    Обычный ScrollView перехватывает касание для прокрутки и до детей
+    оно не доходит: ряд чата не получал ни нажатия, ни отпускания, и
+    чат не открывался. Поэтому сначала касание отдаётся рядам, а если
+    палец повёл — списку (тогда это прокрутка, а не нажатие).
+    """
+
+    DRAG_THRESHOLD = 10.0      # пикселей окна, с которых считаем перетаскивание
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._row_press = None
+
+    def on_touch_down(self, touch):
+        self._row_press = None
+        for child in self.children:
+            if child.dispatch('on_touch_down', touch):
+                self._row_press = touch
+                return True
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        if self._row_press is touch:
+            moved = abs(touch.x - touch.ox) + abs(touch.y - touch.oy)
+            if moved < self.DRAG_THRESHOLD:
+                return True
+            # Палец повёл — это прокрутка. Отпускаем ряд и отдаём
+            # касание списку.
+            self._row_press = None
+            for child in self.children:
+                child.dispatch('on_touch_up', touch)
+            ScrollView.on_touch_down(self, touch)
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        if self._row_press is touch:
+            self._row_press = None
+            for child in self.children:
+                if child.dispatch('on_touch_up', touch):
+                    return True
+            return True
+        return super().on_touch_up(touch)
+
+
+Factory.register("ChatList", cls=ChatList)
+
+
+class ChatPane(Widget):
+    """Полноэкранная панель одной вкладки (Поиск, Группы).
+
+    Панели занимают весь экран и лежат ПОВЕРХ списка чатов, поэтому
+    скрытая панель не должна мешать нажатиям. В Kivy у отключённого
+    виджета on_touch_down возвращает True, и маршрутизация на этом
+    останавливается: невидимая панель молча съедала касания — не работали
+    ни строки чатов, ни кнопка «+». Здесь скрытая панель пропускает
+    касание дальше, а видимая ведёт себя как обычный виджет.
+    """
+
+    def on_touch_down(self, touch):
+        if self.disabled or self.opacity < 0.01:
+            return False
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        if self.disabled or self.opacity < 0.01:
+            return False
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        if self.disabled or self.opacity < 0.01:
+            return False
+        return super().on_touch_up(touch)
+
+
+Factory.register("ChatPane", cls=ChatPane)
 
 
 # UnreadBadge удалён: счётчик новых рисует сам ряд (ChatRow._badge), и там
@@ -408,7 +492,6 @@ class NavItem(PressButton):
     active = BooleanProperty(False)
     # Размер иконки и её положение — из макета (у каждой вкладки своё):
     #   Поиск      лупа: круг (72, 800) r 8 и ручка до (59, 813)
-    #              -> в сцене x 65.1, y 64.2, размер 23.1 x 22.1
     #   Чаты      38x38 в (139, 785) -> x 153.3 y 53.7
     #   Группы    44x44 в (226, 782) -> x 249.3 y 50.5
     #   Настройки 34x34 в (322, 787) -> x 355.1 y 55.8
@@ -417,7 +500,7 @@ class NavItem(PressButton):
     icon_y = NumericProperty(53.7)         # макет 785 (низ иконки)
     caption_x = NumericProperty(173.0)     # центр подписи, макет 157..189
     caption_size = NumericProperty(13.0)   # один на все подписи
-    magnifier = BooleanProperty(False)     # запасной путь, если нет текстуры
+    magnifier = BooleanProperty(False)     # лупа рисуется линиями (в макете)
     idle_source = StringProperty("")
     active_source = StringProperty("")
 
