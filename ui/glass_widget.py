@@ -172,8 +172,17 @@ class GlassFab(_GlassBase):
         виджеты (панели, ScrollView), и проверка «grab_current is self» в
         on_touch_up оказывается ложной — кнопка молча не нажималась.
         Состояние держим сами, этого достаточно.
+
+        disabled проверяем обязательно: на вкладках «Поиск» и «Группы»
+        кнопка спрятана (opacity 0), но остаётся в дереве и ловит касания.
+        Без этой проверки касание в правом верхнем углу нажимало
+        невидимую кнопку и уводило на «Поиск» — то самое «рандомно
+        подрубается поиск». Плюс сбрасываем _pressed: иначе нажатие,
+        оставшееся без отпускания (экран успел смениться), срабатывало
+        позже — при касании, уже не связанном с этой кнопкой.
         """
-        if not self.collide_point(*touch.pos):
+        if self.disabled or not self.collide_point(*touch.pos):
+            self._pressed = False
             return False
         from ui.anim import Animation
         self._pressed = True
@@ -185,12 +194,12 @@ class GlassFab(_GlassBase):
         from ui.anim import Animation
         Animation.cancel_all(self, "press_tint")
         Animation(press_tint=0.0, d=0.26, t="out_back").start(self)
-        if not self._pressed:
+        pressed, self._pressed = self._pressed, False
+        # Нажатие засчитано, только если кнопка была жива в момент
+        # нажатия и палец отпущен прямо над ней.
+        if not pressed or self.disabled or not self.collide_point(*touch.pos):
             return False
-        self._pressed = False
-        # Отпустили прямо над кнопкой — нажатие засчитано.
-        if self.collide_point(*touch.pos):
-            self.dispatch("on_release")
+        self.dispatch("on_release")
         return True
 
 
