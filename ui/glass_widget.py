@@ -166,10 +166,16 @@ class GlassFab(_GlassBase):
         return None
 
     def on_touch_down(self, touch):
+        """Запоминаем нажатие.
+
+        deliberately БЕЗ touch.grab(self): касание перехватывают другие
+        виджеты (панели, ScrollView), и проверка «grab_current is self» в
+        on_touch_up оказывается ложной — кнопка молча не нажималась.
+        Состояние держим сами, этого достаточно.
+        """
         if not self.collide_point(*touch.pos):
             return False
         from ui.anim import Animation
-        touch.grab(self)
         self._pressed = True
         Animation.cancel_all(self, "press_tint")
         Animation(press_tint=1.0, d=0.07, t="out_quad").start(self)
@@ -179,12 +185,12 @@ class GlassFab(_GlassBase):
         from ui.anim import Animation
         Animation.cancel_all(self, "press_tint")
         Animation(press_tint=0.0, d=0.26, t="out_back").start(self)
-        if touch.grab_current is self:
-            touch.ungrab(self)
-            hit = self.collide_point(*touch.pos)
-            self._pressed = False
-            if hit:
-                self.dispatch("on_release")
+        if not self._pressed:
+            return False
+        self._pressed = False
+        # Отпустили прямо над кнопкой — нажатие засчитано.
+        if self.collide_point(*touch.pos):
+            self.dispatch("on_release")
         return True
 
 
