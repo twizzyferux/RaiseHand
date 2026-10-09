@@ -26,12 +26,17 @@ grab_current (кто владеет СЕЙЧАС). ButtonBehavior отпуска
 запоминает владельца, ungrab() — отпускает.
 
 Запуск:  .venv312\\Scripts\\python.exe _grab_check.py   (проверка)
+
+ВТОРАЯ ПОЛОМКА — касания во время перехода между экранами: описаны ниже,
+в разделе про ScreenManager.
 """
 import weakref
 
 from kivy.input.motionevent import MotionEvent
+from kivy.uix.screenmanager import ScreenManager as _ScreenManager
 
 _installed = False
+_patched_manager = False
 
 
 def _owner(value):
@@ -59,11 +64,58 @@ def _ungrab(self, class_instance):
     return True
 
 
+# --------------------------------------------------------------------------- #
+#  Касания во время перехода между экранами
+# --------------------------------------------------------------------------- #
+# В Kivy ScreenManager на время перехода (у нас 0.24 с) касания не
+# обрабатывает вовсе:
+#
+#     def on_touch_down(self, touch):
+#         if self.transition.is_active:
+#             return False      # <- вернули False, дальше никто не смотрит
+#
+# Из-за этого первое нажатие на нижнюю панель сразу после появления
+# экрана пропадало: экран уже виден, а панель ещё «не принимает».
+# Пользователь видел, что «Поиск» не срабатывает, пока не зайдёт в
+# настройки и не вернётся — то есть пока не пройдёт переход.
+#
+# Теперь во время перехода касание уходит на входящий экран: он уже
+# нарисован, и кнопки на нём настоящие. Пересылаем и движение с
+# отпусканием, иначе кнопка осталась бы зажатой — захват ей всё равно
+# достаётся, просто раньше времени.
+
+def _forward(name):
+    original = getattr(_ScreenManager, name)
+
+    def handler(self, touch):
+        # screen_in живёт у перехода, а не у менеджера. Если переход уже
+        # почти кончился и перехода «не существует», берём текущий экран.
+        transition = self.transition
+        screen = getattr(transition, 'screen_in', None) or self.current_screen
+        if transition.is_active and screen is not None:
+            return getattr(screen, name)(touch)
+        return original(self, touch)
+
+    handler.__name__ = name
+    return handler
+
+
+def patch_screen_manager():
+    """ScreenManager не должен гасить касания во время перехода."""
+    global _patched_manager
+    if _patched_manager:
+        return
+    for name in ('on_touch_down', 'on_touch_move', 'on_touch_up'):
+        setattr(_ScreenManager, name, _forward(name))
+    _patched_manager = True
+
+
 def install():
-    """Починить захват. Повторный вызов ничего не делает."""
+    """Починить захват и переходы. Повторный вызов ничего не делает."""
     global _installed
     if _installed:
         return
     MotionEvent.grab = _grab
     MotionEvent.ungrab = _ungrab
     _installed = True
+    patch_screen_manager()
