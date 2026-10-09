@@ -886,6 +886,15 @@ class HomeScreen(BaseScreen):
             if animate and hasattr(self, "_nav_ready"):
                 anim.fade_to(pane, "opacity", target, duration=0.2)
             else:
+                # Прозрачность ставим напрямую — но сначала гасим
+                # анимацию, которая ещё не доиграла. Иначе она допишет
+                # своё старое значение уже после того, как мы вернулись
+                # на экран, и откроет чужую панель: нажали вкладку, не
+                # дождались, ушли в настройки и обратно — а видим не ту.
+                # Отсюда и «рандомно»: анимация длится 0.2 с, переход
+                # между экранами 0.24 с, и исход зависит от того, кто
+                # успел раньше.
+                anim.cancel(pane, "opacity")
                 pane.opacity = target
         for name, key in (("nav_search", "search"), ("nav_chats", "chats"),
                           ("nav_groups", "groups"), ("nav_settings", None)):
