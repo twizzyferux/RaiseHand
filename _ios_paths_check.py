@@ -62,6 +62,45 @@ print(json.dumps(out))
 ''' % (BASE, BASE)
 
 
+# Тот же импорт, но с заведомо испорченной файловой системой: любая
+# попытка создать папку падает. Именно этот случай убивал приложение на
+# телефоне — все кандидаты для данных недоступны, и модуль ронял весь
+# запуск исключением при импорте.
+CHILD_NO_WRITE = r'''
+import sys, os, json, errno
+import kivy.utils
+kivy.utils.platform = "ios"
+sys.path.insert(0, __BASE__)
+os.chdir(__BASE__)
+
+_real_makedirs = os.makedirs
+_real_open = open
+
+def deny_makedirs(path, *a, **kw):
+    raise OSError(errno.EROFS, "Read-only file system")
+
+def deny_open(path, mode="r", *a, **kw):
+    if "w" in mode or "a" in mode or "+" in mode:
+        raise OSError(errno.EROFS, "Read-only file system")
+    return _real_open(path, mode, *a, **kw)
+
+os.makedirs = deny_makedirs
+import builtins
+builtins.open = deny_open
+
+out = {"raised": None}
+try:
+    import core.config as c
+    out["data_dir"] = c.DATA_DIR
+    out["config_dir"] = c.CONFIG_DIR
+except BaseException as e:
+    out["raised"] = "%s: %s" % (type(e).__name__, e)
+os.makedirs = _real_makedirs
+builtins.open = _real_open
+print(json.dumps(out))
+'''.replace("__BASE__", repr(BASE))
+
+
 def run(platform):
     code = CHILD
     proc = subprocess.run(
@@ -104,6 +143,18 @@ def main():
         problems.append("на iOS данные остались в папке приложения")
     if not ios["writable"]:
         problems.append("на iOS папка данных недоступна для записи")
+
+    # Главный случай, который ронял приложение: записи нет никуда.
+    nowrap = json.loads([
+        x for x in subprocess.run(
+            [PY, "-X", "utf8", "-c", CHILD_NO_WRITE],
+            capture_output=True, text=True, encoding="utf-8", cwd=BASE,
+        ).stdout.splitlines() if x.startswith("{")][-1])
+    if nowrap.get("raised"):
+        problems.append("при полностью недоступной записи импорт падает: %s"
+                        % nowrap["raised"])
+    lines.append("запись закрыта полностью: исключение = %s"
+                 % (nowrap.get("raised") or "нет"))
 
     # Настройки и шрифт читаются на обеих платформах.
     for tag, res in (("ПК", pc), ("iOS", ios)):
