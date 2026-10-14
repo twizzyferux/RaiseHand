@@ -22,8 +22,101 @@
     write_tab: False
     padding: [dp(10), (self.height - self.line_height) / 2]
 
-# Поля пароля — обычные Field и PillInput, без иконки глаза: правила
-# PasswordField и PillPasswordField вместе с ui/fields.py удалены.
+# Поля пароля с глазом.
+#
+# ПОЧЕМУ ИХ ДВА И ПОЧЕМУ КАЖДОЕ САМО ПО СЕБЕ
+# ------------------------------------------------
+# Правила в .kv НЕ наследуются по имени: описал стиль для PillInput —
+# на PasswordField он не перейдёт. Из-за этого стоило добавить глаз, как
+# подкладывали «таблетку», и она пропадала: новое правило её не знало.
+# Значит, каждое правило должно содержать СРАЗУ и подложку, и глаз.
+# Тогда глаз ничего не стоит по виду.
+#
+# Слои внутри поля: подложка (canvas.before) -> текст (собственная
+# отрисовка поля) -> глаз (canvas.after).
+
+# --- обычное поле пароля + глаз ---------------------------------------------
+# Вид как у Field: своя серая заливка с рамкой, ничего не меняем.
+
+<PasswordField>:
+    size_hint_y: None
+    height: dp(44)
+    multiline: False
+    write_tab: False
+    password: True
+    # Справа отступ под иконку, чтобы текст под неё не лез.
+    padding: [dp(10), (self.height - self.line_height) / 2, dp(44), (self.height - self.line_height) / 2]
+
+    canvas.after:
+        Color:
+            rgba: 0.45, 0.45, 0.5, 0 if self.show_password else 1
+        Rectangle:
+            pos: self.right - dp(36), self.center_y - dp(11)
+            size: dp(22), dp(22)
+            source: app.sprite('rh_eye')
+        Color:
+            rgba: 0.45, 0.45, 0.5, 1 if self.show_password else 0
+        Rectangle:
+            pos: self.right - dp(36), self.center_y - dp(11)
+            size: dp(22), dp(22)
+            source: app.sprite('rh_eye_off')
+
+# --- «таблетка» с паролем + глаз -------------------------------------------
+# Повторяет PillInput целиком (ниже) — иначе скруглённая подложка
+# пропала бы, стоит добавить глаз. Отличие одно: справа отступ под иконку.
+
+<PillPasswordField>:
+    size_hint: None, None
+    size: dp(300), dp(50)
+    multiline: False
+    write_tab: False
+    password: True
+    padding: [dp(22), (self.height - self.line_height) / 2, dp(44), (self.height - self.line_height) / 2]
+    background_normal: ''
+    background_active: ''
+    background_color: 0, 0, 0, 0
+    foreground_color: 0.08, 0.08, 0.1, 1
+    hint_text_color: 0.557, 0.557, 0.576, 1
+    cursor_color: 0.294, 0.184, 0.878, 1
+    font_size: dp(33.5)
+
+    # ВНИМАНИЕ: style.kv держит Color текста и курсора тоже в
+    # canvas.before, а наши инструкции добавляются ПОСЛЕ них — color
+    # state на входе в главный canvas становится цветом таблетки, и
+    # хинт с курсором рисуются цветом фона. Поэтому после таблетки
+    # продублированы Color курсора и Color текста (как в PillInput).
+    canvas.before:
+        Color:
+            rgba: 0.937, 0.937, 0.957, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.height / 2, ]
+        Color:
+            rgba:
+                (self.cursor_color
+                if self.focus and not self._cursor_blink
+                and int(self.x + self.padding[0]) <= self._cursor_visual_pos[0] <= int(self.x + self.width - self.padding[2])
+                else (0, 0, 0, 0))
+        Rectangle:
+            pos: self._cursor_visual_pos
+            size: self.cursor_width, -self._cursor_visual_height
+        Color:
+            rgba: self.disabled_foreground_color if self.disabled else (self.hint_text_color if not self.text else self.foreground_color)
+
+    canvas.after:
+        Color:
+            rgba: 0.45, 0.45, 0.5, 0 if self.show_password else 1
+        Rectangle:
+            pos: self.right - dp(38), self.center_y - dp(11)
+            size: dp(22), dp(22)
+            source: app.sprite('rh_eye')
+        Color:
+            rgba: 0.45, 0.45, 0.5, 1 if self.show_password else 0
+        Rectangle:
+            pos: self.right - dp(38), self.center_y - dp(11)
+            size: dp(22), dp(22)
+            source: app.sprite('rh_eye_off')
 
 
 <Btn@PressButton>:
