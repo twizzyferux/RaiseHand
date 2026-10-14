@@ -33,8 +33,19 @@ _layout.json
 # Скиллы OpenCode — наоборот, в репозитории: без исключения выше они
 # попали бы под *.md и не сохранились. Внутренние заметки (.opencode
 # кроме skills) по-прежнему игнорируются.
+# Скиллы OpenCode: свой скилл проекта в репозитории, скачанные — нет.
 !.opencode/skills/
 !.opencode/skills/**
+.opencode/skills/*
+!.opencode/skills/README.md
+!.opencode/skills/glass-panel/
+!.opencode/skills/glass-panel/**
+
+# Шрифты: в сборку телефона идут только два используемых файла, а не
+# весь набор (28 файлов, 9 МБ). Остальное приложение не читает.
+assets/fonts/*
+!assets/fonts/SF-Pro-Text-Regular.otf
+!assets/fonts/SF-Pro-Text-Semibold.otf
 
 # Инструменты и мусор
 tools/
