@@ -1,38 +1,43 @@
-# Сборка .ipa на облачном Mac.
+# Build the .ipa on a cloud Mac.
 #
-# ЗАЧЕМ ЭТОТ ФАЙЛ
-# ---------------
-# .ipa собирается только на macOS с Xcode. На Windows и Linux его
-# собрать нельзя вообще — это ограничение Apple, а не проекта.
-# Обход: GitHub запускает ту же сборку на своей macOS-машине. Windows
-# тут только как терминал: он отправляет код и забирает готовый файл.
+# WHY THIS FILE
+# -------------
+# An .ipa can only be built on macOS with Xcode. It cannot be built on
+# Windows or Linux at all - that is Apple's restriction, not a project
+# setting. The workaround: GitHub runs the very same build on its own
+# macOS machine. Windows is only a terminal here - it sends the code
+# and downloads the finished file.
 #
-# Свою сборку на Codemagic этот файл не заменяет, а дублирует: если
-# аккаунта Codemagic нет, способ есть один этот.
+# This duplicates codemagic.yaml. If you have no Codemagic account,
+# this file is the only way to build.
 #
-# КАК ПОЛЬЗОВАТЬСЯ
-# ----------------
-#   1. Создать репозиторий на GitHub и залить в него проект.
-#   2. Открыть Actions -> iOS IPA -> Run workflow.
-#   3. Когда сборка пройдёт, скачать raisehand-ios (.ipa).
-#   4. Ставить на телефон через Sideloadly или AltStore с Windows.
+# HOW TO USE
+# ---------
+#   1. Push a change to master, or open Actions -> iOS IPA -> Run
+#      workflow.
+#   2. Wait 20-40 minutes (Python is compiled for iOS on the first run).
+#   3. Download the raisehand-ios artifact - it contains the .ipa.
+#   4. Install from Windows with Sideloadly or AltStore. They sign the
+#      app with a free Apple ID, so no signature is needed here.
 #
-# ПОДПИСЬ
-# --------
-# Подписи здесь нет: бесплатный Apple ID даёт её сам Sideloadly при
-# установке. Сборка без подписи занимает 20-40 минут в первый раз.
+# SIGNING
+# -------
+# There is no signature: Sideloadly adds it at install time.
+#
+# The file is deliberately plain ASCII. GitHub refuses to register a
+# workflow whose YAML it cannot parse, and a workflow that is not
+# registered does not appear in the Actions tab at all.
 
 name: iOS IPA
 
 on:
   workflow_dispatch:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - master
 
 jobs:
   build:
-    # macos-latest — облачная машина GitHub с macOS и Xcode.
     runs-on: macos-latest
     timeout-minutes: 120
 
@@ -41,76 +46,67 @@ jobs:
       BUNDLE_ID: org.school.raisehand
 
     steps:
-      - name: Забрать код
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Поставить системные зависимости
+      - name: System dependencies
         run: |
           brew install python@3.12 autoconf automake libtool pkg-config
           brew install sdl2 sdl2_image sdl2_mixer sdl2_ttf
 
-      - name: Поставить kivy-ios
+      - name: Install kivy-ios
         run: |
           echo "$HOME/Library/Python/3.12/bin" >> $GITHUB_PATH
           pip3 install --user --upgrade kivy-ios cython
 
-      - name: Создать заготовку приложения
+      - name: Create app skeleton
         run: |
           export PATH="$HOME/Library/Python/3.12/bin:$PATH"
           kivy-ios init $APP_NAME
 
-      - name: Сложить проект в заготовку
+      - name: Copy project into the skeleton
         run: |
           BUNDLE="$HOME/ios/$APP_NAME.app"
-          rsync -a --exclude '.git*' \
-                --exclude '.venv*' \
-                --exclude 'проект' \
-                --exclude '_shots' \
-                --exclude 'tools' \
-                --exclude '*.md' \
+          rsync -a --exclude .git --exclude .venv --exclude .opencode \
+                --exclude _shots --exclude tools --exclude "*.md" \
                 "$GITHUB_WORKSPACE/" "$BUNDLE/"
-          ls -la "$BUNDLE" | head -30
+          ls -la "$BUNDLE"
 
-      - name: Собрать Python и зависимости под iOS
+      - name: Build Python for iOS
         run: |
-          cd $HOME/ios
           export PATH="$HOME/Library/Python/3.12/bin:$PATH"
+          cd $HOME/ios
           toolchain build $APP_NAME
 
-      - name: Собрать .ipa
-        # toolchain create умеет подписывать, а подписи здесь нет, поэтому
-        # он может споткнуться. Тогда собираем .ipa вручную: .ipa — это
-        # просто zip с правильной структурой, а подпись потом ставит
-        # Sideloadly.
+      - name: Create the ipa
         continue-on-error: true
         run: |
-          cd $HOME/ios
           export PATH="$HOME/Library/Python/3.12/bin:$PATH"
+          cd $HOME/ios
           toolchain create $APP_NAME $BUNDLE_ID || true
 
-      - name: Доделать .ipa вручную, если не собрался
-        if: ${{ !hashFiles(format('{0}/ios/{1}.ipa', github.workspace, env.APP_NAME)) }}
+      - name: Package the ipa by hand if needed
         run: |
-          cd $HOME/ios
           APP="$HOME/ios/$APP_NAME.app"
+          if [ -f "$GITHUB_WORKSPACE/$APP_NAME.ipa" ]; then
+            echo "ipa built by toolchain create"
+            exit 0
+          fi
           if [ ! -d "$APP" ]; then
-            echo "Заготовка $APP не найдена — сборка не удалась"
+            echo "Skeleton $APP not found"
             ls -la $HOME/ios
             exit 1
           fi
-          # Внутри .ipa должна лежать папка Payload с приложением.
+          cd $GITHUB_WORKSPACE
           rm -rf Payload
           mkdir -p Payload
           cp -R "$APP" Payload/
-          zip -qry "$GITHUB_WORKSPACE/$APP_NAME.ipa" Payload
-          echo "--- что внутри .ipa ---"
-          unzip -l "$GITHUB_WORKSPACE/$APP_NAME.ipa" | head -20
+          zip -qry "$APP_NAME.ipa" Payload
+          unzip -l "$APP_NAME.ipa" | head -20
 
-      - name: Отдать файл сборки
+      - name: Upload the ipa
         uses: actions/upload-artifact@v4
         with:
           name: raisehand-ios
-          path: |
-            ${{ github.workspace }}/${{ env.APP_NAME }}.ipa
-            ${{ github.workspace }}/*.ipa
+          path: $APP_NAME.ipa
           if-no-files-found: error
