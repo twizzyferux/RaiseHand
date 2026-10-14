@@ -58,3 +58,6 @@ _parse_svg.py
 .vscode/
 *.swp
 .DS_Store
+
+# Собранный файл для iOS: 32 МБ, на GitHub ему не место.
+*.ipa
