@@ -133,7 +133,20 @@ _TEXT_CACHE = {}
 
 
 def _icon_texture(source: str):
-    """Текстура иконки из assets/images/chats (с кэшем: перерисовка частая)."""
+    """Текстура иконки из assets/images/chats (с кэшем: перерисовка частая).
+
+    ФИЛЬТР — не украшение, а условие резкости
+    -----------------------------------------
+    Иконки в файлах крупные (150..194 пикселя), а на экране занимают
+    около 50: их приходится уменьшать втрое. При соседней выборке
+    (NEAREST) такое уменьшение выглядит как лесенка — иконки «пикселятся»,
+    хотя сами файлы качественные. Линейная выборка с мип-уровнями
+    усредняет соседние пиксели и даёт гладкий край.
+
+    Ставить фильтры надо ЯВНО: CoreImage(path, mipmap=True) просит
+    мип-уровни, но сам проставляет min_filter и mag_filter в None — а
+    при None мип-уровни не используются, и всё остаётся как было.
+    """
     if not source:
         return None
     path = os.path.join(ICON_DIR, os.path.basename(source))
@@ -141,7 +154,13 @@ def _icon_texture(source: str):
         return None
     if path not in _icon_cache:
         from kivy.core.image import Image as CoreImage
-        _icon_cache[path] = CoreImage(path).texture
+        texture = CoreImage(path, mipmap=True).texture
+        # mipmap у текстуры только для чтения — мип-уровни уже собраны
+        # самим CoreImage. Задаём, какими выборками к ним идти.
+        texture.min_filter = "linear_mipmap_linear"
+        texture.mag_filter = "linear"
+        texture.wrap = "clamp_to_edge"
+        _icon_cache[path] = texture
     return _icon_cache[path]
 
 
