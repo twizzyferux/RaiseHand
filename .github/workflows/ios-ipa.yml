@@ -120,18 +120,29 @@ jobs:
         run: |
           mkdir -p "$IOS_DIR"
           cd "$IOS_DIR"
-          toolchain build python3 libffi openssl sdl2 sdl2_image sdl2_mixer sdl2_ttf
+          toolchain build python3 libffi openssl sdl2 sdl2_image sdl2_mixer sdl2_ttf ios pyobjus kivy
 
       - name: Install the app dependencies for iOS
-        # Kivy and the frostedglass plugin are pure Python, so they are
-        # installed into the freshly compiled iOS Python, not into the
-        # macOS one. The version is pinned to the one used on Windows.
+        # Kivy itself is NOT installed here - it is built by the "kivy"
+        # recipe in the previous step, and that is the only way to get a
+        # build for iOS.
+        #
+        # Why it matters: with "toolchain pip install kivy" the iOS
+        # Python downloaded a ready-made build from PyPI. That build is
+        # made for macOS, not for iOS, and the phone rejected it with
+        # "dynamic module does not define module export function
+        # (PyInit_kivy_properties)". The file loaded, but the compiled
+        # module had no matching entry point. The recipe compiles Kivy
+        # with the iOS Python and the iOS SDL2, which is why it works.
+        #
+        # Only the plugin is installed here: it is pure Python, so no
+        # compilation is needed and a ready-made build is fine.
         run: |
           mkdir -p "$IOS_DIR"
           cd "$IOS_DIR"
-          toolchain pip install --upgrade "kivy==2.3.1" "kivy-garden.frostedglass>=0.5.0"
-          echo "--- site-packages of the iOS Python ---"
-          toolchain build_info | head -40
+          toolchain pip install --upgrade "kivy-garden.frostedglass>=0.5.0"
+          echo "--- what is in the iOS python ---"
+          toolchain build_info | head -30
 
       - name: Put the project into the app folder
         # "toolchain create" takes the folder where the application
