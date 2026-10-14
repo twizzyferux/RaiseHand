@@ -534,6 +534,10 @@ class NavItem(Widget):
     icon_y = NumericProperty(53.7)         # макет 785 (низ иконки)
     caption_x = NumericProperty(173.0)     # центр подписи, макет 157..189
     caption_size = NumericProperty(13.0)   # один на все подписи
+    # Стеклянная плашка, под которой лежит пункт. Задаётся экраном в
+    # _setup_nav: пункт сам знает свою координату по X и может зажечь
+    # подсветку под пальцем.
+    glass = ObjectProperty(None)
     idle_source = StringProperty("")
     active_source = StringProperty("")
 
@@ -588,11 +592,18 @@ class NavItem(Widget):
             return False
         self._pressed = True
         self._animate_press(1.0, 0.07, "out_quad")
+        # Стекло подсвечивается под пальцем — как интерактив у iOS.
+        # Слой пунктов стоит в нуле сцены, поэтому center_x и есть
+        # координата сцены.
+        if self.glass is not None:
+            self.glass.pulse(self.center_x)
         return True
 
     def on_touch_up(self, touch):
         self._animate_press(0.0, 0.26, "out_back")
         pressed, self._pressed = self._pressed, False
+        if self.glass is not None:
+            self.glass.pulse(None)
         if not pressed or not self.collide_point(*touch.pos):
             return False
         self.dispatch("on_release")

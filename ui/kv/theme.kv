@@ -305,6 +305,31 @@
             size: min(self.value, self.width), self.height
             radius: [dp(2.5), ]
 
+# --- СТРОКА-ПЕРЕКЛЮЧАТЕЛЬ (галочка + подпись) -------------------------------
+# Для форм, где пункты идут списком. CheckToggle ниже рассчитан на макет,
+# где он стоит рядом с текстом абсолютными координатами; здесь нужна
+# строка, которая сама занимает место в списке.
+
+<CheckRow@BoxLayout>:
+    text: ''
+    size_hint_y: None
+    height: dp(44)
+    spacing: dp(12)
+
+    CheckToggle:
+        id: box
+        size_hint: None, None
+        size: dp(28), dp(28)
+        pos_hint: {'center_y': 0.5}
+
+    Label:
+        text: root.text
+        font_size: dp(17)
+        color: 0, 0, 0, 1
+        halign: 'left'
+        valign: 'middle'
+        text_size: self.width, None
+
 # --- ЧЕКБОКС «Запомнить меня» (28x28 rx9, галочка спрайт rh_check) -------
 
 <CheckToggle@PressToggle>:

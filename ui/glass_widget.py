@@ -33,7 +33,7 @@
 """
 import os
 
-from kivy.graphics import Color, Rectangle, RoundedRectangle
+from kivy.graphics import Color, Ellipse, Rectangle, RoundedRectangle
 from kivy.metrics import dp
 from kivy.properties import NumericProperty
 from kivy.uix.widget import Widget
@@ -105,6 +105,12 @@ class LiquidGlass(FrostedGlass):
             setattr(self, name, value)
         if background is not None:
             self.background = background
+        # Запоминаем «родные» значения: к настройке плотного стекла их
+        # нужно вернуть. Храним на самом виджете, потому что плагин
+        # отдаёт его как WeakProxy и type(widget) не даёт класса.
+        self._base_effect = {name: getattr(self, name)
+                             for name in ("blur_size", "overlay_color",
+                                          "outline_width")}
         # Плагин считает, что его свойства меняются снаружи — говорим ему
         # пересчитать буферы под новый размер.
         self.update_effect()
@@ -150,6 +156,22 @@ class LiquidNavBar(LiquidGlass):
     как светлая гладкая поверхность, а не как серая пятнистая наклейка.
     Поэтому шум почти выключен — именно он давал «грязь», — а поверх
     стекла лежит лёгкий холодный отсвет вместо серого.
+
+    ОТКЛИК НА НАЖАТИЕ
+    -----------------
+    В iOS у стекла есть интерактив: под пальцем по нему расходится
+    мягкое свечение. Здесь то же самое: NavItem зовёт pulse() с
+    координатой пальца, плашка зажигает подсветку и гаснет при отпускании.
+    Свечение рисуется в canvas.after — то есть НАД стеклом, но ПОД
+    иконками: иконки лежат в отдельном слое (ui/kv/home.kv), и так
+    свечение освещает именно материал, а не перекрывает содержимое.
+
+    ПОЧЕМУ НЕТ ЦВЕТНОГО ОТСВЕТА
+    ---------------------------
+    Правило iOS: подкрашивают стекло только у главного действия, а
+    панель навигации оставляют нейтральной — цвет здесь значил бы
+    украшение, а не смысл. Фиолетовым остаётся кнопка «+» (тот же
+    виолетовый, что в макете), плашка чуть подсвечена только белым.
     """
 
     # Настройки задаются ПОСЛЕ создания (см. setup): их нельзя передавать
@@ -162,8 +184,13 @@ class LiquidNavBar(LiquidGlass):
         noise_opacity=0.015,
         outline_width=1.1,
         outline_color=(1.0, 1.0, 1.0, 0.85),
-        overlay_color=(0.96, 0.97, 1.0, 0.34),
+        overlay_color=(1.0, 1.0, 1.0, 0.30),
     )
+
+    # Подсветка под пальцем. x хранится в координатах СЦЕНЫ (как весь
+    # макет), а рисуется уже относительно плашки.
+    pulse_x = NumericProperty(-1.0)
+    pulse_t = NumericProperty(0.0)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -174,6 +201,44 @@ class LiquidNavBar(LiquidGlass):
             radius=dp(PANEL_RADIUS),
             effect=self.EFFECT,
         )
+        self.bind(pos=self._draw_pulse, size=self._draw_pulse,
+                  pulse_x=self._draw_pulse, pulse_t=self._draw_pulse)
+
+    # -- отклик на нажатие ---------------------------------------------------- #
+
+    def pulse(self, x=None):
+        """Зажечь (x в координатах сцены) или погасить подсветку."""
+        from kivy.animation import Animation
+        Animation.cancel_all(self, "pulse_t")
+        if x is None:
+            Animation(pulse_t=0.0, d=0.28, t="out_quad").start(self)
+            return
+        self.pulse_x = x
+        Animation(pulse_t=1.0, d=0.10, t="out_quad").start(self)
+
+    def _draw_pulse(self, *_):
+        """Мягкий ореол под пальцем: несколько эллипсов с падающей alpha.
+
+        Радиального градиента в Kivy нет, поэтому свечение собрано
+        вложенными эллипсами — на прозрачной плашке глаз не отличает
+        такую ступенчатость от плавного перехода.
+        """
+        self.canvas.after.clear()
+        if self.pulse_t < 0.01 or self.pulse_x < 0:
+            return
+        cx = dp(self.pulse_x) - self.x
+        cy = self.center_y
+        reach = dp(46.0)
+        steps = 7
+        with self.canvas.after:
+            for step in range(steps, 0, -1):
+                ratio = step / steps
+                alpha = 0.10 * self.pulse_t * (1.0 - ratio) ** 2
+                if alpha < 0.004:
+                    continue
+                Color(rgba=(1.0, 1.0, 1.0, alpha))
+                Ellipse(pos=(cx - reach * ratio, cy - reach * ratio),
+                        size=(reach * ratio * 2, reach * ratio * 2))
 
 
 class LiquidFab(LiquidGlass):
@@ -272,3 +337,39 @@ def set_visible(widget, visible):
             widget.request_update()
     elif effect in children:
         widget.canvas.remove(effect)
+
+
+# --- ДОСТУПНОСТЬ ------------------------------------------------------------ #
+# В iOS есть системная настройка «Меньше прозрачности»: стекло на ней
+# становится плотнее и почти перестаёт просвечивать. В Kivy системной
+# настройки нет, поэтому та же возможность сделана вручную — переключателем
+# в настройках приложения.
+#
+# Что меняем: размытие почти выключаем, а поверхность заливаем плотнее.
+# Именно так поступает и iOS — это не «выключить эффект», а заменить
+# его на непрозрачный вариант, чтобы текст на стекле остался читаемым.
+
+def reduced_transparency() -> bool:
+    """Включена ли настройка «Меньше прозрачности»."""
+    from core.config import SETTINGS
+    return bool(SETTINGS.get("glass", {}).get("reduced_transparency", False))
+
+
+def apply_accessibility(widgets) -> None:
+    """Применить (или снять) плотное стекло на переданных виджетах."""
+    solid = reduced_transparency()
+    for widget in widgets:
+        if widget is None:
+            continue
+        base = getattr(widget, "_base_effect", None)
+        if base is None:
+            continue
+        if solid:
+            widget.blur_size = 2
+            widget.overlay_color = (1.0, 1.0, 1.0, 0.96)
+            widget.outline_width = base["outline_width"] * 1.6
+        else:
+            widget.blur_size = base["blur_size"]
+            widget.overlay_color = base["overlay_color"]
+            widget.outline_width = base["outline_width"]
+        widget.update_effect()
