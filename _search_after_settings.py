@@ -185,7 +185,7 @@ def step4():
     log('   что лежит в этой точке: %s' % ' <- '.join(who_is_at(*point)))
     log('   совпадает ли с нашим пунктом: %s'
         % (search.collide_point(*point),))
-    log('   disabled=%s state=%s' % (search.disabled, search.state))
+    log('   нажат=%s disabled=%s' % (search._pressed, search.disabled))
     tap(search)
     Clock.schedule_once(step4_done, 1.2)
 

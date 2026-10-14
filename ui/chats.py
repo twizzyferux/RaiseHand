@@ -39,8 +39,8 @@ from kivy.core.text import Label as CoreLabel
 from kivy.factory import Factory
 from kivy.graphics import Color, Line, Rectangle, RoundedRectangle
 from kivy.metrics import dp
-from kivy.properties import (BooleanProperty, NumericProperty, ObjectProperty,
-                             StringProperty)
+from kivy.properties import (BooleanProperty, ListProperty, NumericProperty,
+                             ObjectProperty, StringProperty)
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
@@ -477,7 +477,7 @@ Factory.register("ChatPane", cls=ChatPane)
 # виджет с собственным позиционированием всё равно расходился бы с макетом.
 
 
-class NavItem(PressButton):
+class NavItem(Widget):
     """Пункт нижней панели: иконка и подпись.
 
     Иконка и подпись рисуются в canvas самого пункта — по той же причине,
@@ -485,11 +485,27 @@ class NavItem(PressButton):
     (#4B2FE0), остальные чёрные; цвет не переключается рывком, а плавно
     едет к фиолетовому через `active_t`. Лупа «Поиска» в макете нарисована
     линиями, а не картинкой — так и рисуем.
+
+    Пункт лежит в отдельном слое поверх стекла (ui/kv/home.kv), а не
+    рядом с плашкой и не внутри неё: слой объявлен последним, поэтому
+    иконки всегда сверху стекла, и это не зависит от порядка строк в
+    разметке — раньше плашку надо было специально ставить раньше
+    кнопок, и стоило переставить строки, как «Поиск» снова начинал
+    открывать «Настройки». Внутрь плашки пункт положить нельзя: Kivy не
+    пересчитывает координаты касания для детей контейнера со смещением,
+    и пальцем в пункт не попасть.
+
+    Иконка и подпись стоят на координатах МАКЕТА (сцена 450x920), и
+    пересчитывать их не нужно: слой начинается в нуле, поэтому координаты
+    макета попадают на свои места и в рисунке, и в нажатии.
     """
+
+    __events__ = ("on_release",)
 
     caption = StringProperty("")
     active_t = NumericProperty(0.0)
     active = BooleanProperty(False)
+    press_tint = NumericProperty(0.0)
     # Размер иконки и её положение — из макета (у каждой вкладки своё):
     #   Поиск      лупа: круг (72, 800) r 8 и ручка до (59, 813)
     #   Чаты      38x38 в (139, 785) -> x 153.3 y 53.7
@@ -511,25 +527,27 @@ class NavItem(PressButton):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Зона нажатия — четверть плашки, а не весь ряд: пункты стоят
-        # друг на друге (см. NavItem ниже), и при одинаковых границах
-        # верхний перехватывал бы касания всех — «Поиск» открывал
-        # «Настройки». Размер здесь — только для попадания пальцем,
-        # рисунок всё равно рисуется по координатам макета.
+        # друг на друге, и при одинаковых границах верхний перехватывал бы
+        # касания всех — «Поиск» открывал «Настройки». Размер здесь —
+        # только для попадания пальцем, рисунок всё равно рисуется по
+        # координатам макета.
         self.size_hint = (None, None)
         self.size = (dp(99.3), dp(63.2))
-        self.background_normal = ""
-        self.background_down = ""
-        self.background_color = 0, 0, 0, 0
-        self.border = 0, 0, 0, 0
+        self._pressed = False
         self._labels = []
         # Перерисовываем при смене любого влияющего на рисунок свойства:
         # иначе, например, magnifier=True после caption не отразился бы —
         # лупа так и осталась бы ненарисованной.
         self.bind(pos=self._redraw, size=self._redraw, active_t=self._redraw,
+                  press_tint=self._redraw,
                   icon_size=self._redraw, icon_x=self._redraw,
                   icon_y=self._redraw, caption_x=self._redraw,
                   caption_size=self._redraw, caption=self._redraw,
                   magnifier=self._redraw)
+
+    def on_release(self, *args):
+        """Обработчик по умолчанию — его требует объявленное on_release."""
+        return None
 
     def set_icon(self, idle_source: str, active_source: str) -> None:
         """Картинки для обычного и активного состояния."""
@@ -542,12 +560,49 @@ class NavItem(PressButton):
         anim.fade_to(self, "active_t", 1.0 if self.active else 0.0,
                      duration=0.18)
 
+    # -- нажатие ------------------------------------------------------------- #
+    # Своё состояние вместо ButtonBehavior: там отпускание проверяет
+    # «touch.grab_current is self», а захват в этой сборке Kivy работает
+    # не так, и кнопка молча не нажималась.
+
+    def _animate_press(self, value, duration, transition):
+        from kivy.animation import Animation
+        Animation.cancel_all(self, "press_tint")
+        Animation(press_tint=value, d=duration, t=transition).start(self)
+
+    def on_touch_down(self, touch):
+        if not self.collide_point(*touch.pos):
+            self._pressed = False
+            return False
+        self._pressed = True
+        self._animate_press(1.0, 0.07, "out_quad")
+        return True
+
+    def on_touch_up(self, touch):
+        self._animate_press(0.0, 0.26, "out_back")
+        pressed, self._pressed = self._pressed, False
+        if not pressed or not self.collide_point(*touch.pos):
+            return False
+        self.dispatch("on_release")
+        return True
+
+    # -- рисунок ------------------------------------------------------------- #
+
     def _redraw(self, *_):
         self.canvas.clear()
         self._labels = []
         if not self.width:
             return
+        # Активная вкладка едет к фиолетовому, под нажатием темнеет —
+        # так же, как кнопка «+» на плашке стекла.
         tint = self.active_t
+        press = self.press_tint
+        # Цвет ровно как в макете: чёрный, а фиолетовый неактивный пункт
+        # не «серый» (серый получается, если подмешать белый).
+        rgba = (0.294 * tint, 0.184 * tint, 0.878 * tint, 1)
+        ink = (rgba[0] * (1 - 0.25 * press),
+               rgba[1] * (1 - 0.25 * press),
+               rgba[2] * (1 - 0.25 * press), 1)
         # Иконка и подпись стоят на своих местах макета (сцена 450x920), а
         # не по центру пункта: в макете пункты смещены друг относительно
         # друга, и зона нажатия у пункта своя (см. __init__).
@@ -558,7 +613,7 @@ class NavItem(PressButton):
         with self.canvas:
             if self.magnifier:
                 # Лупа нарисована линиями — ровно как в макете
-                Color(rgba=(0.294 * tint, 0.184 * tint, 0.878 * tint, 1))
+                Color(rgba=ink)
                 Line(circle=(dp(self.GLASS[0]), dp(self.GLASS[1]),
                              dp(self.GLASS[2])), width=dp(3.2), cap="round")
                 (x1, y1), (x2, y2) = self.GLASS_HANDLE
@@ -568,7 +623,10 @@ class NavItem(PressButton):
                 source = self.active_source if self.active else self.idle_source
                 texture = _icon_texture(source)
                 if texture is not None:
-                    Color(rgba=(1, 1, 1, 1))
+                    # Под нажатием иконка чуть гаснет — иначе нажатие на
+                    # прозрачной кнопке не видно совсем.
+                    Color(rgba=(1 - 0.25 * press, 1 - 0.25 * press,
+                                1 - 0.25 * press, 1))
                     Rectangle(texture=texture, pos=(icon_x, icon_y),
                               size=(size, size))
 
@@ -581,7 +639,7 @@ class NavItem(PressButton):
                 self._labels.append(label)
                 # Цвет задаёт Color, а не текстура: иначе серый был бы
                 # вдвое темнее (см. ChatRow._texture).
-                Color(rgba=(0.294 * tint, 0.184 * tint, 0.878 * tint, 1))
+                Color(rgba=ink)
                 Rectangle(texture=label.texture,
                           pos=(dp(self.caption_x) - label.texture.width / 2,
                                dp(CAPTION_BASE)

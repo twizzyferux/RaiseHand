@@ -833,19 +833,20 @@ class HomeScreen(BaseScreen):
 
         Плагину frostedglass нужно знать, что лежит ПОД ним: без этого он
         показывает только шум и выглядит серым прямоугольником. Под панелью
-        и кнопкой «+» лежит сцена — её canvas содержит кремовую заливку
-        всего экрана.
+        и кнопкой «+» лежит отдельный тефон размытия (blur_source) — в
+        нём только кремовая заливка. Если размывать canvas сцены, плагин
+        захватит ещё и иконки панели, и они выйдут раздвоенными.
         """
         from ui.glass_widget import attach_background, set_visible
 
-        stage = self.ids.get("stage")
-        if stage is None:
+        source = self.ids.get("blur_source")
+        if source is None:
             return
         for name in ("navbar", "fab"):
             widget = self.ids.get(name)
             if widget is not None:
                 set_visible(widget, True)
-                attach_background(widget, stage)
+                attach_background(widget, source)
 
     def refresh(self):
         user = self.app.current_user

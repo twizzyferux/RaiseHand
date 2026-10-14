@@ -42,7 +42,8 @@ from ui import anim, screens, touch_fix  # noqa: E402
 from ui.avatar import GradientAvatar  # noqa: E402,F401  (нужен .kv)
 from ui.bubbles import WelcomeDecor  # noqa: E402,F401  (нужен .kv)
 from ui.chats import ChatList, ChatPane, ChatRow, NavItem  # noqa: E402,F401  (нужны .kv)
-from ui.glass_widget import GlassFab, GlassPanel   # noqa: E402,F401  (нужен .kv)
+from ui.glass_widget import (BlurSource, LiquidFab,  # noqa: E402,F401  (нужны .kv)
+                             LiquidNavBar)
 
 # Захват касания в этой сборке Kivy не заполняет grab_current, а от него
 # зависит отпускание кнопок. Чиним до создания окна — иначе виджеты успеют
