@@ -38,11 +38,19 @@ def _writable_dir(name: str) -> str:
     """
     candidates = [os.path.join(BASE_DIR, name)]
     if _kivy_platform == "ios":
+        # Контейнер приложения выводится оттуда, где лежит код: сам
+        # пакет - это <контейнер>/RaiseHand.app, значит контейнер -
+        # родитель этой папки, а документы - <контейнер>/Documents.
+        # Именно Documents показывает раздел Files в Apple Devices, и
+        # именно туда iOS разрешает писать.
+        container = os.path.dirname(BASE_DIR)
         home = os.environ.get("HOME") or os.path.expanduser("~")
         candidates = [
             os.path.join(home, name),
             os.path.join(home, "Documents", name),
-            os.path.join(home, "Library", name),
+            os.path.join(container, "Documents", name),
+            os.path.join(container, name),
+            os.path.join(container, "Library", name),
         ]
     candidates.extend([
         os.path.join(tempfile.gettempdir(), "raisehand", name),
