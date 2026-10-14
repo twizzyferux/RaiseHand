@@ -54,15 +54,29 @@ def _startup_log_path():
 
 
 def _record(reason, detail):
-    """Отметка в журнале старта. Сама ничего ломать не должна."""
+    """Отметка в журнале старта.
+
+    Пишется в файл И в консоль. Файл нужен, чтобы забрать причину с
+    телефона, но положиться только на него нельзя: папка может
+    оказаться недоступной для записи (kivy-ios не выставляет HOME, а
+    временная папка указывает внутрь приложения), и тогда файл не
+    появится вовсе. Консоль же всегда доступна в журнале устройства.
+    """
     import time
+    stamp = time.strftime("%H:%M:%S")
+    text = "%s %s\n%s\n%s\n" % (stamp, reason, detail, "-" * 40)
+    for line in text.splitlines():
+        try:
+            sys.stderr.write("[raisehand] %s\n" % line)
+            sys.stderr.flush()
+        except Exception:
+            break
     path = _startup_log_path()
     if not path:
         return
     try:
         with open(path, "a", encoding="utf-8") as f:
-            f.write("%s %s\n%s\n%s\n"
-                    % (time.strftime("%H:%M:%S"), reason, detail, "-" * 40))
+            f.write(text)
     except OSError:
         pass
 
