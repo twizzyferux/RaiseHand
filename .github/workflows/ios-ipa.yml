@@ -137,33 +137,59 @@ jobs:
           echo "--- generated ---"
           ls -la "$IOS_DIR/${PROJ}-ios"
 
-      - name: Build the app
-        # -target is used instead of -scheme: the generated project
-        # ships without an .xcscheme file, and -target works without
-        # one. Signing is turned off because there is no certificate.
+      - name: Inspect the Xcode project
+        # Printed before the build so that the real target and scheme
+        # names are visible in the log. Guessing them was the reason the
+        # previous run lost its error message.
         run: |
           cd "$IOS_DIR/${PROJ}-ios"
-          xcodebuild -project "${PROJ}.xcodeproj" -target "$PROJ" \
-            -sdk iphoneos -configuration Release \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            | tail -40
-          echo "--- products ---"
-          ls -la build/Build/Products/Release-iphoneos/ || true
+          ls -la
+          xcodebuild -list -project "${PROJ}.xcodeproj"
+
+      - name: Build the app
+        # The log goes to a file instead of being piped into tail. With
+        # a pipe the step reports the exit code of tail, so a failed
+        # xcodebuild looked like a successful build and the real error
+        # disappeared. Here pipefail is set, the full log is kept, and on
+        # failure the error lines are printed.
+        #
+        # -target is used instead of -scheme: the generated project
+        # ships without an .xcscheme file, and -scheme fails without
+        # one. Signing is off because there is no certificate.
+        run: |
+          set -o pipefail
+          cd "$IOS_DIR/${PROJ}-ios"
+          LOG="$GITHUB_WORKSPACE/xcodebuild.log"
+          if ! xcodebuild -project "${PROJ}.xcodeproj" -target "$PROJ" \
+               -sdk iphoneos -configuration Release \
+               -derivedDataPath "$IOS_DIR/${PROJ}-ios/build" \
+               CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+               CODE_SIGN_IDENTITY="" \
+               > "$LOG" 2>&1; then
+            echo "=== xcodebuild failed ==="
+            grep -nE "error:|error |BUILD FAILED|The following build commands failed" "$LOG" | head -30
+            echo "=== last 60 lines ==="
+            tail -60 "$LOG"
+            exit 1
+          fi
+          echo "=== build finished, tail of log ==="
+          tail -20 "$LOG"
+          echo "=== where the app landed ==="
+          find "$IOS_DIR/${PROJ}-ios" -maxdepth 7 -name "*.app" -print
 
       - name: Pack the ipa
         # An .ipa is a zip containing a Payload folder with the .app.
         # Sideloadly re-signs it, so no signature is needed here.
         run: |
-          cd "$IOS_DIR/${PROJ}-ios"
-          APPDIR="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)"
+          cd "$IOS_DIR"
+          APPDIR="$(find "$IOS_DIR" -maxdepth 8 -type d -name "${APP_NAME}.app" \
+                   -path "*Release-iphoneos*" | head -1)"
           if [ -z "$APPDIR" ]; then
-            echo "No .app was produced"
-            ls -la build/Build/Products/ || true
+            echo "No built .app found under $IOS_DIR"
+            find "$IOS_DIR" -maxdepth 8 -type d -name "*.app" -print | head -20
             exit 1
           fi
-          cd "$IOS_DIR"
+          echo "found: $APPDIR"
           rm -rf Payload
           mkdir -p Payload
           cp -R "$APPDIR" Payload/
