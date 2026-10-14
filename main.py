@@ -26,10 +26,15 @@ def _startup_log_path():
 
     На iOS переменная HOME не выставляется, а TMP указывает внутрь
     папки приложения (только чтение), поэтому проверка настоящая.
+    Documents стоит вторым: именно эту папку показывает раздел Files
+    в Apple Devices, из неё файл можно забрать на компьютер перетаскиванием.
     """
     import tempfile
-    for base in (os.environ.get("HOME"), os.path.expanduser("~"),
-                 tempfile.gettempdir(), os.getcwd()):
+    home = os.environ.get("HOME") or os.path.expanduser("~")
+    for base in (home,
+                 os.path.join(home, "Documents"),
+                 tempfile.gettempdir(),
+                 os.getcwd()):
         if not base:
             continue
         try:
