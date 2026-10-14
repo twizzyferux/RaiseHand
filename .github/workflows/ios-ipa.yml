@@ -64,6 +64,12 @@ jobs:
       # cd-ing into a folder that does not exist fails. That folder is
       # ours, inside the workspace, and is empty on every fresh run.
       IOS_DIR: ${{ github.workspace }}/ios
+      # Silences a warning printed by the Node.js runtime that runs the
+      # official actions: it still calls the removed "punycode" module
+      # and complains about it on every run. It is noise from the
+      # action's own code, not a problem of this build, and it used to
+      # stand out in the middle of the real diagnostics.
+      NODE_OPTIONS: --no-deprecation
 
     steps:
       - name: Checkout
@@ -242,8 +248,19 @@ jobs:
           unzip -l "$GITHUB_WORKSPACE/$APP_NAME.ipa" | head -20
 
       - name: Upload the ipa
+        # The path must be written as a GitHub expression, not as a
+        # shell variable. actions/upload-artifact does not run a shell:
+        # "$APP_NAME.ipa" went there literally, as a file with that
+        # exact name in its name, and the step failed with "No files
+        # found" although the file existed. "${{ env.APP_NAME }}" is
+        # substituted by GitHub itself, so the real name arrives.
+        #
+        # The wildcard is a second chance: if the name ever changes, the
+        # .ipa is still picked up rather than missed silently.
         uses: actions/upload-artifact@v4
         with:
           name: raisehand-ios
-          path: $APP_NAME.ipa
+          path: |
+            ${{ env.APP_NAME }}.ipa
+            ${{ github.workspace }}/*.ipa
           if-no-files-found: error
