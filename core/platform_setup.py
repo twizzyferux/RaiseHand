@@ -171,9 +171,40 @@ def _center_window(window) -> None:
         pass
 
 
+def _max_fps() -> int:
+    """Сколько кадров в секунду разрешаем приложению.
+
+    По умолчанию Kivy держит 60, и даже на экране с частотой выше
+    приложение рисует реже, чем может. Здесь ставим 120 — этого хватает
+    и для 120-герцевых экранов, и для 144 (лишние кадры просто не
+    случатся: ограничивает вертикальная синхронизация).
+
+    Переопределить: переменная окружения RH_MAX_FPS.
+        set RH_MAX_FPS=60 && python main.py
+    """
+    raw = os.environ.get("RH_MAX_FPS", "").strip()
+    if raw:
+        try:
+            return max(30, min(240, int(float(raw))))
+        except ValueError:
+            pass
+    return 120
+
+
 def init_window():
     """Настройка окна. Вызывается до создания Window (на ПК)."""
     global UI_SCALE
+    max_fps = _max_fps()
+    Config.set("graphics", "maxfps", str(max_fps))
+    # Часы берут лимит из конфига ОДИН РАЗ — при создании экземпляра
+    # Clock, то есть ещё до того, как мы сюда дошли. Поэтому одной
+    # записи в Config мало: Clock продолжал рисовать в 60 кадров, пока
+    # в конфиге уже стояло 120. Обновляем и его тоже.
+    try:
+        from kivy.clock import Clock
+        Clock._max_fps = float(max_fps)
+    except Exception:
+        pass
     if IS_MOBILE:
         # На телефоне размер окна задаёт система — переопределять нельзя.
         forced = _env_scale()
