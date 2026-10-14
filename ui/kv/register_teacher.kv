@@ -27,13 +27,23 @@
                 # цифры в фамилии не пропускаем
                 on_text: root.format_name('last', self.text)
 
-            PasswordField:
+            # Те же «таблетки», что и в шаге регистрации ученика:
+            # скруглённая серая подложка, точки и глаз. Отдельное
+            # правило PasswordField тут не сработало — взяты уже
+            # проверенные поля.
+            PillPasswordField:
                 id: password
+                size_hint_x: 1
+                height: dp(44)
+                font_size: dp(17)
                 hint_text: 'Пароль'
                 password: True
 
-            PasswordField:
+            PillPasswordField:
                 id: password_repeat
+                size_hint_x: 1
+                height: dp(44)
+                font_size: dp(17)
                 hint_text: 'Повторите пароль'
                 password: True
 
