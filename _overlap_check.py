@@ -136,8 +136,10 @@ def _after_probe_tap(dt):
     log('   состояние пунктов панели:')
     for name in ('nav_search', 'nav_chats', 'nav_groups', 'nav_settings'):
         item = home().ids[name]
-        log('      %-13s state=%-7s disabled=%s'
-            % (name, item.state, item.disabled))
+        # state больше нет: пункт больше не ButtonBehavior, он держит своё
+        # состояние нажатия в _pressed (см. NavItem).
+        log('      %-13s нажат=%-6s disabled=%s'
+            % (name, item._pressed, item.disabled))
 
     # Теперь выходим кнопкой «Назад» и смотрим, что с вкладкой.
     back = None
@@ -164,7 +166,7 @@ def _after_back(dt):
     expect('вкладка осталась «Группы»', home().tab, 'groups')
 
     stuck = [n for n in ('nav_search', 'nav_chats', 'nav_groups', 'nav_settings')
-             if home().ids[n].state == 'down']
+             if home().ids[n]._pressed]
     expect('ни один пункт не остался нажатым', stuck, [])
     Clock.schedule_once(_settled, 2.0)
 

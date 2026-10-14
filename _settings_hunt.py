@@ -105,7 +105,7 @@ def snapshot():
         panes.append('%s:%s' % (name[:4],
                                 'видна' if pane.opacity > 0.5 else 'скрыта'))
     stuck = [n.replace('nav_', '') for n in NAV
-             if home().ids[n].state == 'down']
+             if home().ids[n]._pressed]
     if home().ids['fab']._pressed:
         stuck.append('ПЛЮС')
     return ('вкладка=%-7s актив=%-9s %s зажато=%s'

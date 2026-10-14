@@ -1,34 +1,42 @@
 # -*- coding: utf-8 -*-
-"""Эффект «жидкого стекла» — на плагине kivy-garden.frostedglass.
+"""Жидкое стекло iOS на плагине kivy-garden.frostedglass.
 
-ПОЧЕМУ ПЛАГИН, А НЕ СВОИ СЛОИ
-----------------------------
-Свой вариант (тело + блик + затемнение + кромка) был собран вручную и
-выглядел как пластиковая плашка, а не как стекло: без настоящего размытия
-фона глаз считывает «нарисованный» прямоугольник. Плагин делает то, чего
-не хватало ручной сборке — берёт то, что позади, размывает это по двум
-осям и добавляет шум, подсветку и обводку.
+ЧТО ЗДЕСЬ И ПОЧЕМУ
+------------------
+1. BlurSource — ровно один фон для размытия. Плагин берёт образец по
+   ССЫЛКЕ на canvas виджета-фона, а canvas сцены (PhoneStage) содержит
+   ещё и все дочерние виджеты: иконки панели, ряды чатов, кнопку «+».
+   Плагин их размывает и рисует копию ПОД настоящими иконками — панель
+   выглядела «раздвоенной», а вокруг иконок появлялся ореол. Тефон
+   образца — отдельный виджет с одной кремовой заливкой и ничего
+   больше, размывать нечего лишнего.
 
-ЧТО ПРИХОДИТСЯ УЧИТЫВАТЬ
-------------------------
-1. Размер и положение нельзя передавать в конструктор: внутри плагина
-   on_size вызывается раньше, чем создаётся fbo_rect, и виджет падает с
-   AttributeError. Поэтому создаём пустым и задаём размер после.
-2. Плагину нужно сказать, ЧТО размывать (свойство background). Без него
-   стекло показывает только шум — выглядит как серый прямоугольник.
-3. Плагин один раз на весь процесс ставит Clock-подписку
-   «Window.canvas.ask_update() каждый кадр». Она нужна, чтобы стекло
-   жило само, но она же заставляет перерисовывать всё окно постоянно.
-   Мы выставляем FG_ASK_UPDATE_CANVAS_ACTIVE заранее и обновляем стекло
-   сами — только когда что-то изменилось (см. request_update).
+2. LiquidGlass — общая часть плашки и кнопки «+»: геометрия, параметры
+   размытия, нажатие. Размер и blur_size нельзя передавать в
+   конструктор плагина: on_size вызывается раньше, чем создан fbo_rect,
+   и виджет падает с AttributeError. Поэтому создаём пустым и задаём
+   размер после — отдельным вызовом setup().
+
+3. LiquidNavBar — плашка вместе с её пунктами. Пункты объявлены в
+   разметке вложенными в плашку, а не соседями: тогда они всегда
+   нарисованы поверх стекла и всегда получают касание первыми, и это
+   уже не зависит от порядка объявления в .kv. Раньше всё держалось на
+   ручном правиле «плашку объявить раньше кнопок» — стоило переставить
+   строки, и «Поиск» снова открывал «Настройки».
+
+4. Плагин умеет только НЕ ОБНОВЛЯТЬ стекло, когда его экран не
+   текущий, но не умеет его ПРЯТАТЬ: результат размытия остаётся в
+   буфере и продолжает рисоваться. При уходе в настройки панель на
+   секунду висела поверх них. Отсюда set_visible().
 
 Геометрия — из макета Face ID.svg, сцена 450x920.
 """
 import os
 
-from kivy.graphics import Color, Line
+from kivy.graphics import Color, Line, Rectangle
 from kivy.metrics import dp
 from kivy.properties import NumericProperty
+from kivy.uix.widget import Widget
 from kivy_garden.frostedglass import FrostedGlass
 
 # Плагин читает этот флаг, чтобы не вешать перерисовку окна каждый кадр.
@@ -41,16 +49,49 @@ PANEL_RADIUS = 31.6
 FAB = (366.0, 775.0, 59.0, 58.0)        # кнопка «+»
 FAB_RADIUS = 29.5
 VIOLET = (0.294, 0.184, 0.878)           # #4B2FE0 — фиолетовый макета
+CREAM = (1.0, 0.984, 0.969)              # #FFFBF7 — фон экрана
 
 
-class _GlassBase(FrostedGlass):
-    """Общее для плашки и кнопки: настройка размытия и бережная сборка.
+class BlurSource(Widget):
+    """Чистый фон для размытия: кремовая заливка и больше ничего.
 
-    Размер нельзя задавать в конструкторе плагина, поэтому все параметры
-    применяются после создания, отдельным вызовом setup().
+    Размер и положение задаются в разметке. Заливка рисуется в
+    canvas.before, чтобы плагин (он берёт canvas целиком) видел её
+    первой, а не поверх содержимого сцены.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        with self.canvas.before:
+            Color(rgba=(*CREAM, 1.0))
+            self._fill = Rectangle(pos=self.pos, size=self.size)
+        self.bind(pos=self._sync, size=self._sync)
+
+    def _sync(self, *_):
+        self._fill.pos = self.pos
+        self._fill.size = self.size
+
+
+class LiquidGlass(FrostedGlass):
+    """Общая часть плашки и кнопки «+».
+
+    Нажатие ведём сами, без touch.grab(): касание перехватывают другие
+    виджеты (панели, ScrollView), и проверка «grab_current is self» в
+    on_touch_up оказывается ложной — кнопка молча не нажимается.
+    Состояние держим сами, этого достаточно.
     """
 
     press_tint = NumericProperty(0.0)
+
+    __events__ = ("on_release",)
+
+    def on_release(self, *args):
+        """Заглушка: Kivy требует обработчик у объявленного события.
+
+        Реальный обработчик задаётся в разметке (например, у кнопки «+»
+        это root.new_chat()).
+        """
+        return None
 
     def setup(self, pos, size, radius, background=None, effect=None):
         self.size_hint = (None, None)
@@ -72,9 +113,38 @@ class _GlassBase(FrostedGlass):
         """Пересчитать стекло вручную (плагин сам обновляется не всегда)."""
         self.refresh_effect()
 
+    # -- нажатие ------------------------------------------------------------- #
 
-class GlassPanel(_GlassBase):
-    """Стеклянная плашка нижней панели навигации.
+    def _animate_press(self, value, duration, transition):
+        from kivy.animation import Animation
+        Animation.cancel_all(self, "press_tint")
+        Animation(press_tint=value, d=duration, t=transition).start(self)
+
+    def on_touch_down(self, touch):
+        # disabled проверяем обязательно: на вкладках «Поиск» и «Группы»
+        # кнопка «+» спрятана (opacity 0), но остаётся в дереве и ловит
+        # касания. Без этой проверки касание в правом верхнем углу
+        # нажимало невидимую кнопку и уводило на «Поиск».
+        if self.disabled or not self.collide_point(*touch.pos):
+            self._pressed = False
+            return False
+        self._pressed = True
+        self._animate_press(1.0, 0.07, "out_quad")
+        return True
+
+    def on_touch_up(self, touch):
+        self._animate_press(0.0, 0.26, "out_back")
+        pressed, self._pressed = self._pressed, False
+        # Нажатие засчитано, только если кнопка была жива в момент
+        # нажатия и палец отпущен прямо над ней.
+        if not pressed or self.disabled or not self.collide_point(*touch.pos):
+            return False
+        self.dispatch("on_release")
+        return True
+
+
+class LiquidNavBar(LiquidGlass):
+    """Стеклянная плашка нижней панели вместе с её пунктами.
 
     Настройки подобраны на кремовом фоне макета: стекло должно читаться
     как светлая гладкая поверхность, а не как серая пятнистая наклейка.
@@ -97,6 +167,7 @@ class GlassPanel(_GlassBase):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._pressed = False
         self.setup(
             pos=(dp(PANEL[0]), dp(PANEL[1])),
             size=(dp(PANEL[2]), dp(PANEL[3])),
@@ -105,23 +176,22 @@ class GlassPanel(_GlassBase):
         )
 
 
-class GlassFab(_GlassBase):
+class LiquidFab(LiquidGlass):
     """Стеклянная кнопка «+» в шапке.
 
     Стекло сверху, а сверху стекла — фиолетовая заливка и сам плюс: в
     макете кнопка фиолетовая, и без заливки она потеряла бы фирменный
-    цвет. Нажатие ведём сами: плагин — это FloatLayout, а не кнопка.
+    цвет. Плагин — это FloatLayout, а не кнопка, поэтому нажатие ведём
+    сами (см. LiquidGlass).
     """
 
-    __events__ = ("on_release",)
-
     # Фиолетовый цвет задаётся НЕ своей заливкой, а overlay_color плагина.
-    # Причина: плагин берёт образец фона по ССЫЛКЕ background — это заливка
-    # сцены (кремовая). Свою фиолетовую заливку он в образец не берёт, а
-    # рисует результат ПОВЕРХ неё. Поэтому круг под стеклом просто исчезал:
-    # на его месте оказывался размытый кремовый фон — бледное пятно.
-    # Tint — единственный способ получить фиолетовое стекло: плагин сам
-    # подкрашивает образец и рисует вместе с бликом и кромкой.
+    # Причина: плагин берёт образец фона по ССЫЛКЕ background. Свою
+    # фиолетовую заливку он в образец не берёт, а рисует результат ПОВЕРХ
+    # неё — круг под стеклом просто исчезал: на его месте оказывался
+    # размытый фон, бледное пятно. Tint — единственный способ получить
+    # фиолетовое стекло: плагин сам подкрашивает образец и рисует его
+    # вместе с бликом и кромкой.
     EFFECT = dict(
         blur_size=14,
         luminosity=1.0,
@@ -134,13 +204,13 @@ class GlassFab(_GlassBase):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._pressed = False
         self.setup(
             pos=(dp(FAB[0]), dp(FAB[1])),
             size=(dp(FAB[2]), dp(FAB[3])),
             radius=dp(FAB_RADIUS),
             effect=self.EFFECT,
         )
-        self._pressed = False
         self._draw_plus()
         self.bind(pos=self._draw_plus, size=self._draw_plus)
 
@@ -159,57 +229,9 @@ class GlassFab(_GlassBase):
                          self.center_x, self.center_y + dp(15.8)],
                  width=dp(3.3), cap="round")
 
-    # -- нажатие ------------------------------------------------------------ #
-
-    def on_release(self, *args):
-        """Обработчик по умолчанию — его требует объявленное on_release."""
-        return None
-
-    def on_touch_down(self, touch):
-        """Запоминаем нажатие.
-
-        deliberately БЕЗ touch.grab(self): касание перехватывают другие
-        виджеты (панели, ScrollView), и проверка «grab_current is self» в
-        on_touch_up оказывается ложной — кнопка молча не нажималась.
-        Состояние держим сами, этого достаточно.
-
-        disabled проверяем обязательно: на вкладках «Поиск» и «Группы»
-        кнопка спрятана (opacity 0), но остаётся в дереве и ловит касания.
-        Без этой проверки касание в правом верхнем углу нажимало
-        невидимую кнопку и уводило на «Поиск» — то самое «рандомно
-        подрубается поиск». Плюс сбрасываем _pressed: иначе нажатие,
-        оставшееся без отпускания (экран успел смениться), срабатывало
-        позже — при касании, уже не связанном с этой кнопкой.
-        """
-        if self.disabled or not self.collide_point(*touch.pos):
-            self._pressed = False
-            return False
-        from ui.anim import Animation
-        self._pressed = True
-        Animation.cancel_all(self, "press_tint")
-        Animation(press_tint=1.0, d=0.07, t="out_quad").start(self)
-        return True
-
-    def on_touch_up(self, touch):
-        from ui.anim import Animation
-        Animation.cancel_all(self, "press_tint")
-        Animation(press_tint=0.0, d=0.26, t="out_back").start(self)
-        pressed, self._pressed = self._pressed, False
-        # Нажатие засчитано, только если кнопка была жива в момент
-        # нажатия и палец отпущен прямо над ней.
-        if not pressed or self.disabled or not self.collide_point(*touch.pos):
-            return False
-        self.dispatch("on_release")
-        return True
-
 
 def attach_background(widget, background):
-    """Указать стеклу, что размывать.
-
-    Размывается canvas указанного виджета. В приложении за панелью и
-    кнопкой «+» лежит сцена (PhoneStage): её canvas содержит кремовую
-    заливку экрана.
-    """
+    """Указать стеклу, что размывать (см. BlurSource)."""
     widget.background = background
     widget.request_update()
 
@@ -218,7 +240,7 @@ def set_visible(widget, visible):
     """Показать или убрать стекло.
 
     Плагин умеет только НЕ ОБНОВЛЯТЬ стекло, когда его экран не текущий
-    (свойство not_current_screen), но не умеет его прятать: результат
+    (свойство not_current_screen), но не умеет его ПРЯТАТЬ: результат
     размытия остаётся в буфере и продолжает рисоваться. Из-за этого
     при уходе с экрана чатов нижняя панель на секунду оставалась поверх
     настроек — её видно было как раздвоенную.
