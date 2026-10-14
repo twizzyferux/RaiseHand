@@ -28,6 +28,7 @@ TextInput перехватывает касание целиком: нажати
 """
 import os
 
+from kivy.clock import Clock
 from kivy.core.image import Image as CoreImage
 from kivy.factory import Factory
 from kivy.graphics import Color, Rectangle
@@ -69,9 +70,16 @@ class EyeToggleMixin:
 
     def _init_eye(self):
         self._eye_hit = False
-        self.bind(pos=self._draw_eye, size=self._draw_eye,
-                  show_password=self._draw_eye, password=self._sync_mask)
+        self.bind(show_password=self._sync_mask, password=self._sync_mask)
         self._sync_mask()
+
+    # Сам глаз рисует разметка (canvas.after в theme.kv), а не код.
+    # Причина проверена на регистрации учителя: когда поле рисует глаз
+    # само, глаз успевает нарисоваться ДО раскладки — на старом размере
+    # — и остаётся сдвинутым влево, наезжая на подсказку. Принудительная
+    # перерисовка это чинила, но и она зависела от момента. В разметке
+    # Kivy пересчитывает координаты сам, как только меняется right или
+    # center_y, — и глаз всегда на месте.
 
     def _sync_mask(self, *_):
         """Маска включена всегда: показать пароль можно только глазом,
@@ -79,26 +87,13 @@ class EyeToggleMixin:
         if not self.show_password and not self.password:
             self.password = True
 
-    # -- рисунок ------------------------------------------------------------- #
+    # -- касания ------------------------------------------------------------- #
 
     def _eye_box(self):
         """Прямоугольник иконки глаза в координатах поля."""
         size = dp(EYE_ICON)
         return (self.right - dp(14) - size,
                 self.center_y - size / 2.0, size, size)
-
-    def _draw_eye(self, *_):
-        self.canvas.after.clear()
-        kind = 'rh_eye_off' if self.show_password else 'rh_eye'
-        texture = _texture(_sprite(kind))
-        if texture is None:
-            return
-        x, y, w, h = self._eye_box()
-        with self.canvas.after:
-            Color(rgba=(0.45, 0.45, 0.5, 1))
-            Rectangle(texture=texture, pos=(x, y), size=(w, h))
-
-    # -- касания ------------------------------------------------------------- #
 
     def _in_eye(self, pos):
         x, y, w, h = self._eye_box()
