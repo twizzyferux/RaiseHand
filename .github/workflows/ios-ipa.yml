@@ -56,6 +56,14 @@ jobs:
       # toolchain create lowercases the name for the project folder
       # and for the .xcodeproj file, so the same value is used here.
       PROJ: raisehand
+      # Working directory of kivy-ios.
+      #
+      # It is NOT ~/ios. In kivy_ios/toolchain.py the working directory
+      # is taken from getcwd(), and build/, dist/ and .cache/ are
+      # created underneath it. The folder itself is never created, so
+      # cd-ing into a folder that does not exist fails. That folder is
+      # ours, inside the workspace, and is empty on every fresh run.
+      IOS_DIR: ${{ github.workspace }}/ios
 
     steps:
       - name: Checkout
@@ -90,7 +98,8 @@ jobs:
         # This is the slow step: Python and SDL are compiled from
         # source for the iOS target. Expect 20-40 minutes.
         run: |
-          cd $HOME/ios
+          mkdir -p "$IOS_DIR"
+          cd "$IOS_DIR"
           toolchain build python3 libffi openssl sdl2 sdl2_image sdl2_mixer sdl2_ttf
 
       - name: Install the app dependencies for iOS
@@ -98,7 +107,8 @@ jobs:
         # installed into the freshly compiled iOS Python, not into the
         # macOS one. The version is pinned to the one used on Windows.
         run: |
-          cd $HOME/ios
+          mkdir -p "$IOS_DIR"
+          cd "$IOS_DIR"
           toolchain pip install --upgrade "kivy==2.3.1" "kivy-garden.frostedglass>=0.5.0"
           echo "--- site-packages of the iOS Python ---"
           toolchain build_info | head -40
@@ -109,12 +119,12 @@ jobs:
         # there first. Draft folders, snapshots and helper scripts are
         # not part of the app and are left out.
         run: |
-          APP="$HOME/ios/$APP_NAME.app"
+          APP="$IOS_DIR/$APP_NAME.app"
           rm -rf "$APP"
           mkdir -p "$APP"
           rsync -a --exclude .git --exclude .venv --exclude .venv312 \
                 --exclude .opencode --exclude _shots --exclude tools \
-                --exclude "*.md" --exclude data \
+                --exclude "*.md" --exclude data --exclude ios \
                 "$GITHUB_WORKSPACE/" "$APP/"
           echo "--- app folder ---"
           ls -la "$APP"
@@ -122,17 +132,17 @@ jobs:
 
       - name: Create the Xcode project
         run: |
-          cd $HOME/ios
-          toolchain create $APP_NAME "$HOME/ios/$APP_NAME.app"
+          cd "$IOS_DIR"
+          toolchain create $APP_NAME "$IOS_DIR/$APP_NAME.app"
           echo "--- generated ---"
-          ls -la "$HOME/ios/${PROJ}-ios"
+          ls -la "$IOS_DIR/${PROJ}-ios"
 
       - name: Build the app
         # -target is used instead of -scheme: the generated project
         # ships without an .xcscheme file, and -target works without
         # one. Signing is turned off because there is no certificate.
         run: |
-          cd "$HOME/ios/${PROJ}-ios"
+          cd "$IOS_DIR/${PROJ}-ios"
           xcodebuild -project "${PROJ}.xcodeproj" -target "$PROJ" \
             -sdk iphoneos -configuration Release \
             -derivedDataPath build \
@@ -146,14 +156,14 @@ jobs:
         # An .ipa is a zip containing a Payload folder with the .app.
         # Sideloadly re-signs it, so no signature is needed here.
         run: |
-          cd "$HOME/ios/${PROJ}-ios"
+          cd "$IOS_DIR/${PROJ}-ios"
           APPDIR="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)"
           if [ -z "$APPDIR" ]; then
             echo "No .app was produced"
             ls -la build/Build/Products/ || true
             exit 1
           fi
-          cd "$HOME/ios"
+          cd "$IOS_DIR"
           rm -rf Payload
           mkdir -p Payload
           cp -R "$APPDIR" Payload/
