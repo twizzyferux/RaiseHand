@@ -11,18 +11,27 @@
 # This duplicates codemagic.yaml. If you have no Codemagic account,
 # this file is the only way to build.
 #
-# HOW TO USE
-# ---------
-#   1. Push a change to master, or open Actions -> iOS IPA -> Run
-#      workflow.
-#   2. Wait 20-40 minutes (Python is compiled for iOS on the first run).
-#   3. Download the raisehand-ios artifact - it contains the .ipa.
-#   4. Install from Windows with Sideloadly or AltStore. They sign the
-#      app with a free Apple ID, so no signature is needed here.
+# HOW IT WORKS (checked against the kivy-ios source, version 2025.5.17)
+# -------------------------------------------------------------------
+# kivy-ios installs exactly ONE program: "toolchain". There is no
+# "kivy-ios" executable and no init command - an old instruction that
+# says "kivy-ios init AppName" is from an ancient version and fails
+# with "No such file or directory".
+#
+# The real pipeline is:
+#   toolchain build <recipes>   compile Python and SDL for iOS (slow)
+#   toolchain pip install ...   put Kivy and our plugin into that Python
+#   toolchain create <name> <dir>  generate the Xcode project
+#   xcodebuild ...              build the app itself
+#   zip into Payload            make an unsigned .ipa
+#
+# "toolchain create" only generates the Xcode project, it does NOT
+# build the app. The app is built by xcodebuild.
 #
 # SIGNING
 # -------
-# There is no signature: Sideloadly adds it at install time.
+# The build is unsigned on purpose: Sideloadly signs the .ipa with a
+# free Apple ID at install time.
 #
 # The file is deliberately plain ASCII. GitHub refuses to register a
 # workflow whose YAML it cannot parse, and a workflow that is not
@@ -44,6 +53,9 @@ jobs:
     env:
       APP_NAME: RaiseHand
       BUNDLE_ID: org.school.raisehand
+      # toolchain create lowercases the name for the project folder
+      # and for the .xcodeproj file, so the same value is used here.
+      PROJ: raisehand
 
     steps:
       - name: Checkout
@@ -58,9 +70,8 @@ jobs:
         # pip3 straight from the runner fails with "externally-managed
         # environment" (PEP 668): the system Python refuses to install
         # anything so it cannot be broken by a package. The way out is a
-        # virtual environment. Its bin directory goes to the front of
-        # PATH for the following steps, so kivy-ios and toolchain are
-        # found there and nowhere else.
+        # virtual environment. Its bin directory is prepended to PATH
+        # for the following steps.
         #
         # python@3.12 from Homebrew is keg-only: it is NOT symlinked into
         # the main bin directory, so plain "python3.12" is not on PATH
@@ -71,51 +82,84 @@ jobs:
           echo "$HOME/kivyvenv/bin" >> $GITHUB_PATH
           "$HOME/kivyvenv/bin/pip" install --upgrade pip wheel
           "$HOME/kivyvenv/bin/pip" install kivy-ios cython
-          echo "--- what got installed ---"
+          echo "--- installed ---"
           "$HOME/kivyvenv/bin/pip" list | grep -iE "kivy|cython"
-          "$HOME/kivyvenv/bin/kivy-ios" --version
+          "$HOME/kivyvenv/bin/toolchain" --help | head -20
 
-      - name: Create app skeleton
-        run: |
-          kivy-ios init $APP_NAME
-
-      - name: Copy project into the skeleton
-        run: |
-          BUNDLE="$HOME/ios/$APP_NAME.app"
-          rsync -a --exclude .git --exclude .venv --exclude .opencode \
-                --exclude _shots --exclude tools --exclude "*.md" \
-                "$GITHUB_WORKSPACE/" "$BUNDLE/"
-          ls -la "$BUNDLE"
-
-      - name: Build Python for iOS
+      - name: Build the iOS toolchain
+        # This is the slow step: Python and SDL are compiled from
+        # source for the iOS target. Expect 20-40 minutes.
         run: |
           cd $HOME/ios
-          toolchain build $APP_NAME
+          toolchain build python3 libffi openssl sdl2 sdl2_image sdl2_mixer sdl2_ttf
 
-      - name: Create the ipa
-        continue-on-error: true
+      - name: Install the app dependencies for iOS
+        # Kivy and the frostedglass plugin are pure Python, so they are
+        # installed into the freshly compiled iOS Python, not into the
+        # macOS one. The version is pinned to the one used on Windows.
         run: |
           cd $HOME/ios
-          toolchain create $APP_NAME $BUNDLE_ID || true
+          toolchain pip install --upgrade "kivy==2.3.1" "kivy-garden.frostedglass>=0.5.0"
+          echo "--- site-packages of the iOS Python ---"
+          toolchain build_info | head -40
 
-      - name: Package the ipa by hand if needed
+      - name: Put the project into the app folder
+        # "toolchain create" takes the folder where the application
+        # sources live as its second argument, so the project is copied
+        # there first. Draft folders, snapshots and helper scripts are
+        # not part of the app and are left out.
         run: |
           APP="$HOME/ios/$APP_NAME.app"
-          if [ -f "$GITHUB_WORKSPACE/$APP_NAME.ipa" ]; then
-            echo "ipa built by toolchain create"
-            exit 0
-          fi
-          if [ ! -d "$APP" ]; then
-            echo "Skeleton $APP not found"
-            ls -la $HOME/ios
+          rm -rf "$APP"
+          mkdir -p "$APP"
+          rsync -a --exclude .git --exclude .venv --exclude .venv312 \
+                --exclude .opencode --exclude _shots --exclude tools \
+                --exclude "*.md" --exclude data \
+                "$GITHUB_WORKSPACE/" "$APP/"
+          echo "--- app folder ---"
+          ls -la "$APP"
+          ls -la "$APP/assets" 2>/dev/null | head -10
+
+      - name: Create the Xcode project
+        run: |
+          cd $HOME/ios
+          toolchain create $APP_NAME "$HOME/ios/$APP_NAME.app"
+          echo "--- generated ---"
+          ls -la "$HOME/ios/${PROJ}-ios"
+
+      - name: Build the app
+        # -target is used instead of -scheme: the generated project
+        # ships without an .xcscheme file, and -target works without
+        # one. Signing is turned off because there is no certificate.
+        run: |
+          cd "$HOME/ios/${PROJ}-ios"
+          xcodebuild -project "${PROJ}.xcodeproj" -target "$PROJ" \
+            -sdk iphoneos -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | tail -40
+          echo "--- products ---"
+          ls -la build/Build/Products/Release-iphoneos/ || true
+
+      - name: Pack the ipa
+        # An .ipa is a zip containing a Payload folder with the .app.
+        # Sideloadly re-signs it, so no signature is needed here.
+        run: |
+          cd "$HOME/ios/${PROJ}-ios"
+          APPDIR="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)"
+          if [ -z "$APPDIR" ]; then
+            echo "No .app was produced"
+            ls -la build/Build/Products/ || true
             exit 1
           fi
-          cd $GITHUB_WORKSPACE
+          cd "$HOME/ios"
           rm -rf Payload
           mkdir -p Payload
-          cp -R "$APP" Payload/
-          zip -qry "$APP_NAME.ipa" Payload
-          unzip -l "$APP_NAME.ipa" | head -20
+          cp -R "$APPDIR" Payload/
+          zip -qry "$GITHUB_WORKSPACE/$APP_NAME.ipa" Payload
+          echo "--- inside the ipa ---"
+          unzip -l "$GITHUB_WORKSPACE/$APP_NAME.ipa" | head -20
 
       - name: Upload the ipa
         uses: actions/upload-artifact@v4
