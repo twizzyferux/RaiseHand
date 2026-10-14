@@ -89,10 +89,24 @@ jobs:
           "$PY312" -m venv "$HOME/kivyvenv"
           echo "$HOME/kivyvenv/bin" >> $GITHUB_PATH
           "$HOME/kivyvenv/bin/pip" install --upgrade pip wheel
-          "$HOME/kivyvenv/bin/pip" install kivy-ios cython
+          "$HOME/kivyvenv/bin/pip" install "kivy-ios==2025.5.17" cython
           echo "--- installed ---"
           "$HOME/kivyvenv/bin/pip" list | grep -iE "kivy|cython"
           "$HOME/kivyvenv/bin/toolchain" --help | head -20
+
+      - name: Restore the iOS toolchain
+        # Compiling Python and SDL for iOS takes 20-40 minutes, and there
+        # is nothing to gain from doing it on every attempt to fix the
+        # steps that follow. toolchain skips recipes that are already
+        # built, so restoring the whole working folder turns every next
+        # run into a short one.
+        #
+        # The key carries the pinned kivy-ios version: bumping it gives
+        # a fresh cache, keeping it reuses the compiled toolchain.
+        uses: actions/cache@v4
+        with:
+          path: ios
+          key: kivyios-2025.5.17-${{ runner.os }}-${{ runner.arch }}
 
       - name: Build the iOS toolchain
         # This is the slow step: Python and SDL are compiled from
