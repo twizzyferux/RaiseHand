@@ -101,25 +101,34 @@ jobs:
           "$HOME/kivyvenv/bin/toolchain" --help | head -20
 
       - name: Restore the iOS toolchain
-        # Compiling Python and SDL for iOS takes 20-40 minutes, and there
-        # is nothing to gain from doing it on every attempt to fix the
-        # steps that follow. toolchain skips recipes that are already
-        # built, so restoring the whole working folder turns every next
-        # run into a short one.
+        # Compiling Python, SDL and Kivy for iOS takes a long time, and
+        # there is nothing to gain from doing it on every attempt to fix
+        # the steps that follow. toolchain skips recipes that are
+        # already built, so restoring the result turns every next run
+        # into a short one.
+        #
+        # Only dist is cached. The build folder holds intermediate
+        # compilation output, and keeping it broke the ios recipe: it
+        # copies that folder into itself, so a restored build folder
+        # grew into "build/ios/iphoneos-arm64/ios/build/ios/
+        # iphoneos-arm64/ios/..." until copytree ran out of path.
         #
         # The key carries the pinned kivy-ios version: bumping it gives
         # a fresh cache, keeping it reuses the compiled toolchain.
         uses: actions/cache@v4
         with:
-          path: ios
+          path: ios/dist
           key: kivyios-2025.5.17-${{ runner.os }}-${{ runner.arch }}
 
       - name: Build the iOS toolchain
-        # This is the slow step: Python and SDL are compiled from
-        # source for the iOS target. Expect 20-40 minutes.
+        # This is the slow step: Python, SDL and Kivy are compiled from
+        # source for the iOS target.
         run: |
           mkdir -p "$IOS_DIR"
           cd "$IOS_DIR"
+          # The build folder is wiped for the reason described above:
+          # a leftover one makes the ios recipe nest copies of itself.
+          rm -rf build
           toolchain build python3 libffi openssl sdl2 sdl2_image sdl2_mixer sdl2_ttf ios pyobjus kivy
 
       - name: Install the app dependencies for iOS
@@ -166,11 +175,11 @@ jobs:
           cd "$IOS_DIR"
           # The generated project is removed first.
           #
-          # The whole working folder is restored from cache, and that
-          # cache already contains a project directory from a previous
-          # run. cookiecutter refuses to generate into a folder that
-          # exists ("OutputDirExistsException"), so without this the
-          # run only works when nothing was cached yet.
+          # The result folder is restored from cache, and that cache
+          # already contains a project directory from a previous run.
+          # cookiecutter refuses to generate into a folder that exists
+          # ("OutputDirExistsException"), so without this the run only
+          # works when nothing was cached yet.
           rm -rf "$IOS_DIR/${PROJ}-ios"
           toolchain create $APP_NAME "$IOS_DIR/$APP_NAME.app"
           echo "--- generated ---"
