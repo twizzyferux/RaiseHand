@@ -153,6 +153,14 @@ jobs:
       - name: Create the Xcode project
         run: |
           cd "$IOS_DIR"
+          # The generated project is removed first.
+          #
+          # The whole working folder is restored from cache, and that
+          # cache already contains a project directory from a previous
+          # run. cookiecutter refuses to generate into a folder that
+          # exists ("OutputDirExistsException"), so without this the
+          # run only works when nothing was cached yet.
+          rm -rf "$IOS_DIR/${PROJ}-ios"
           toolchain create $APP_NAME "$IOS_DIR/$APP_NAME.app"
           echo "--- generated ---"
           ls -la "$IOS_DIR/${PROJ}-ios"
