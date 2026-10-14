@@ -502,8 +502,7 @@ class NavItem(Widget):
     Иконка и подпись рисуются в canvas самого пункта — по той же причине,
     что и ряд чата (см. шапку модуля). Активная вкладка фиолетовая
     (#4B2FE0), остальные чёрные; цвет не переключается рывком, а плавно
-    едет к фиолетовому через `active_t`. Лупа «Поиска» в макете нарисована
-    линиями, а не картинкой — так и рисуем.
+    едет к фиолетовому через `active_t`.
 
     Пункт лежит в отдельном слое поверх стекла (ui/kv/home.kv), а не
     рядом с плашкой и не внутри неё: слой объявлен последним, поэтому
@@ -535,13 +534,8 @@ class NavItem(Widget):
     icon_y = NumericProperty(53.7)         # макет 785 (низ иконки)
     caption_x = NumericProperty(173.0)     # центр подписи, макет 157..189
     caption_size = NumericProperty(13.0)   # один на все подписи
-    magnifier = BooleanProperty(False)     # лупа рисуется линиями (в макете)
     idle_source = StringProperty("")
     active_source = StringProperty("")
-
-    # Лупа «Поиска» в макете: круг (72, 800) r 8 и ручка (66, 806)->(59, 813)
-    GLASS = (79.4, 77.9, 8.8)             # центр и радиус в сцене
-    GLASS_HANDLE = ((72.8, 71.5), (65.2, 64.2))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -555,14 +549,13 @@ class NavItem(Widget):
         self._pressed = False
         self._labels = []
         # Перерисовываем при смене любого влияющего на рисунок свойства:
-        # иначе, например, magnifier=True после caption не отразился бы —
-        # лупа так и осталась бы ненарисованной.
+        # иначе, например, set_icon после caption не отразился бы —
+        # иконка так и осталась бы ненарисованной.
         self.bind(pos=self._redraw, size=self._redraw, active_t=self._redraw,
                   press_tint=self._redraw,
                   icon_size=self._redraw, icon_x=self._redraw,
                   icon_y=self._redraw, caption_x=self._redraw,
-                  caption_size=self._redraw, caption=self._redraw,
-                  magnifier=self._redraw)
+                  caption_size=self._redraw, caption=self._redraw)
 
     def on_release(self, *args):
         """Обработчик по умолчанию — его требует объявленное on_release."""
@@ -630,24 +623,15 @@ class NavItem(Widget):
         size = dp(self.icon_size)
 
         with self.canvas:
-            if self.magnifier:
-                # Лупа нарисована линиями — ровно как в макете
-                Color(rgba=ink)
-                Line(circle=(dp(self.GLASS[0]), dp(self.GLASS[1]),
-                             dp(self.GLASS[2])), width=dp(3.2), cap="round")
-                (x1, y1), (x2, y2) = self.GLASS_HANDLE
-                Line(points=[dp(x1), dp(y1), dp(x2), dp(y2)],
-                     width=dp(3.2), cap="round")
-            else:
-                source = self.active_source if self.active else self.idle_source
-                texture = _icon_texture(source)
-                if texture is not None:
-                    # Под нажатием иконка чуть гаснет — иначе нажатие на
-                    # прозрачной кнопке не видно совсем.
-                    Color(rgba=(1 - 0.25 * press, 1 - 0.25 * press,
-                                1 - 0.25 * press, 1))
-                    Rectangle(texture=texture, pos=(icon_x, icon_y),
-                              size=(size, size))
+            source = self.active_source if self.active else self.idle_source
+            texture = _icon_texture(source)
+            if texture is not None:
+                # Под нажатием иконка чуть гаснет — иначе нажатие на
+                # прозрачной кнопке не видно совсем.
+                Color(rgba=(1 - 0.25 * press, 1 - 0.25 * press,
+                            1 - 0.25 * press, 1))
+                Rectangle(texture=texture, pos=(icon_x, icon_y),
+                          size=(size, size))
 
             if self.caption:
                 label = CoreLabel(

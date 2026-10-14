@@ -33,7 +33,7 @@
 """
 import os
 
-from kivy.graphics import Color, Line, Rectangle
+from kivy.graphics import Color, Rectangle, RoundedRectangle
 from kivy.metrics import dp
 from kivy.properties import NumericProperty
 from kivy.uix.widget import Widget
@@ -217,17 +217,30 @@ class LiquidFab(LiquidGlass):
     # -- плюс ---------------------------------------------------------------- #
 
     def _draw_plus(self, *_):
-        """Плюс поверх стекла: макет 344.5..371.5 по X, 99..129 по Y."""
+        """Плюс поверх стекла: макет 344.5..371.5 по X, 99..129 по Y.
+
+        Рисуем двумя скруглёнными прямоугольниками, а не двумя Line:
+        у Line концы получались разными — у горизонтальной штрихи
+        выходили острыми, у вертикальной скруглёнными. Прямоугольник
+        со радиусом в половину толщины даёт одинаковый торец со всех
+        четырёх сторон, и размеры берутся те же, что были у линий.
+        """
         self.canvas.after.clear()
         press = self.press_tint
+        thickness = dp(3.3)
+        half = thickness / 2
+        arm_x = dp(14.9)               # по горизонтали
+        arm_y = dp(15.8)               # по вертикали
         with self.canvas.after:
             Color(rgba=(1, 1, 1, 1 - 0.15 * press))
-            Line(points=[self.center_x - dp(14.9), self.center_y,
-                         self.center_x + dp(14.9), self.center_y],
-                 width=dp(3.3), cap="round")
-            Line(points=[self.center_x, self.center_y - dp(15.8),
-                         self.center_x, self.center_y + dp(15.8)],
-                 width=dp(3.3), cap="round")
+            RoundedRectangle(pos=(self.center_x - arm_x,
+                                  self.center_y - half),
+                             size=(arm_x * 2, thickness),
+                             radius=[half, ])
+            RoundedRectangle(pos=(self.center_x - half,
+                                  self.center_y - arm_y),
+                             size=(thickness, arm_y * 2),
+                             radius=[half, ])
 
 
 def attach_background(widget, background):
