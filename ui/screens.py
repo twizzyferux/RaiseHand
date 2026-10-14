@@ -837,16 +837,26 @@ class HomeScreen(BaseScreen):
         нём только кремовая заливка. Если размывать canvas сцены, плагин
         захватит ещё и иконки панели, и они выйдут раздвоенными.
         """
-        from ui.glass_widget import attach_background, set_visible
+        from ui.glass_widget import (apply_accessibility, attach_background,
+                                     set_visible)
 
         source = self.ids.get("blur_source")
         if source is None:
             return
+        surfaces = []
         for name in ("navbar", "fab"):
             widget = self.ids.get(name)
             if widget is not None:
                 set_visible(widget, True)
                 attach_background(widget, source)
+                surfaces.append(widget)
+        apply_accessibility(surfaces)
+        # Галочка в настройках должна показывать текущее состояние.
+        settings_screen = self.app.manager.get_screen("settings")
+        row = getattr(settings_screen, "ids", {}).get("solid_glass")
+        if row is not None:
+            from ui.glass_widget import reduced_transparency
+            row.ids["box"].state = "down" if reduced_transparency() else "normal"
 
     def refresh(self):
         user = self.app.current_user
@@ -972,6 +982,7 @@ class HomeScreen(BaseScreen):
             item.icon_x = x
             item.icon_y = y
             item.caption_x = caption_x
+            item.glass = self.ids["navbar"]
             stem = name.replace("nav_", "")
             item.set_icon(self.app.sprite("nav_%s_black" % stem),
                           self.app.sprite("nav_%s_violet" % stem))
@@ -1103,6 +1114,36 @@ class SettingsScreen(BaseScreen):
 
     def choose_avatar(self):
         choose_file(self._on_avatar, "Выберите аватар")
+
+    def on_pre_enter(self, *args):
+        row = self.ids.get("solid_glass")
+        if row is None or getattr(row, "_bound", False):
+            return
+        # Строка CheckRow — контейнер, on_release у неё нет, поэтому
+        # слушаем саму галочку. Привязка одна на весь экран: иначе при
+        # каждом возврате в настройки настройка применялась бы дважды.
+        row._bound = True
+        row.ids["box"].fbind("state",
+                             lambda *a: self.toggle_solid_glass())
+
+    def toggle_solid_glass(self):
+        """«Меньше прозрачности» — как системная настройка в iOS.
+
+        Галочка лежит в строке рядом с подписью, поэтому берём её из
+        самой строки, а не запоминаем состояние в поле экрана: иначе
+        после перезапуска приложения переключатель врал бы.
+        """
+        from core.config import SETTINGS, save_settings
+        from ui.glass_widget import apply_accessibility
+
+        row = self.ids.get("solid_glass")
+        if row is None:
+            return
+        checked = row.ids["box"].state == "down"
+        SETTINGS.setdefault("glass", {})["reduced_transparency"] = checked
+        save_settings()
+        home = self.app.manager.get_screen("home")
+        apply_accessibility([home.ids.get("navbar"), home.ids.get("fab")])
 
     def _on_avatar(self, path: str):
         self._new_avatar = path
