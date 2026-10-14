@@ -16,35 +16,89 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from core import platform_setup  # noqa: E402
-from core.platform_setup import init_window  # noqa: E402
 
-# --- РАЗРЕШЕНИЕ ОКНА ------------------------------------------------------
-# ПК:        масштаб подбирается под свободное место на экране.
-# iOS/Android: масштаб подбирается под реальный экран устройства.
-# Подробности и ручное переопределение (RH_UI_SCALE) — core/platform_setup.py.
-init_window()
-UI_SCALE = platform_setup.UI_SCALE
+def _startup_log_path():
+    """Куда записать ошибку старта.
 
-# Дальше импорты идут после init_window(): Kivy читает размер окна из
-# Config при создании окна, и настройка должна быть раньше этого.
+    Путь считается вручную, ничего не импортируя: если падает наш
+    модуль, взять путь из него нельзя - он и есть причина. Поэтому
+    проверяются известные места и берётся первое, куда запись прошла.
+
+    На iOS переменная HOME не выставляется, а TMP указывает внутрь
+    папки приложения (только чтение), поэтому проверка настоящая.
+    """
+    import tempfile
+    for base in (os.environ.get("HOME"), os.path.expanduser("~"),
+                 tempfile.gettempdir(), os.getcwd()):
+        if not base:
+            continue
+        try:
+            folder = os.path.join(base, "raisehand")
+            os.makedirs(folder, exist_ok=True)
+            return os.path.join(folder, "startup.log")
+        except OSError:
+            continue
+    return None
 
 
-from kivy.app import App  # noqa: E402
-from kivy.core.text import LabelBase  # noqa: E402
-from kivy.lang import Builder  # noqa: E402
-from kivy.properties import ListProperty, ObjectProperty, StringProperty  # noqa: E402
-from kivy.uix.screenmanager import NoTransition, ScreenManager  # noqa: E402
+def _record(reason, detail):
+    """Отметка в журнале старта. Сама ничего ломать не должна."""
+    import time
+    path = _startup_log_path()
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write("%s %s\n%s\n%s\n"
+                    % (time.strftime("%H:%M:%S"), reason, detail, "-" * 40))
+    except OSError:
+        pass
 
-from core import auth, database, logs, session, teacher_proof  # noqa: E402
-from core.config import BASE_DIR, SETTINGS, sprite, text  # noqa: E402
-from ui import anim, screens, touch_fix  # noqa: E402
-from ui.avatar import GradientAvatar  # noqa: E402,F401  (нужен .kv)
-from ui.bubbles import WelcomeDecor  # noqa: E402,F401  (нужен .kv)
-from ui.chats import ChatList, ChatPane, ChatRow, NavItem  # noqa: E402,F401  (нужны .kv)
-from ui.fields import PasswordField, PillPasswordField  # noqa: E402,F401  (.kv)
-from ui.glass_widget import (BlurSource, LiquidFab,  # noqa: E402,F401  (нужны .kv)
-                             LiquidNavBar)
+
+_record("приложение стартует", os.path.dirname(os.path.abspath(__file__)))
+
+try:
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+    from core import platform_setup  # noqa: E402
+    from core.platform_setup import init_window  # noqa: E402
+
+    # --- РАЗРЕШЕНИЕ ОКНА ------------------------------------------------------
+    # ПК:        масштаб подбирается под свободное место на экране.
+    # iOS/Android: масштаб подбирается под реальный экран устройства.
+    # Подробности и ручное переопределение (RH_UI_SCALE) — core/platform_setup.py.
+    init_window()
+    UI_SCALE = platform_setup.UI_SCALE
+
+    # Дальше импорты идут после init_window(): Kivy читает размер окна из
+    # Config при создании окна, и настройка должна быть раньше этого.
+
+
+    from kivy.app import App  # noqa: E402
+    from kivy.core.text import LabelBase  # noqa: E402
+    from kivy.lang import Builder  # noqa: E402
+    from kivy.properties import ListProperty, ObjectProperty, StringProperty  # noqa: E402
+    from kivy.uix.screenmanager import NoTransition, ScreenManager  # noqa: E402
+
+    from core import auth, database, logs, session, teacher_proof  # noqa: E402
+    from core.config import BASE_DIR, SETTINGS, sprite, text  # noqa: E402
+    from ui import anim, screens, touch_fix  # noqa: E402
+    from ui.avatar import GradientAvatar  # noqa: E402,F401  (нужен .kv)
+    from ui.bubbles import WelcomeDecor  # noqa: E402,F401  (нужен .kv)
+    from ui.chats import ChatList, ChatPane, ChatRow, NavItem  # noqa: E402,F401  (нужны .kv)
+    from ui.fields import PasswordField, PillPasswordField  # noqa: E402,F401  (.kv)
+    from ui.glass_widget import (BlurSource, LiquidFab,  # noqa: E402,F401  (нужны .kv)
+                                 LiquidNavBar)
+except BaseException:
+    # Падение при импорте раньше всего остального: экран с ошибкой
+    # показать уже нечем, а iOS об этом не пишет отчёт. Поэтому текст
+    # ошибки уходит в файл, который можно забрать с телефона
+    # (Apple Devices -> устройство -> Files -> RaiseHand).
+    import traceback
+
+    _record("ИМПОРТ НЕ ПРОШЁЛ", traceback.format_exc())
+    raise
 
 # Захват касания в этой сборке Kivy не заполняет grab_current, а от него
 # зависит отпускание кнопок. Чиним до создания окна — иначе виджеты успеют
