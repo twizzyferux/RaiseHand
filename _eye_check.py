@@ -19,8 +19,7 @@ app = MessengerApp()
 SHOTS = os.path.join(BASE, '_shots')
 
 # экран -> имя снимка
-PLAN = [('login', 'login'), ('register_student', 'register'),
-        ('home', 'panel')]
+PLAN = [('welcome', 'welcome'), ('login', 'login')]
 
 
 def start(dt):
