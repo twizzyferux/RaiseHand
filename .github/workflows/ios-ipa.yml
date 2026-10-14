@@ -55,13 +55,28 @@ jobs:
           brew install sdl2 sdl2_image sdl2_mixer sdl2_ttf
 
       - name: Install kivy-ios
+        # pip3 straight from the runner fails with "externally-managed
+        # environment" (PEP 668): the system Python refuses to install
+        # anything so it cannot be broken by a package. The way out is a
+        # virtual environment. Its bin directory goes to the front of
+        # PATH for the following steps, so kivy-ios and toolchain are
+        # found there and nowhere else.
+        #
+        # python@3.12 from Homebrew is keg-only: it is NOT symlinked into
+        # the main bin directory, so plain "python3.12" is not on PATH
+        # and the full path has to be asked from brew.
         run: |
-          echo "$HOME/Library/Python/3.12/bin" >> $GITHUB_PATH
-          pip3 install --user --upgrade kivy-ios cython
+          PY312="$(brew --prefix python@3.12)/bin/python3.12"
+          "$PY312" -m venv "$HOME/kivyvenv"
+          echo "$HOME/kivyvenv/bin" >> $GITHUB_PATH
+          "$HOME/kivyvenv/bin/pip" install --upgrade pip wheel
+          "$HOME/kivyvenv/bin/pip" install kivy-ios cython
+          echo "--- what got installed ---"
+          "$HOME/kivyvenv/bin/pip" list | grep -iE "kivy|cython"
+          "$HOME/kivyvenv/bin/kivy-ios" --version
 
       - name: Create app skeleton
         run: |
-          export PATH="$HOME/Library/Python/3.12/bin:$PATH"
           kivy-ios init $APP_NAME
 
       - name: Copy project into the skeleton
@@ -74,14 +89,12 @@ jobs:
 
       - name: Build Python for iOS
         run: |
-          export PATH="$HOME/Library/Python/3.12/bin:$PATH"
           cd $HOME/ios
           toolchain build $APP_NAME
 
       - name: Create the ipa
         continue-on-error: true
         run: |
-          export PATH="$HOME/Library/Python/3.12/bin:$PATH"
           cd $HOME/ios
           toolchain create $APP_NAME $BUNDLE_ID || true
 
