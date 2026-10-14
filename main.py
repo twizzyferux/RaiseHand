@@ -26,13 +26,20 @@ def _startup_log_path():
 
     На iOS переменная HOME не выставляется, а TMP указывает внутрь
     папки приложения (только чтение), поэтому проверка настоящая.
-    Documents стоит вторым: именно эту папку показывает раздел Files
-    в Apple Devices, из неё файл можно забрать на компьютер перетаскиванием.
+    Контейнер выводится от расположения кода: сам пакет лежит как
+    <контейнер>/RaiseHand.app, значит контейнер на два уровня выше, а
+    документы - <контейтор>/Documents. Их и показывает раздел Files в
+    Apple Devices.
     """
     import tempfile
+    here = os.path.dirname(os.path.abspath(__file__))
+    # <контейнер>/RaiseHand.app/YourApp -> контейнер на два уровня выше.
+    container = os.path.dirname(os.path.dirname(here))
     home = os.environ.get("HOME") or os.path.expanduser("~")
     for base in (home,
                  os.path.join(home, "Documents"),
+                 os.path.join(container, "Documents"),
+                 container,
                  tempfile.gettempdir(),
                  os.getcwd()):
         if not base:
