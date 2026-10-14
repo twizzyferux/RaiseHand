@@ -182,8 +182,13 @@ class LiquidNavBar(LiquidGlass):
         luminosity=1.12,
         saturation=1.10,
         noise_opacity=0.015,
-        outline_width=1.1,
-        outline_color=(1.0, 1.0, 1.0, 0.85),
+        outline_width=1.4,
+        # Кромка видна на светлом фоне
+        # ---------------------------
+        # Раньше кромка была белой по белому: на кремовом экране её не
+        # было видно совсем, и панель читалась просто как белое пятно.
+        # Теперь кромка чуть темнее фона — как настоящая грань стекла.
+        outline_color=(0.72, 0.73, 0.78, 0.50),
         overlay_color=(1.0, 1.0, 1.0, 0.30),
     )
 
@@ -262,8 +267,8 @@ class LiquidFab(LiquidGlass):
         luminosity=1.0,
         saturation=1.35,
         noise_opacity=0.012,
-        outline_width=1.0,
-        outline_color=(1.0, 1.0, 1.0, 0.85),
+        outline_width=1.3,
+        outline_color=(0.72, 0.73, 0.78, 0.50),
         overlay_color=(VIOLET[0], VIOLET[1], VIOLET[2], 0.86),
     )
 

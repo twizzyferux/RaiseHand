@@ -22,6 +22,36 @@
     write_tab: False
     padding: [dp(10), (self.height - self.line_height) / 2]
 
+# --- ПОЛЕ ПАРОЛЯ С «ГЛАЗОМ» -----------------------------------------------
+# Отдельное правило, а не продолжение Field: у правил Kivy нет
+# наследования по имени, класс PasswordField сам по себе, и задачи
+# повторить. Справа отступ побольше, чтобы текст не лез под иконку.
+
+<PasswordField>:
+    size_hint_y: None
+    height: dp(44)
+    multiline: False
+    write_tab: False
+    password: True
+    # Справа отступ побольше обычного: справа иконка глаза, текст туда
+    # лезть не должен. Список одной строкой — парсер kv не переносит
+    # значения на следующую строку.
+    padding: [dp(10), (self.height - self.line_height) / 2, dp(44), (self.height - self.line_height) / 2]
+
+# --- ТАБЛЕТКА С ПАРОЛЕМ И «ГЛАЗОМ» ----------------------------------------
+# Повторяет оформление PillInput (ниже) и добавляет справа место под
+# иконку. В макете рядом с таблеткой стояла картинка глаза, но нажать
+# на неё было нельзя — теперь глаз часть поля.
+
+<PillPasswordField>:
+    size_hint: None, None
+    size: dp(300), dp(50)
+    multiline: False
+    write_tab: False
+    password: True
+    font_size: dp(33.5)
+    padding: [dp(16.5), (self.height - self.line_height) / 2 - dp(3), dp(46), (self.height - self.line_height) / 2 - dp(3)]
+
 # Базовая кнопка — БЕЗ стандартного фона Kivy.
 # PressButton добавляет «живое» нажатие: лёгкое сжатие и плавное затемнение
 # (см. ui/anim.py). Стандартная Kivy просто меняет картинку — здесь движение.
