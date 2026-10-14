@@ -247,6 +247,27 @@ jobs:
             exit 1
           fi
           echo "found: $APPDIR"
+          #
+          # What is actually inside the bundle.
+          #
+          # The phone gave nothing away: when a module fails to import
+          # at startup the process dies before iOS starts recording
+          # anything, so there is no crash report on the device at all.
+          # The bundle is checked here instead, so the build itself
+          # answers whether the Python modules made it in.
+          echo "=== top level of the app ==="
+          ls -la "$APPDIR"
+          echo "=== python modules inside ==="
+          for mod in kivy kivy_garden frostedglass _sqlite3 sqlite3 PIL; do
+            cnt=$(find "$APPDIR" -name "*${mod}*" 2>/dev/null | wc -l | tr -d ' ')
+            echo "$mod: $cnt"
+          done
+          echo "=== where python lives ==="
+          find "$APPDIR" -maxdepth 4 -type d -name "site-packages" 2>/dev/null
+          echo "=== our own code inside ==="
+          find "$APPDIR" -name "config*" -o -name "core" -type d 2>/dev/null | head -10
+          echo "=== first 40 entries ==="
+          find "$APPDIR" -maxdepth 2 | head -40
           cd "$IOS_DIR"
           rm -rf Payload
           mkdir -p Payload
