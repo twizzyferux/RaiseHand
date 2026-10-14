@@ -217,11 +217,12 @@
             halign: 'left'
             text_size: self.width, None
 
-        PillPasswordField:
+        PillInput:
             id: password
             pos: dp(75), dp(585)
             hint_text: '••••••••'
             font_size: dp(33.5)
+            padding: [dp(16.5), (self.height - self.line_height) / 2 - dp(3)]
             password: True
 
         Label:
@@ -245,11 +246,12 @@
             halign: 'left'
             text_size: self.width, None
 
-        PillPasswordField:
+        PillInput:
             id: password_repeat
             pos: dp(75), dp(454)
             hint_text: '••••••••'
             font_size: dp(33.5)
+            padding: [dp(16.5), (self.height - self.line_height) / 2 - dp(3)]
             password: True
 
         CheckToggle:
