@@ -38,10 +38,43 @@
     # значения на следующую строку.
     padding: [dp(10), (self.height - self.line_height) / 2, dp(44), (self.height - self.line_height) / 2]
 
+    # Подложка-«таблетка» — слой ПОД полем, а не его собственная заливка.
+    # Поэтому серая рамка самого поля убрана (background_* пустые), и
+    # таблетка рисуется в canvas.before — то есть под текстом. Сверху
+    # остаётся глаз (canvas.after).
+    #
+    # Порядок слоёв: таблетка -> текст поля -> глаз.
+    background_normal: ''
+    background_active: ''
+    background_color: 0, 0, 0, 0
+    foreground_color: 0.08, 0.08, 0.1, 1
+    hint_text_color: 0.557, 0.557, 0.576, 1
+    cursor_color: 0.294, 0.184, 0.878, 1
+
+    canvas.before:
+        Color:
+            rgba: 0.937, 0.937, 0.957, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.height / 2, ]
+        Color:
+            rgba: 0.08, 0.08, 0.1, 1
+
     # Фона своего у поля нет: оно должно выглядеть ровно как «Имя» и
     # «Фамилия» на этом же экране. Пробовали дать ему «таблетку» из
     # PillInput — вышло наоборот: скруглёнными стали только пароли, а
     # имя с фамилией остались прямоугольными, и ряд выглядел шитым.
+
+    canvas.before:
+        Color:
+            rgba: 0.937, 0.937, 0.957, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.height / 2, ]
+        Color:
+            rgba: 0.08, 0.08, 0.1, 1
 
     # Глаз рисует разметка, а не код: Kivy пересчитывает эти координаты
     # сам при изменении right и center_y. В коде глаз успевал
