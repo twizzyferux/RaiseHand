@@ -84,6 +84,31 @@ SCREENS = [
 ]
 
 
+def _crash_screen(detail: str):
+    """Окно с текстом ошибки вместо приложения.
+
+    Нужно, чтобы сбой при запуске был виден. Иначе на iOS он
+    выглядит как «мигнуло и закрылось», а в системном журнале телефона
+    ничего нет.
+    """
+    from kivy.uix.label import Label
+    from kivy.uix.scrollview import ScrollView
+    from kivy.core.text import Label as CoreLabel
+
+    label = Label(text=detail, font_size="11sp", halign="left",
+                  valign="top", size_hint_y=None, padding=(8, 8))
+    # Высота под фактический текст, иначе ScrollView не знает, что
+    # показывать, и содержимое обрезается по верхнему краю.
+    label.bind(
+        width=lambda inst, value: setattr(inst, "text_size", (value, None)),
+        texture_size=lambda inst, value: setattr(inst, "height", value[1] + 24),
+    )
+    del CoreLabel
+    box = ScrollView(do_scroll_x=False)
+    box.add_widget(label)
+    return box
+
+
 class MessengerApp(App):
     """Главный класс. Все .kv-файлы обращаются к нему через слово `app`."""
 
@@ -93,6 +118,28 @@ class MessengerApp(App):
     font_name = StringProperty("SFPro")
 
     def build(self):
+        # Ошибка старта показывается на экране, а не теряется.
+        #
+        # На iOS падение при инициализации не оставляет следов: процесс
+        # умирает раньше, чем система начинает записывать отчёт, и в
+        # аналитике телефона пусто — непонятно даже, падало ли что-то.
+        # Поэтому весь build выполняется под защитой: при ошибке
+        # приложение всё равно показывает окно с текстом, и причину
+        # видно на экране (или на скриншоте).
+        try:
+            return self._build()
+        except BaseException:
+            import traceback
+
+            detail = traceback.format_exc()
+            try:
+                sys.stderr.write(detail)
+                sys.stderr.flush()
+            except Exception:
+                pass
+            return _crash_screen(detail)
+
+    def _build(self):
         self.title = SETTINGS["app_name"]
         self.icon = sprite("logo") or None
         self.teacher_platforms = teacher_proof.platforms()

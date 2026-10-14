@@ -6,6 +6,7 @@
 
 import json
 import os
+import sys
 import tempfile
 
 from kivy.utils import platform as _kivy_platform
@@ -21,22 +22,33 @@ def _writable_dir(name: str) -> str:
     """Папка для данных — та, куда действительно можно записать.
 
     На iOS папка приложения только для чтения, поэтому данные уходят в
-    домашнюю папку приложения. Какой именно путь там, код не знает,
-    поэтому берётся первый, в который запись реально прошла: создаём
-    папку, пишем в неё пробный файл, удаляем. Не получилось — берём
-    следующий кандидат, в конце папку системы.
+    записываемое место. Какой именно путь там, код не знает, поэтому
+    берётся первый, в который запись реально прошла: папка создаётся, в
+    неё пишется пробный файл, файл удаляется.
 
-    На ПК поведение не меняется: первой идёт та же папка data рядом с
-    кодом, что и раньше.
+    Исключение отсюда НЕ бросается, и это главное. На iOS kivy-ios не
+    выставляет HOME, а TMP указывает внутрь папки приложения — туда
+    тоже нельзя писать. Если бы падение было единственным исходом,
+    приложение умирало бы на импорте, ещё до первого экрана, и на
+    телефоне не оставалось бы ни единого следа: iOS успевает записать
+    лог только для падений, которые случились после старта процесса.
+    Лучше запуститься и потерять часть данных, чем не запуститься вовсе.
+
+    На ПК поведение не меняется: первой идёт та же папка рядом с кодом.
     """
     candidates = [os.path.join(BASE_DIR, name)]
     if _kivy_platform == "ios":
+        home = os.environ.get("HOME") or os.path.expanduser("~")
         candidates = [
-            os.path.join(os.path.expanduser("~"), name),
-            os.path.join(os.path.expanduser("~"), "Documents", name),
+            os.path.join(home, name),
+            os.path.join(home, "Documents", name),
+            os.path.join(home, "Library", name),
         ]
-    candidates.append(os.path.join(tempfile.gettempdir(), "raisehand", name))
-    last_error = None
+    candidates.extend([
+        os.path.join(tempfile.gettempdir(), "raisehand", name),
+        os.path.join(os.getcwd(), name),
+    ])
+    reason = []
     for path in candidates:
         try:
             os.makedirs(path, exist_ok=True)
@@ -44,17 +56,31 @@ def _writable_dir(name: str) -> str:
             with open(probe, "w", encoding="utf-8"):
                 pass
             os.remove(probe)
+            if reason:
+                sys.stderr.write("config: %s недоступны: %s\n"
+                                 % (name, "; ".join(reason)))
             return path
         except OSError as e:
-            last_error = e
-            continue
-    raise RuntimeError("нет папки, куда можно писать: %s" % last_error)
+            reason.append("%s (%s)" % (path, e))
+    # Ничего не подошло: отдаём последний путь и продолжаем. Дальше
+    # запись выдаст свою ошибку в том месте, где её видно, а не при
+    # импорте всего пакета.
+    sys.stderr.write("config: не удалось создать %s: %s\n"
+                     % (name, "; ".join(reason)))
+    return candidates[-1]
 
 
 CONFIG_DIR = _writable_dir("config")
 DATA_DIR = _writable_dir("data")
 
-os.makedirs(os.path.join(DATA_DIR, "uploads"), exist_ok=True)
+# Папка для вложений — через ту же защиту, что и остальные. Раньше здесь
+# стоял прямой вызов makedirs, и он ронял импорт целиком там, где
+# _writable_dir уже решил не падать: приложение умирало на создании
+# папки, не успев ничего показать.
+try:
+    os.makedirs(os.path.join(DATA_DIR, "uploads"), exist_ok=True)
+except OSError as e:
+    sys.stderr.write("config: не создать папку uploads: %s\n" % e)
 
 
 def _config_path(name: str) -> str:
