@@ -62,6 +62,43 @@ def _record(reason, detail):
 
 _record("приложение стартует", os.path.dirname(os.path.abspath(__file__)))
 
+# Снимок окружения. На iOS без него диагностика упирается в догадки:
+# неизвестно, где система ищет домашнюю папку, куда положились данные
+# и что вообще видно приложению. Здесь это видно сразу.
+try:
+    import sys as _sys
+    _env_lines = [
+        "платформа: %s" % _sys.platform,
+        "исполняемый: %s" % _sys.executable,
+        "версия python: %s" % _sys.version.split()[0],
+        "cwd: %s" % os.getcwd(),
+        "HOME: %s" % os.environ.get("HOME"),
+        "expanduser(~): %s" % os.path.expanduser("~"),
+        "TMPDIR: %s" % os.environ.get("TMPDIR"),
+        "TMP: %s" % os.environ.get("TMP"),
+        "PYTHONHOME: %s" % os.environ.get("PYTHONHOME"),
+        "PYTHONPATH: %s" % os.environ.get("PYTHONPATH"),
+        "KIVY_NO_CONSOLELOG: %s" % os.environ.get("KIVY_NO_CONSOLELOG"),
+        "sys.path: %s" % " | ".join(_sys.path),
+    ]
+    _record("ОКРУЖЕНИЕ", "\n".join(_env_lines))
+except BaseException:
+    pass
+
+# Что реально лежит рядом с кодом. Если папка с настройками или
+# шрифтами не найдена - причина найдена, смотреть больше некуда.
+try:
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _seen = []
+    for _rel in ("config/settings.json", "assets/fonts/SF-Pro-Text-Regular.otf",
+                 "ui/kv/theme.kv", "ui/glass_widget.py"):
+        _p = os.path.join(_here, _rel)
+        _seen.append("%s: %s" % (_rel, os.path.exists(_p)))
+    _seen.append("в папке %s: %d файлов" % (_here, len(os.listdir(_here))))
+    _record("ФАЙЛЫ", "\n".join(_seen))
+except BaseException:
+    pass
+
 try:
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -104,6 +141,10 @@ except BaseException:
 
     _record("ИМПОРТ НЕ ПРОШЁЛ", traceback.format_exc())
     raise
+
+# Отметка после импортов: раз её нет, а первая строка есть - значит
+# упало на импорте; если есть обе, сбой происходит позже.
+_record("импорты прошли", "успех")
 
 # Захват касания в этой сборке Kivy не заполняет grab_current, а от него
 # зависит отпускание кнопок. Чиним до создания окна — иначе виджеты успеют
