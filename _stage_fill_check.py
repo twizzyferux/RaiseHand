@@ -22,6 +22,9 @@ import os
 BASE = os.path.dirname(os.path.abspath(__file__))
 LOG = os.path.join(BASE, "_shots", "stage_fill.log")
 DESIGN_W, DESIGN_H = 450, 920
+# Поле макета слева и справа. Столько не должно срезаться: за ним
+# чистое место, а не содержимое.
+MARGIN_DP = 45
 
 # Экраны телефонов в пикселях: как есть, так и есть на железе.
 SCREENS = [
@@ -54,23 +57,22 @@ def main():
         got = ps.fit_design_to_screen()
         need_h = DESIGN_H * got
         need_w = DESIGN_W * got
-        # Масштаб считается по ширине, поэтому по высоте макет может
-        # оказаться меньше экрана - это норма, и полосу убирает вёрстка
-        # (декор прижимается к низу). А вот выйти за экран нельзя ни по
-        # одной оси: тогда нижняя часть просто не попадёт в кадр.
-        fits_h = need_h <= h + 0.5
-        fits_w = need_w <= w + 0.5
-        slack = h - need_h
+        # Высота макета обязана совпасть с высотой экрана - это и есть
+        # "интерфейс занимает весь экран".
+        fills_h = abs(need_h - h) < 1.0
+        # По ширине вылет терпим, пока он меньше поля макета (51dp с
+        # каждой стороны): срезается пустое поле, а не содержимое.
+        over = need_w - w
+        cut_dp = max(0.0, over) / 2.0 / got
         lines.append("%-20s экран %dx%d, плотность %.3f, макет %.0fx%.0f, "
-                     "влезает=%s, свободно снизу %.0f px (%.0f dp)"
-                     % (name, w, h, got, need_w, need_h,
-                        fits_h and fits_w, max(0.0, slack), slack / got))
-        if not fits_h:
-            problems.append("%s: макет выше экрана на %.0f px, нижняя "
-                            "часть не попадёт в кадр" % (name, need_h - h))
-        if not fits_w:
-            problems.append("%s: макет шире экрана на %.0f px, срежется "
-                            "содержимое" % (name, need_w - w))
+                     "заполняет высоту=%s, срез поля %.0f dp"
+                     % (name, w, h, got, need_w, need_h, fills_h, cut_dp))
+        if not fills_h:
+            problems.append("%s: макет не во всю высоту (%.0f из %d)"
+                            % (name, need_h, h))
+        if cut_dp > MARGIN_DP:
+            problems.append("%s: срезается %.0f dp с края при поле макета "
+                            "%d dp" % (name, cut_dp, MARGIN_DP))
 
     kw.Window = old_window
     lines.append("")
