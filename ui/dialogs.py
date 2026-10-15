@@ -19,11 +19,23 @@ from ui import ios_alert
 def show_message(title: str, message: str) -> None:
     """Сообщение пользователю.
 
-    Сначала пробуем системное окно iOS. Не вышло - показываем окно
-    Kivy: лучше серое окно, чем ничего.
+    Окно айфонского вида (ui/ios_alert.py). Старое окно Kivy осталось
+    запасным путём: если новое почему-то не построилось, сообщение
+    всё равно должно быть видно.
     """
-    if ios_alert.show(title, message):
-        return
+    try:
+        if ios_alert.show(title, message):
+            return
+    except Exception as e:
+        # Молча проглоченная ошибка - это то, из-за чего окно на
+        # телефоне выглядело "ничего не поменялось", а причину не
+        # найти было негде. Причина пишется в журнал запуска.
+        try:
+            import main
+            main._record("ОКНО НЕ ПОСТРОИЛОСЬ", "%s: %s"
+                         % (type(e).__name__, e))
+        except Exception:
+            pass
 
     box = BoxLayout(orientation="vertical", padding=12, spacing=10)
     label = Label(text=message, halign="center", valign="middle")

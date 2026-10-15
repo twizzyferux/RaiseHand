@@ -1,214 +1,263 @@
-"""Штатные окна iOS вместо серых окон Kivy.
+"""Окно в айфонском виде.
 
 Зачем
 -----
-Kivy показывает своё окно: серая рамка, кнопка с толстым контуром,
-шрифт не тот. В айфонском приложении такого нет - там системный
-алерт, который выглядит как все остальные и ведёт себя как все
-остальные. Пользователь знаком с этим видом с других приложений, и
-переход туда ничего не объяснять не стоит.
+Серое окно Kivy в айфонском приложении выглядит как чужеродное
+пятно: толстая рамка, кнопка во всю ширину, чужой шрифт. Системное
+окно iOS выглядит как все остальные и ведёт себя так же.
 
-Как
----
-Окно показывает UIAlertController - тот самый класс, которым
-пользуются системные сообщения. Он живёт в слое iOS, поверх канваса
-Kivy, поэтому выглядит настоящим айфонским, а не нарисованным.
+ПОЧЕМУ ЭТО НЕ СИСТЕМНЫЙ АЛЕРТ, А НАРИСОВАННЫЙ
+---------------------------------------------
+Системный класс UIAlertController вызвать нечем, и это установлено
+фактами, а не предположением.
 
-Тонкость, из-за которой пришлось писать отдельно: окно показывает
-тот контроллер, который сейчас на экране, а не корневой. Если поверх
-уже открыто другое окно, показывать надо поверх него, иначе iOS
-откажется показывать ("whose view is not in the window hierarchy").
+Мост в iOS у нас - pyobjus. У него есть таблица селекторов
+(protocols.py, генерируется из протоколов Objective-C), и в ней нет
+НИ ОДНОГО протокола UIAlert:
 
-Что делаем, если не получилось
-------------------------------
-Ничего страшного не делаем: возвращаем False, и вызывающий код
-показывает обычное окно Kivy. Окно хуже по виду, но приложение
-живо и пользователь прочитал, что случилось.
+  initWithTitle:message:preferredStyle:      - отсутствует
+  actionWithTitle:style:handler:             - отсутствует
+  presentViewController:animated:completion: - отсутствует
+  safeAreaInsets                             - отсутствует
+
+pyobjus создаёт метод только для селектора, который есть в таблице.
+Нет в таблице - нет метода, обращение падает с AttributeError. На
+телефоне так и вышло: "'UIAlertController' object has no attribute
+'initWithTitle_message_preferredStyle_'". Тем же объясняется и то,
+что безопасные отступы всегда приходили нулевыми: safeAreaInsets в
+таблице тоже нет.
+
+Поэтому окно рисуется здесь, а размеры и вид взяты из системной
+спецификации iOS. Для простого окна из заголовка, текста и одной
+кнопки разницы с настоящим не видно.
+
+Размеры (в точках iOS)
+----------------------
+Ширина окна 270, скругление 14, высота кнопки 44. Заголовок 17
+полужирный, текст 13 серый, кнопка 17 синяя #007AFF. Над кнопкой -
+тонкая линия-разделитель.
+
+ПОЧЕМУ ModalView, А НЕ ПРОСТО WIDGET В ОКНЕ
+----------------------------------------
+Первая версия добавляла свой виджет прямо в Window и рисовала
+карточку в его canvas.before. На снимке весь экран выходил
+перекошенным и задвоенным: состояние графики от карточки
+оставалось на стеке и тянуло за собой следующий кадр.
+
+ModalView делает это сам - он и есть штатный механизм Kivy для
+всплывающих окон, с затемнением и стеком. Своя отрисовка поверх
+него остаётся только карточкой и тремя надписями.
 """
 
-from kivy.logger import Logger
+from kivy.animation import Animation
+from kivy.graphics import Color, Rectangle, RoundedRectangle
+from kivy.metrics import dp, sp
+from kivy.uix.label import Label
+from kivy.uix.modalview import ModalView
 
-__all__ = ["available", "show"]
+# Цвета системного окна в светлом оформлении.
+BG = (0.98, 0.98, 0.99, 0.97)
+TITLE = (0, 0, 0, 1)
+MESSAGE = (0, 0, 0, 0.6)
+BUTTON = (0, 0.478, 1, 1)                # #007AFF
+SEPARATOR = (0.776, 0.776, 0.784, 1)
+BACKDROP = (0, 0, 0, 0.36)
+
+# Геометрия в точках iOS.
+WIDTH = 270
+RADIUS = 14
+PAD_X = 16
+PAD_TOP = 19
+PAD_BOTTOM = 19
+GAP = 4
+BUTTON_H = 44
+# Толщина линии-разделителя. Раньше эта величина называлась так же,
+# как её цвет, и цвет перебивался числом: Kivy получал вместо цвета
+# число и падал.
+SEPARATOR_H = 0.5
+
+TITLE_SIZE = 17
+MESSAGE_SIZE = 13
+BUTTON_SIZE = 17
+
+__all__ = ["show"]
 
 
-def _why(reason: str) -> None:
-    """Записать, почему системное окно не показалось.
+def _window_centre():
+    """Середина окна экрана.
 
-    В журнал запуска, а не только в системный лог. Причина в том, что
-    на iOS строка из Logger уходит в журнал устройства, откуда её не
-    достать: приложение запускается через Sideloadly, а не из Xcode,
-    и консоли там нет. Первая же попытка показать окно закончилась
-    молчаливым откатом на окно Kivy, и понять почему было нечем -
-    пришлось бы гадать.
-
-    Поэтому каждая неудачная попытка оставляет след в том самом файле,
-    который забирается с телефона из Documents.
+    Считается от окна, а не от самого ModalView. ModalView центрируется
+    сам и меняет свою позицию уже после того, как вёрстка окна
+    посчитана, - брать его center_x значит зависеть от порядка событий:
+    в одной сборке карточка вставала по центру, в другой на 175
+    пикселей левее. От окна результат не зависит ни от чего.
     """
-    Logger.warning("ios_alert: %s" % reason)
-    try:
-        import main
-        main._record("ОКНО IOS НЕ ПОКАЗАЛОСЬ", reason)
-    except Exception:
-        # Записать причину важнее, чем записать саму причину: если и
-        # сюда не вышло, сообщение всё равно уйдёт в системный лог.
-        pass
+    from kivy.core.window import Window
+    return Window.size[0] / 2.0, Window.size[1] / 2.0
 
 
-def _ui_kit():
-    """Классы UIKit, нужные для окна. None, если их нет."""
-    try:
-        from pyobjus import autoclass, objc_str
-    except ImportError:
-        return None
-    return autoclass, objc_str
+class _Alert(ModalView):
+    """Окно: затемнение от ModalView, карточка и надписи нарисованы здесь."""
 
+    def __init__(self, title, message, button, on_close, **kwargs):
+        kwargs.setdefault("size_hint", (None, None))
+        kwargs.setdefault("auto_dismiss", False)
+        kwargs.setdefault("background", "")
+        kwargs.setdefault("background_color", (0, 0, 0, 0))
+        kwargs.setdefault("overlay_color", BACKDROP)
+        # border и separator_color у ModalView этой версии нет: Kivy
+        # отвергает незнакомое свойство при создании. Проверено пробой.
+        kwargs.pop("separator_color", None)
+        kwargs.pop("border", None)
+        super().__init__(**kwargs)
+        self.on_close = on_close
+        self.title_text = title
+        self.message_text = message
+        self.button_text = button
+        self.card_w = dp(WIDTH)
+        self._built = False
+        self._build()
+        self._built = True
+        self._place()
 
-def available() -> bool:
-    """Есть ли смысл пробовать системное окно."""
-    from core.platform_setup import IS_IOS
-    if not IS_IOS:
-        return False
-    return _ui_kit() is not None
+    # -- построение ---------------------------------------------------------- #
 
+    def _build(self):
+        self.title_label = Label(
+            text=self.title_text, markup=True, size_hint=(None, None),
+            color=TITLE, bold=True, font_size=sp(TITLE_SIZE),
+            halign="center", valign="middle", line_height=1.2)
+        self.message_label = Label(
+            text=self.message_text, markup=True, size_hint=(None, None),
+            color=MESSAGE, font_size=sp(MESSAGE_SIZE),
+            halign="center", valign="middle", line_height=1.3)
+        self.button_label = Label(
+            text=self.button_text, size_hint=(None, None),
+            color=BUTTON, font_size=sp(BUTTON_SIZE),
+            halign="center", valign="middle")
 
-def _top_controller(autoclass):
-    """Контроллер, поверх которого и показывают окно.
+        with self.canvas.before:
+            Color(rgba=BG)
+            self._card = RoundedRectangle(pos=self.pos, size=self.size,
+                                          radius=[dp(RADIUS)])
+            Color(rgba=SEPARATOR)
+            self._sep = Rectangle(pos=self.pos, size=(0, dp(SEPARATOR_H)))
 
-    Возвращает кортеж (контроллер, причина_сбоя). Причина нужна для
-    разбора: пока здесь было голое "None", любая неудача выглядела
-    одинаково, и понять, что именно сломалось, было нечем. Первая
-    попытка на телефоне закончилась именно так - молчаливый откат на
-    окно Kivy без следа.
+        for widget in (self.title_label, self.message_label,
+                       self.button_label):
+            self.add_widget(widget)
 
-    Идём по цепочке presentedViewController до конца: показывать надо
-    поверх всего, что уже открыто.
-    """
-    try:
-        app = autoclass("UIApplication").sharedApplication()
-    except Exception as e:
-        return None, "UIApplication.sharedApplication не ответил: %r" % (e,)
-    window = None
-    why = "keyWindow вернул пусто"
-    # На iOS 13 и новее keyWindow устарел и может быть пустым, пока
-    # окна есть: тогда берём последнее из windows.
-    for getter in ("keyWindow",):
-        try:
-            window = getattr(app, getter)
-            break
-        except Exception as e:
-            window = None
-            why = "keyWindow не сработал: %r" % (e,)
-    if window is None:
-        # keyWindow на iOS 13+ может быть пустым. Тогда окно берётся
-        # из списка: нужно то, которое сейчас на экране, а это
-        # последнее в списке.
-        try:
-            windows = app.windows()
-            count = int(windows.count()) if windows is not None else 0
-            if count:
-                window = windows.objectAtIndex_(count - 1)
-                why = "окно взято из списка (keyWindow пуст), окон: %d" % count
-        except Exception as e:
-            window = None
-            why = "список окон не прочитан: %r" % (e,)
-    if window is None:
-        return None, "не нашлось окна: %s" % why
-    try:
-        controller = window.rootViewController()
-    except Exception as e:
-        return None, "у окна нет rootViewController: %r" % (e,)
-    if controller is None:
-        return None, "rootViewController пуст"
-    # Поднимаемся по цепочке открытых окон наверх: показывать надо
-    # поверх всего, что уже открыто, иначе iOS откажется.
-    for _ in range(20):
-        try:
-            presented = controller.presentedViewController()
-        except Exception:
-            presented = None
-        if presented is None:
-            return controller, ""
-        controller = presented
-    return controller, "цепочка окон не кончилась за 20 шагов"
+    # -- размеры и положение ------------------------------------------------- #
+
+    def _place(self, *_):
+        """Пересчитать размеры под текст и поставить всё по центру."""
+        if not self._built:
+            return
+
+        inner = self.card_w - dp(PAD_X * 2)
+
+        self.title_label.size = (inner, self.title_label.texture_size[1])
+        if self.title_label.texture_size[1] > sp(TITLE_SIZE) * 2.4:
+            self.title_label.height = sp(TITLE_SIZE) * 2.4
+        title_h = self.title_label.height
+
+        self.message_label.text_size = (inner, None)
+        self.message_label.texture_update()
+        message_h = max(dp(0), self.message_label.texture_size[1])
+
+        card_h = (dp(PAD_TOP) + title_h + dp(GAP) + message_h
+                  + dp(PAD_BOTTOM) + dp(BUTTON_H))
+
+        cx, cy = _window_centre()
+
+        # Окно iOS стоит чуть выше середины экрана, а не ровно в ней.
+        cy += dp(24)
+
+        top = cy + card_h / 2.0
+        y = top - dp(PAD_TOP) - title_h
+        self.title_label.pos = (cx - inner / 2.0, y)
+        y -= dp(GAP) + message_h
+        self.message_label.pos = (cx - inner / 2.0, y)
+
+        btn_y = cy - card_h / 2.0
+        self.button_label.size = (inner, dp(BUTTON_H))
+        self.button_label.pos = (cx - inner / 2.0,
+                                 btn_y + (dp(BUTTON_H) - dp(BUTTON_SIZE) * 1.3)
+                                 / 2.0)
+
+        left = cx - self.card_w / 2.0
+        bottom = cy - card_h / 2.0
+        self._card.pos = (left, bottom)
+        self._card.size = (self.card_w, card_h)
+        self._card.radius = [dp(RADIUS)]
+
+        # Разделитель над кнопкой тянется по всей ширине карточки, а не
+        # по полям: так он выглядит в системном окне.
+        self._sep.pos = (left, btn_y + dp(BUTTON_H))
+        self._sep.size = (self.card_w, dp(SEPARATOR_H))
+
+        # Размер самого ModalView равен карточке: за него ничего не
+        # кликается и ничего не рисуется.
+        self.size = (self.card_w, card_h)
+
+    # -- ввод ---------------------------------------------------------------- #
+
+    def on_touch_down(self, touch):
+        if self.button_label.collide_point(*touch.pos):
+            self.dismiss()
+            return True
+        # Нажатие мимо кнопки окно не закрывает: системное так же.
+        return True
+
+    def on_touch_up(self, touch):
+        return True
+
+    # -- закрытие ------------------------------------------------------------ #
+
+    def dismiss(self, *_):
+        if self.on_close is not None:
+            try:
+                self.on_close()
+            except Exception:
+                pass
+        self.on_close = None
+        super().dismiss()
 
 
 def show(title: str, message: str, button: str = "Понятно",
          on_close=None) -> bool:
-    """Показать системное окно iOS. True - показано, False - нет.
+    """Показать окно в айфонском виде. Всегда True."""
+    from kivy.core.window import Window
 
-    on_close вызывается после нажатия кнопки. Он нужен там, где окно
-    завершает работу: например, проводник выбора файла не закрывается
-    сам по себе.
-    """
-    kit = _ui_kit()
-    if kit is None:
-        _why("нет pyobjus (модуль не установлен в iOS-сборку)")
-        return False
-    autoclass, objc_str = kit
+    box = _Alert(title=title, message=message, button=button,
+                 on_close=on_close)
 
-    if on_close is not None:
-        # Вызов после нажатия сделать нечем: обработчик в pyobjus не
-        # создаётся (см. ниже про objc_block). Такой случай уходит на
-        # окно Kivy, где вызов работает.
-        _why("нужен вызов после закрытия, а он недоступен")
-        return False
+    # Вёрстка окна пересчитывается при смене размера экрана.
+    #
+    # Это не украшение, а необходимость: размер окна может измениться
+    # уже после того, как окно сообщения создано. На ПК так и выходит -
+    # размер подбирается под свободное место на экране, и это происходит
+    # позже создания. Посчитанная по старому размеру вёрстка уводила
+    # карточку на 175 пикселей вправо. На телефоне то же самое случится
+    # при повороте экрана.
+    def on_size(*_):
+        box._place()
 
-    try:
-        controller, why = _top_controller(autoclass)
-        if controller is None:
-            _why(why)
-            return False
+    Window.bind(size=on_size)
+    box.bind(on_dismiss=lambda *_: Window.unbind(size=on_size))
 
-        alert_cls = autoclass("UIAlertController")
-        action_cls = autoclass("UIAlertAction")
-
-        # Предупреждение системной плашки - самый частый случай
-        # (код приглашения, остаток заряда), поэтому стиль первый.
-        alert = alert_cls.alloc().initWithTitle_message_preferredStyle_(
-            objc_str(title), objc_str(message), 0)
-
-        # Обработчик НЕ создаётся, и это не ошибка, а решение.
-        #
-        # На кнопке должен висеть блок Objective-C - функция, которую
-        # система зовёт при нажатии. Создаёт такой блок objc_block, но
-        # его нет в pyobjus: имя знакомое, однако оно из pyobjc, а не
-        # из pyobjus, где слова "block" нет ни в одном файле. Первая
-        # попытка на телефоне так и кончилась: ImportError и откат на
-        # окно Kivy.
-        #
-        # Обойти можно тем, что обработчик не обязателен: iOS сам
-        # закрывает окно по нажатию своей кнопки, и на вид и на ощупь
-        # это ничем не отличается. Просто нажатие никого не зовёт - а
-        # звать и не нужно: единственное место, где вызов был
-        # обязателен, это проводник выбора файла, и на iOS он другой.
-        action = action_cls.actionWithTitle_style_handler_(
-            objc_str(button), 0, None)
-        alert.addAction_(action)
-
-        controller.presentViewController_animated_completion_(
-            alert, True, None)
-        _ok(title)
-        return True
-    except Exception as e:
-        # Любая ошибка означает, что окно не показалось. Вызывающий
-        # код покажет своё - приложение продолжит работать.
-        import traceback
-        Logger.exception("ios_alert: системное окно не показалось")
-        _why("%s: %s" % (type(e).__name__, e))
-        try:
-            import main
-            main._record("ОКНО IOS: ПОЛНЫЙ ТЕКСТ ОШИБКИ",
-                         traceback.format_exc())
-        except Exception:
-            pass
-        return False
-
-
-def _ok(title: str) -> None:
-    """Отметка, что окно показано. Нужна для проверки на телефоне."""
-    Logger.info("ios_alert: показано %r" % (title,))
-    try:
-        import main
-        main._record("ОКНО IOS ПОКАЗАНО", repr(title))
-    except Exception:
-        pass
+    box.open()
+    box._place()
+    # И ещё раз на следующем кадре. Размер окна на ПК меняется уже
+    # после создания окна сообщения, и порядок этих событий не
+    # гарантирован: то ли привязка выше успела отработать и потом всё
+    # испортил этот самый вызов, то ли наоборот. Пересчёт на кадр
+    # позже выполняется после всех подмен размера и потому даёт
+    # одинаковый результат при любом порядке.
+    from kivy.clock import Clock
+    Clock.schedule_once(lambda *_: box._place(), 0)
+    # Появление как у iOS - проявление, без роста размера: рост
+    # требовал пересчитывать вёрстку каждый кадр и давал перекос.
+    box.opacity = 0.0
+    Animation(opacity=1, d=0.18, t="out_quad").start(box)
+    return True
