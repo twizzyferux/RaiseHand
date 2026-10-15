@@ -61,7 +61,35 @@ class BaseScreen(Screen):
         with self.canvas.before:
             Color(rgba=(1, 0.984, 0.969, 1))      # кремовый #FFFBF7
             self._screen_bg = Rectangle(pos=self.pos, size=self.size)
-        self.bind(pos=self._sync_bg, size=self._sync_bg)
+        self.bind(pos=self._sync_all, size=self._sync_all,
+                  children=self._sync_all)
+
+    def _sync_all(self, *_):
+        self._sync_bg()
+        self._pin_stage()
+
+    def _pin_stage(self, *_):
+        """Прижать сцену к верху и убрать пустое место над ней.
+
+        Сцена — макет фиксированного размера. Экран телефона выше
+        макета, и раньше сцена центрировалась: лишняя высота делилась
+        поровну вверх и вниз, и сверху оставалось пустое место под
+        логотипом — тем заметнее, что там же вырез камеры.
+
+        Теперь сцена стоит по центру по горизонтали, а сверху отступ
+        ровно тот, который система просит не занимать (вырез и
+        «чёлка»). Всё, что остаётся снизу, уходит под декор, где
+        пустого места не видно.
+        """
+        from core.platform_setup import UI_SAFE
+
+        top_inset, _bottom = UI_SAFE
+        for child in self.children:
+            if child.__class__.__name__ != "PhoneStage":
+                continue
+            child.pos_hint = {"center_x": 0.5, "top": 1.0}
+            child.y = self.top - child.height - dp(top_inset)
+            return
 
     def _sync_bg(self, *_):
         self._screen_bg.pos = self.pos
