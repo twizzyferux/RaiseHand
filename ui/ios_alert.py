@@ -146,10 +146,11 @@ def show(title: str, message: str, button: str = "Понятно",
         return False
     autoclass, objc_str = kit
 
-    try:
-        from pyobjus import objc_block
-    except ImportError as e:
-        _why("в pyobjus нет objc_block: %r" % (e,))
+    if on_close is not None:
+        # Вызов после нажатия сделать нечем: обработчик в pyobjus не
+        # создаётся (см. ниже про objc_block). Такой случай уходит на
+        # окно Kivy, где вызов работает.
+        _why("нужен вызов после закрытия, а он недоступен")
         return False
 
     try:
@@ -166,15 +167,22 @@ def show(title: str, message: str, button: str = "Понятно",
         alert = alert_cls.alloc().initWithTitle_message_preferredStyle_(
             objc_str(title), objc_str(message), 0)
 
-        def handler(_action):
-            if on_close is not None:
-                try:
-                    on_close()
-                except Exception:
-                    Logger.exception("ios_alert: сбой в обработчике")
-
+        # Обработчик НЕ создаётся, и это не ошибка, а решение.
+        #
+        # На кнопке должен висеть блок Objective-C - функция, которую
+        # система зовёт при нажатии. Создаёт такой блок objc_block, но
+        # его нет в pyobjus: имя знакомое, однако оно из pyobjc, а не
+        # из pyobjus, где слова "block" нет ни в одном файле. Первая
+        # попытка на телефоне так и кончилась: ImportError и откат на
+        # окно Kivy.
+        #
+        # Обойти можно тем, что обработчик не обязателен: iOS сам
+        # закрывает окно по нажатию своей кнопки, и на вид и на ощупь
+        # это ничем не отличается. Просто нажатие никого не зовёт - а
+        # звать и не нужно: единственное место, где вызов был
+        # обязателен, это проводник выбора файла, и на iOS он другой.
         action = action_cls.actionWithTitle_style_handler_(
-            objc_str(button), 0, objc_block(handler, None))
+            objc_str(button), 0, None)
         alert.addAction_(action)
 
         controller.presentViewController_animated_completion_(
