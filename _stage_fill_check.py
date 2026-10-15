@@ -57,28 +57,29 @@ def main():
         got = ps.fit_design_to_screen()
         need_h = DESIGN_H * got
         need_w = DESIGN_W * got
-        # Масштаб по высоте: высота макета обязана совпасть с высотой
-        # экрана, иначе сверху или снизу останется пустое поле - а
-        # пользователь как раз на это и смотрел.
-        fills_h = abs(need_h - h) < 1.0
-        # По ширине макет может выйти чуть шире экрана. Это терпимо,
-        # пока срезается меньше, чем поле макета (MARGIN_DP с каждой
-        # стороны): за полем чистое место, а не содержимое.
+        # Масштаб по ширине: макет равен ширине экрана, поэтому
+        # НИЧЕГО не срезается ни по одной оси. Это главное требование:
+        # элемент за краем экрана не нажать. Высота при этом может
+        # быть меньше экрана - полосу снизу убирает вёрстка.
+        fits_h = need_h <= h + 0.5
+        fits_w = need_w <= w + 0.5
         cut = max(0.0, need_w - w) / 2.0 / got
+        slack = h - need_h
         lines.append("%-20s экран %dx%d, плотность %.3f, макет %.0fx%.0f, "
-                     "высота в экран=%s, срез поля %.0f dp"
-                     % (name, w, h, got, need_w, need_h, fills_h, cut))
-        if not fills_h:
-            problems.append("%s: макет не во всю высоту (%.0f из %d), "
-                            "остаётся пустое поле"
-                            % (name, need_h, h))
-        if cut > MARGIN_DP:
-            problems.append("%s: срезается %.0f dp с края при поле макета "
-                            "%d dp" % (name, cut, MARGIN_DP))
+                     "ничего не срезано=%s, полоса снизу %.0f px (%.0f dp)"
+                     % (name, w, h, got, need_w, need_h,
+                        fits_h and fits_w, max(0.0, slack),
+                        max(0.0, slack) / got))
+        if not fits_h:
+            problems.append("%s: макет выше экрана на %.0f px, низ не "
+                            "попадёт в кадр" % (name, need_h - h))
+        if not fits_w:
+            problems.append("%s: макет шире экрана на %.0f px, срежется "
+                            "содержимое" % (name, need_w - w))
 
     kw.Window = old_window
     lines.append("")
-    lines.append("ИТОГ: %s" % ("интерфейс занимает экран целиком"
+    lines.append("ИТОГ: %s" % ("ничего не срезано ни на одном экране"
                                  if not problems else "есть проблемы"))
     for p in problems:
         lines.append("  - %s" % p)
