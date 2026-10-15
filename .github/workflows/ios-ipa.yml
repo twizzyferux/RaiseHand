@@ -63,7 +63,14 @@ jobs:
       # created underneath it. The folder itself is never created, so
       # cd-ing into a folder that does not exist fails. That folder is
       # ours, inside the workspace, and is empty on every fresh run.
-      IOS_DIR: ${{ github.workspace }}/ios
+      #
+      # The name matters and must not be changed back to IOS_DIR. The
+      # recipe named "ios" in kivy-ios reads the environment variable
+      # "<RECIPE>_DIR" as the location of its own sources, so a variable
+      # called IOS_DIR made that recipe copy the whole workspace into
+      # build/ios/iphoneos-arm64/... which in turn contained build/, and
+      # again - until copytree hit "File name too long".
+      WORK_DIR: ${{ github.workspace }}/ios
       # Silences a warning printed by the Node.js runtime that runs the
       # official actions: it still calls the removed "punycode" module
       # and complains about it on every run. It is noise from the
@@ -124,8 +131,8 @@ jobs:
         # This is the slow step: Python, SDL and Kivy are compiled from
         # source for the iOS target.
         run: |
-          mkdir -p "$IOS_DIR"
-          cd "$IOS_DIR"
+          mkdir -p "$WORK_DIR"
+          cd "$WORK_DIR"
           # The build folder is wiped for the reason described above:
           # a leftover one makes the ios recipe nest copies of itself.
           rm -rf build
@@ -147,8 +154,8 @@ jobs:
         # Only the plugin is installed here: it is pure Python, so no
         # compilation is needed and a ready-made build is fine.
         run: |
-          mkdir -p "$IOS_DIR"
-          cd "$IOS_DIR"
+          mkdir -p "$WORK_DIR"
+          cd "$WORK_DIR"
           toolchain pip install --upgrade "kivy-garden.frostedglass>=0.5.0"
           echo "--- what is in the iOS python ---"
           toolchain build_info | head -30
@@ -159,7 +166,7 @@ jobs:
         # there first. Draft folders, snapshots and helper scripts are
         # not part of the app and are left out.
         run: |
-          APP="$IOS_DIR/$APP_NAME.app"
+          APP="$WORK_DIR/$APP_NAME.app"
           rm -rf "$APP"
           mkdir -p "$APP"
           rsync -a --exclude .git --exclude .venv --exclude .venv312 \
@@ -172,7 +179,7 @@ jobs:
 
       - name: Create the Xcode project
         run: |
-          cd "$IOS_DIR"
+          cd "$WORK_DIR"
           # The generated project is removed first.
           #
           # The result folder is restored from cache, and that cache
@@ -180,17 +187,17 @@ jobs:
           # cookiecutter refuses to generate into a folder that exists
           # ("OutputDirExistsException"), so without this the run only
           # works when nothing was cached yet.
-          rm -rf "$IOS_DIR/${PROJ}-ios"
-          toolchain create $APP_NAME "$IOS_DIR/$APP_NAME.app"
+          rm -rf "$WORK_DIR/${PROJ}-ios"
+          toolchain create $APP_NAME "$WORK_DIR/$APP_NAME.app"
           echo "--- generated ---"
-          ls -la "$IOS_DIR/${PROJ}-ios"
+          ls -la "$WORK_DIR/${PROJ}-ios"
 
       - name: Inspect the Xcode project
         # Printed before the build so that the real target and scheme
         # names are visible in the log. Guessing them was the reason the
         # previous run lost its error message.
         run: |
-          cd "$IOS_DIR/${PROJ}-ios"
+          cd "$WORK_DIR/${PROJ}-ios"
           ls -la
           xcodebuild -list -project "${PROJ}.xcodeproj"
 
@@ -214,7 +221,7 @@ jobs:
         # Signing is off because there is no certificate.
         run: |
           set -o pipefail
-          cd "$IOS_DIR/${PROJ}-ios"
+          cd "$WORK_DIR/${PROJ}-ios"
           LOGDIR="$GITHUB_WORKSPACE"
           COMMON=(-project "${PROJ}.xcodeproj" -sdk iphoneos
                   -configuration Release
@@ -238,7 +245,7 @@ jobs:
           echo "=== succeeded with $MODE ==="
           tail -20 "$LOG"
           echo "=== where the app landed ==="
-          find "$IOS_DIR/${PROJ}-ios" -maxdepth 8 -name "*.app" -print
+          find "$WORK_DIR/${PROJ}-ios" -maxdepth 8 -name "*.app" -print
 
       - name: Pack the ipa
         # An .ipa is a zip containing a Payload folder with the .app.
@@ -255,13 +262,13 @@ jobs:
           #
           # IDLE.app is excluded: it is the example app that comes with
           # the compiled Python and is not our application.
-          APPDIR="$(find "$IOS_DIR" "$HOME/Library/Developer/Xcode/DerivedData" \
+          APPDIR="$(find "$WORK_DIR" "$HOME/Library/Developer/Xcode/DerivedData" \
                    -type d -name '*.app' -path '*Release-iphoneos*' \
                    ! -name 'IDLE.app' 2>/dev/null | head -1)"
           if [ -z "$APPDIR" ]; then
             echo "No built .app found"
             echo "--- in the workspace ---"
-            find "$IOS_DIR" -type d -name '*.app' 2>/dev/null | head -20
+            find "$WORK_DIR" -type d -name '*.app' 2>/dev/null | head -20
             echo "--- in DerivedData ---"
             find "$HOME/Library/Developer/Xcode/DerivedData" -type d -name '*.app' 2>/dev/null | head -20
             exit 1
@@ -288,7 +295,7 @@ jobs:
           find "$APPDIR" -name "config*" -o -name "core" -type d 2>/dev/null | head -10
           echo "=== first 40 entries ==="
           find "$APPDIR" -maxdepth 2 | head -40
-          cd "$IOS_DIR"
+          cd "$WORK_DIR"
           rm -rf Payload
           mkdir -p Payload
           cp -R "$APPDIR" Payload/
