@@ -30,6 +30,7 @@ grab_current (кто владеет СЕЙЧАС). ButtonBehavior отпуска
 ВТОРАЯ ПОЛОМКА — касания во время перехода между экранами: описаны ниже,
 в разделе про ScreenManager.
 """
+import time
 import weakref
 
 from kivy.input.motionevent import MotionEvent
@@ -37,6 +38,7 @@ from kivy.uix.screenmanager import ScreenManager as _ScreenManager
 
 _installed = False
 _patched_manager = False
+_patched_mouse = False
 
 
 def _owner(value):
@@ -110,6 +112,56 @@ def patch_screen_manager():
     _patched_manager = True
 
 
+def patch_duplicate_mouse():
+    """Гасить второе событие от одного касания на iOS.
+
+    На iOS одно касание приходит дважды: SDL2 шлёт его и как событие
+    пальца, и как событие мыши. Оба доходят до приложения, и любая
+    кнопка срабатывает два раза.
+
+    Штатный ключ Kivy disable_on_activity не помогает: он смотрит,
+    есть ли уже другое касание, но события обрабатываются по очереди и
+    мышиное приходит раньше, чем касание попало в список.
+
+    Провайдера мыши целиком убрать нельзя: Kivy создаёт его при
+    инициализации, и на iOS других провайдеров касаний для мышиного
+    списка нет - приложение просто перестало бы получать ввод.
+
+    Поэтому дубликат отсекается здесь: событие мыши, начатое в том же
+    месте почти сразу после касания пальцем, не пропускается дальше.
+    На ПК ничего не меняется - там провайдер мыши единственный.
+    """
+    global _patched_mouse
+    if _patched_mouse:
+        return
+    from kivy.core.window import Window
+
+    state = {"_last": None}
+
+    def _near(a, b):
+        # Допуск в несколько пикселей и в доли секунды: два события
+        # одного касания приходят почти в ту же точку и почти в ту же
+        # секунду.
+        return (a is not None and b is not None
+                and abs(a[0] - b[0]) <= 8 and abs(a[1] - b[1]) <= 8
+                and (a[2] - b[2]) <= 0.2)
+
+    original_down = Window.on_touch_down
+
+    def on_touch_down(window, touch):
+        name = touch.__class__.__name__
+        now = time.time()
+        if name.endswith("MouseMotionEvent"):
+            if _near((touch.x, touch.y, now), state["_last"]):
+                return True          # дубль, дальше не пускаем
+        else:
+            state["_last"] = (touch.x, touch.y, now)
+        return original_down(touch)
+
+    Window.on_touch_down = on_touch_down
+    _patched_mouse = True
+
+
 def install():
     """Починить захват и переходы. Повторный вызов ничего не делает."""
     global _installed
@@ -119,3 +171,6 @@ def install():
     MotionEvent.ungrab = _ungrab
     _installed = True
     patch_screen_manager()
+    from core.platform_setup import IS_IOS
+    if IS_IOS:
+        patch_duplicate_mouse()
