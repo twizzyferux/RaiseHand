@@ -213,6 +213,15 @@ _record("импорты прошли", "успех")
 # зарегистрировать обработчики. Подробности: ui/touch_fix.py
 touch_fix.install()
 
+# Айфонское поведение полей ввода: курсор толщиной 2dp и отключённая
+# автозамена там, где она мешает (код приглашения, пароли).
+# Подробности: ui/ios_field.py
+try:
+    from ui import ios_field
+    ios_field.install()
+except Exception:
+    _record("ПОЛЯ ВВОДА НЕ НАСТРОЕНЫ", "ошибка при включении")
+
 KV_DIR = os.path.join(BASE_DIR, "ui", "kv")
 KV_FILES = [
     "theme.kv",          # общие правила (размеры) — загружается первым
