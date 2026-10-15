@@ -66,35 +66,62 @@ def main():
         box = overlays[0]
         win_w, win_h = Window.size
         card = box._card
-        cx = card.pos[0] + card.size[0] / 2.0
+        # Карточка нарисована в координатах самого модального окна, а
+        # не экрана, поэтому к её левому нижнему углу прибавляется
+        # положение окна: на экране карточка начинается не с нуля.
+        ox = box.x + card.pos[0]
+        oy = box.y + card.pos[1]
+        card_w, card_h = card.size
+        cx = ox + card_w / 2.0
 
         lines.append("окно: %dx%d" % (win_w, win_h))
         lines.append("карточка: %.0fx%.0f, центр x=%.0f"
-                     % (card.size[0], card.size[1], cx))
+                     % (card_w, card_h, cx))
         lines.append("смещение карточки от центра экрана: %+.0f px"
                      % (cx - win_w / 2.0))
         lines.append("заголовок: %r, текст: %r, кнопка: %r"
                      % (box.title_label.text, box.message_label.text,
                         box.button_label.text))
 
-        # Края окна проверяются у самой карточки, а не у ModalView:
-        # ModalView центрируется системой, и на момент проверки его
-        # размер ещё может отставать от карточки, из-за чего правая
-        # граница выглядит вылезшей за экран на ровном месте.
-        if card.pos[0] < -1 or card.pos[0] + card.size[0] > win_w + 1:
-            problems.append("карточка выходит за левый или правый край")
-        if card.pos[1] < -1 or card.pos[1] + card.size[1] > win_h + 1:
-            problems.append("карточка выходит за верх или низ")
-        # Ширина окна iOS - 270 точек при масштабе 1.
-        if abs(card.size[0] - dp(270)) > 2:
+        # ГЛАВНОЕ ПРОВЕРЕНИЕ: содержимое должно лежать ВНУТРИ карточки.
+        # Именно это разъехалось на телефоне: координаты считались от
+        # экрана, а надписи - дети модального окна, и всё уехало вправо
+        # и вниз, наложившись друг на друга.
+        def inside(w):
+            rx = w.x - ox
+            ry = w.y - oy
+            return (rx >= -1 and ry >= -1
+                    and rx + w.width <= card_w + 1
+                    and ry + w.height <= card_h + 1)
+
+        for name, w in (("заголовок", box.title_label),
+                        ("текст", box.message_label),
+                        ("кнопка", box.button_label)):
+            ok = inside(w)
+            lines.append("%s внутри карточки: %s" % (name, ok))
+            if not ok:
+                problems.append("%s вылез за карточку" % name)
+
+        # И надписи не должны налезать друг на друга.
+        stack = (("заголовок", box.title_label),
+                 ("текст", box.message_label),
+                 ("кнопка", box.button_label))
+        for i in range(len(stack) - 1):
+            an, a = stack[i]
+            bn, b = stack[i + 1]
+            # Наложение есть, когда низ верхней надписи опустился ниже
+            # верха нижней: a.y < b.y + b.height. Значит зазор со знаком
+            # минус означает перекрытие.
+            gap = (b.y + b.height) - a.y
+            lines.append("зазор между %s и %s: %.0f px" % (an, bn, gap))
+            if gap < -1:
+                problems.append("%s налезает на %s на %.0f px"
+                                % (an, bn, -gap))
+
+        # Ширина окна iOS - 270 точек.
+        if abs(card_w - dp(270)) > 2:
             problems.append("ширина карточки %.0f вместо %.0f"
-                            % (card.size[0], dp(270)))
-        # Кнопка должна быть последней строкой и занимать низ карточки.
-        btn = box.button_label
-        if btn.pos[1] < card.pos[1] - 1:
-            problems.append("кнопка ниже карточки")
-        lines.append("кнопка внизу карточки: %s"
-                     % (btn.pos[1] >= card.pos[1] - 1))
+                            % (card_w, dp(270)))
 
         Window.screenshot(name=SHOT)
 
