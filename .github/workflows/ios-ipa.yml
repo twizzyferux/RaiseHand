@@ -165,6 +165,28 @@ jobs:
           mkdir -p "$WORK_DIR"
           cd "$WORK_DIR"
           toolchain pip install --upgrade "kivy-garden.frostedglass>=0.5.0"
+          #
+          # pyobjus - ОБЯЗАТЕЛЬНО. Это мост в iOS, без него не
+          # работает ни одно системное окно (ui/ios_alert.py) и не
+          # читаются безопасные отступы экрана (safe_insets в
+          # core/platform_setup.py).
+          #
+          # Рецепта сборки в предыдущем шаге недостаточно: он
+          # компилирует модуль, но не кладёт его в приложение. Первый
+          # вариант пайплайна именно это и делал - собирал pyobjus и
+          # молча забывал установить, поэтому окно на телефоне не
+          # появлялось, а приложение откатывалось на окно Kivy без
+          # всякой ошибки.
+          #
+          # Ставится именно в iOS-Python приложения, поэтому только
+          # через toolchain pip: обычный pip ставит модуль в Python
+          # сборщика, в пакет телефона он не попадёт.
+          toolchain pip install pyobjus
+          echo "--- pyobjus на месте? ---"
+          toolchain pip show pyobjus || {
+            echo "pyobjus НЕ УСТАНОВЛЕН - системные окна не появятся"
+            exit 1
+          }
           echo "--- what is in the iOS python ---"
           toolchain build_info | head -30
 

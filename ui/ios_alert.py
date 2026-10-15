@@ -31,6 +31,29 @@ from kivy.logger import Logger
 __all__ = ["available", "show"]
 
 
+def _why(reason: str) -> None:
+    """Записать, почему системное окно не показалось.
+
+    В журнал запуска, а не только в системный лог. Причина в том, что
+    на iOS строка из Logger уходит в журнал устройства, откуда её не
+    достать: приложение запускается через Sideloadly, а не из Xcode,
+    и консоли там нет. Первая же попытка показать окно закончилась
+    молчаливым откатом на окно Kivy, и понять почему было нечем -
+    пришлось бы гадать.
+
+    Поэтому каждая неудачная попытка оставляет след в том самом файле,
+    который забирается с телефона из Documents.
+    """
+    Logger.warning("ios_alert: %s" % reason)
+    try:
+        import main
+        main._record("ОКНО IOS НЕ ПОКАЗАЛОСЬ", reason)
+    except Exception:
+        # Записать причину важнее, чем записать саму причину: если и
+        # сюда не вышло, сообщение всё равно уйдёт в системный лог.
+        pass
+
+
 def _ui_kit():
     """Классы UIKit, нужные для окна. None, если их нет."""
     try:
@@ -51,46 +74,62 @@ def available() -> bool:
 def _top_controller(autoclass):
     """Контроллер, поверх которого и показывают окно.
 
+    Возвращает кортеж (контроллер, причина_сбоя). Причина нужна для
+    разбора: пока здесь было голое "None", любая неудача выглядела
+    одинаково, и понять, что именно сломалось, было нечем. Первая
+    попытка на телефоне закончилась именно так - молчаливый откат на
+    окно Kivy без следа.
+
     Идём по цепочке presentedViewController до конца: показывать надо
     поверх всего, что уже открыто.
     """
     try:
         app = autoclass("UIApplication").sharedApplication()
-    except Exception:
-        return None
+    except Exception as e:
+        return None, "UIApplication.sharedApplication не ответил: %r" % (e,)
     window = None
-    # На iOS 13 и новее окон может быть несколько, и нужное - то,
-    # которое сейчас на экране.
+    why = "keyWindow вернул пусто"
+    # На iOS 13 и новее keyWindow устарел и может быть пустым, пока
+    # окна есть: тогда берём последнее из windows.
     for getter in ("keyWindow",):
         try:
             window = getattr(app, getter)
             break
-        except Exception:
+        except Exception as e:
             window = None
+            why = "keyWindow не сработал: %r" % (e,)
     if window is None:
+        # keyWindow на iOS 13+ может быть пустым. Тогда окно берётся
+        # из списка: нужно то, которое сейчас на экране, а это
+        # последнее в списке.
         try:
             windows = app.windows()
-            window = windows.lastObject() if windows else None
-        except Exception:
+            count = int(windows.count()) if windows is not None else 0
+            if count:
+                window = windows.objectAtIndex_(count - 1)
+                why = "окно взято из списка (keyWindow пуст), окон: %d" % count
+        except Exception as e:
             window = None
+            why = "список окон не прочитан: %r" % (e,)
     if window is None:
-        return None
+        return None, "не нашлось окна: %s" % why
     try:
         controller = window.rootViewController()
-    except Exception:
-        return None
-    # Поднимаемся по цепочке открытых окон наверх.
+    except Exception as e:
+        return None, "у окна нет rootViewController: %r" % (e,)
+    if controller is None:
+        return None, "rootViewController пуст"
+    # Поднимаемся по цепочке открытых окон наверх: показывать надо
+    # поверх всего, что уже открыто, иначе iOS откажется.
     for _ in range(20):
-        if controller is None:
-            return None
         try:
             presented = controller.presentedViewController()
         except Exception:
             presented = None
         if presented is None:
-            return controller
+            return controller, ""
         controller = presented
-    return controller
+    return controller, "цепочка окон не кончилась за 20 шагов"
 
 
 def show(title: str, message: str, button: str = "Понятно",
@@ -103,18 +142,20 @@ def show(title: str, message: str, button: str = "Понятно",
     """
     kit = _ui_kit()
     if kit is None:
+        _why("нет pyobjus (модуль не установлен в iOS-сборку)")
         return False
     autoclass, objc_str = kit
 
     try:
         from pyobjus import objc_block
-    except ImportError:
+    except ImportError as e:
+        _why("в pyobjus нет objc_block: %r" % (e,))
         return False
 
     try:
-        controller = _top_controller(autoclass)
+        controller, why = _top_controller(autoclass)
         if controller is None:
-            Logger.warning("ios_alert: не нашлось окна для показа")
+            _why(why)
             return False
 
         alert_cls = autoclass("UIAlertController")
@@ -138,10 +179,28 @@ def show(title: str, message: str, button: str = "Понятно",
 
         controller.presentViewController_animated_completion_(
             alert, True, None)
-        Logger.info("ios_alert: показано %r" % (title,))
+        _ok(title)
         return True
-    except Exception:
+    except Exception as e:
         # Любая ошибка означает, что окно не показалось. Вызывающий
         # код покажет своё - приложение продолжит работать.
+        import traceback
         Logger.exception("ios_alert: системное окно не показалось")
+        _why("%s: %s" % (type(e).__name__, e))
+        try:
+            import main
+            main._record("ОКНО IOS: ПОЛНЫЙ ТЕКСТ ОШИБКИ",
+                         traceback.format_exc())
+        except Exception:
+            pass
         return False
+
+
+def _ok(title: str) -> None:
+    """Отметка, что окно показано. Нужна для проверки на телефоне."""
+    Logger.info("ios_alert: показано %r" % (title,))
+    try:
+        import main
+        main._record("ОКНО IOS ПОКАЗАНО", repr(title))
+    except Exception:
+        pass

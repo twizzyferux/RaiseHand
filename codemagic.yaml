@@ -65,6 +65,12 @@ workflows:
           cd $HOME/ios
           export PATH="$HOME/Library/Python/3.12/bin:$PATH"
           toolchain build $APP_NAME
+          # pyobjus - мост в iOS. Без него не работают системные
+          # окна (ui/ios_alert.py) и безопасные отступы экрана
+          # (safe_insets в core/platform_setup.py). Рецепт сборки его
+          # только компилирует, в приложение кладёт pip шага ниже.
+          toolchain pip install pyobjus
+          toolchain pip install "kivy-garden.frostedglass>=0.5.0"
 
       - name: Build app in Xcode
         script: |

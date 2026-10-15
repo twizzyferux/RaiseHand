@@ -60,6 +60,19 @@ def main():
         lines.append("dp(%d) в этой пробе: %.3f"
                      % (WANT_CURSOR_DP, want))
 
+        # Мост в iOS должен быть, иначе не будет ни системных окон,
+        # ни безопасных отступов экрана. Проверяется здесь же: это та
+        # же причина молчаливого отката на ПК-вид, и на телефоне она
+        # выглядела бы так же - ничего не работает, а ошибки нет.
+        try:
+            import importlib.util as _ilu
+            has_bridge = _ilu.find_spec("pyobjus") is not None
+        except Exception:
+            has_bridge = False
+        lines.append("мост в iOS (pyobjus): %s"
+                     % ("есть" if has_bridge
+                        else "нет (на ПК так и должно быть)"))
+
         for where, field in sorted(found.items()):
             cursor_px = field.cursor_width
             try:
