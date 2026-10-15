@@ -229,10 +229,20 @@ def _report_scale(scale) -> None:
     """
     try:
         from kivy.core.window import Window
-        size = getattr(Window, "system_size", None) or Window.size
-        line = ("окно %sx%s (пиксели), плотность %s, макет %sx%s, "
-                "коэффициент %s" % (size[0], size[1], Metrics.density,
-                                     DESIGN_W, DESIGN_H, scale))
+        # Подпись раздельно указывает точки и пиксели, потому что это
+        # разные числа и на них легко спутаться. iPhone 15 Pro Max
+        # сообщает 430x932 ТОЧКИ, а плотность считается из 1290x2796
+        # ПИКСЕЛЕЙ. Раньше в строке писалось "430x932 (пиксели)" -
+        # это было неверно, и по выводу о масштабе пришлось бы
+        # гадать.
+        points = getattr(Window, "system_size", None)
+        pixels = Window.size
+        line = ("окно %sx%s точек, %sx%s пикселей, плотность %s, "
+                "макет %sx%s, коэффициент %s"
+                % (points[0] if points else "?",
+                   points[1] if points else "?",
+                   pixels[0], pixels[1], Metrics.density,
+                   DESIGN_W, DESIGN_H, scale))
     except Exception:
         return
     try:
