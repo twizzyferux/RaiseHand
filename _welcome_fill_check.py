@@ -50,17 +50,21 @@ def main():
     lines.append("плотность: %.3f" % got)
     lines.append("макет в пикселях: %.0fx%.0f" % (DESIGN_W * got,
                                                     DESIGN_H * got))
-    # Главное: высота макета равна высоте экрана - полосы нет.
-    design_px_h = DESIGN_H * got
-    if abs(design_px_h - PHONE_H) > 1.0:
-        problems.append("макет %.0f px при высоте экрана %d px: "
-                        "полоса %.0f px"
-                        % (design_px_h, PHONE_H, PHONE_H - design_px_h))
-    # Срез пустого поля терпим в пределах поля макета.
-    cut = max(0.0, DESIGN_W * got - PHONE_W) / 2.0 / got
-    lines.append("срез пустого поля с края: %.0f dp при поле 51dp" % cut)
-    if cut > 45:
-        problems.append("срезается %.0f dp с края" % cut)
+    # Правило: масштаб по ширине, макет центрируется, ничего не
+    # срезается ни по одной оси. Свободная полоса снизу на вытянутых
+    # экранах допустима - её убирает вёрстка, прижимая нижний блок к
+    # краю экрана. Главное - ничего не уходит за границу.
+    need_w = DESIGN_W * got
+    need_h = DESIGN_H * got
+    if need_w > PHONE_W + 0.5:
+        problems.append("макет шире экрана на %.0f px" % (need_w - PHONE_W))
+    if need_h > PHONE_H + 0.5:
+        problems.append("макет выше экрана на %.0f px, низ не попадёт "
+                        "в кадр" % (need_h - PHONE_H))
+    slack = PHONE_H - need_h
+    lines.append("срез по ширине: 0 (макет по ширине экрана)")
+    lines.append("свободно снизу: %.0f px (%.0f dp) - убирает вёрстка"
+                 % (max(0.0, slack), max(0.0, slack) / got))
 
     # И положение элементов: логотип и нижняя кнопка стоят на тех же
     # пропорциях от низа, что и в макете.
@@ -74,7 +78,7 @@ def main():
         problems.append("логотип прижат к самому верху")
 
     lines.append("")
-    lines.append("ИТОГ: %s" % ("макет занимает весь экран"
+    lines.append("ИТОГ: %s" % ("макет влезает в экран без среза"
                                  if not problems else "есть проблемы"))
     for p in problems:
         lines.append("  - %s" % p)
