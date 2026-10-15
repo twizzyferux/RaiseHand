@@ -30,7 +30,9 @@ grab_current (кто владеет СЕЙЧАС). ButtonBehavior отпуска
 ВТОРАЯ ПОЛОМКА — касания во время перехода между экранами: описаны ниже,
 в разделе про ScreenManager.
 """
+import sys
 import time
+import traceback
 import weakref
 
 from kivy.input.motionevent import MotionEvent
@@ -148,14 +150,24 @@ def patch_duplicate_mouse():
 
     original_down = Window.on_touch_down
 
-    def on_touch_down(window, touch):
-        name = touch.__class__.__name__
-        now = time.time()
-        if name.endswith("MouseMotionEvent"):
-            if _near((touch.x, touch.y, now), state["_last"]):
-                return True          # дубль, дальше не пускаем
-        else:
-            state["_last"] = (touch.x, touch.y, now)
+    def on_touch_down(touch):
+        # Именно один аргумент: Kivy зовёт метод на экземпляре окна,
+        # window.on_touch_down(touch). Подмена с двумя аргументами
+        # падала бы с TypeError на первом же касании, то есть при любом
+        # нажатии на кнопку.
+        try:
+            name = touch.__class__.__name__
+            now = time.time()
+            if name.endswith("MouseMotionEvent"):
+                if _near((touch.x, touch.y, now), state["_last"]):
+                    return True      # дубль, дальше не пускаем
+            else:
+                state["_last"] = (touch.x, touch.y, now)
+        except Exception:
+            # Фильтр не имеет права ронять приложение: при любой
+            # неожиданности просто пропускаем событие как есть.
+            sys.stderr.write("[raisehand] фильтр дубля: %s\n"
+                             % traceback.format_exc())
         return original_down(touch)
 
     Window.on_touch_down = on_touch_down

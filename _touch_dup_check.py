@@ -62,8 +62,8 @@ def main():
 
     # 1) Касание пальцем, затем мышиный дубль рядом -> должен остаться 1.
     calls["n"] = 0
-    Window.on_touch_down(None, SDL2MotionEvent(100, 200, False))
-    Window.on_touch_down(None, MouseMotionEvent(101, 201, True))
+    Window.on_touch_down(SDL2MotionEvent(100, 200, False))
+    Window.on_touch_down(MouseMotionEvent(101, 201, True))
     first = calls["n"]
     lines.append("палец + мышиный дубль: дошло %d (ожидается 1)" % first)
     if first != 1:
@@ -71,7 +71,7 @@ def main():
 
     # 2) Только касание -> должно пройти.
     calls["n"] = 0
-    Window.on_touch_down(None, SDL2MotionEvent(300, 400, False))
+    Window.on_touch_down(SDL2MotionEvent(300, 400, False))
     second = calls["n"]
     lines.append("только палец: дошло %d (ожидается 1)" % second)
     if second != 1:
@@ -79,7 +79,7 @@ def main():
 
     # 3) Мышь сама по себе, без пальца рядом -> должна пройти.
     calls["n"] = 0
-    Window.on_touch_down(None, MouseMotionEvent(700, 800, True))
+    Window.on_touch_down(MouseMotionEvent(700, 800, True))
     third = calls["n"]
     lines.append("только мышь: дошло %d (ожидается 1)" % third)
     if third != 1:
