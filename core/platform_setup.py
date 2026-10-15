@@ -85,16 +85,20 @@ UI_SCALE = None
 def fit_design_to_screen():
     """Подгоняет плотность под экран устройства — вызывается из App.build().
 
-    На ПК окно измеряется в точках, и макет надо вписать в него своим
-    коэффициентом.
+    Задача одна: чтобы макет 450x920 занял экран целиком.
 
-    На телефоне так делать нельзя. Там Kivy измеряет окно в пикселях и
-    сам выставляет плотность по экрану: dp() уже переводит точки в
-    пиксели. Если подменить её своим значением, посчитанным как будто
-    окно в точках, макет 450 точек нарисуется как 450 пикселей на
-    экране шириной около 1290 — то есть втрое меньше, чем нужно, и
-    прижмётся к левому нижнему краю. Поэтому на телефоне своё
-    значение не ставится, берётся то, которое вычислил Kivy.
+    Коэффициент считается от Window.size — это размер окна в пикселях.
+    Именно в пикселях, потому что dp() умножает на плотность, и чтобы
+    макет шириной 450 точек стал шириной экрана, плотность должна быть
+    равна «ширина экрана в пикселях / 450».
+
+    Раньше здесь брался Window.system_size, а на iOS он отдаёт размер в
+    точках (у iPhone 15 Pro Max это 440x956). Делив 440 на 450, получали
+    коэффициент меньше единицы, но он зажимался снизу единицей - и
+    плотность становилась 1.0. Тогда 450 точек рисовались как 450
+    пикселей на экране шириной 1290: макет занимал треть экрана и
+    прижимался к левому нижнему краю. По этой же причине интерфейс
+    уезжал вправо, а не стоял по центру.
 
     Переопределить всё же можно: переменная окружения RH_UI_SCALE.
     """
@@ -102,15 +106,17 @@ def fit_design_to_screen():
     if forced:
         Metrics.density = forced
         return forced
-    if IS_MOBILE:
-        return Metrics.density
     try:
         from kivy.core.window import Window
-        w = int(getattr(Window, "system_size", (Window.width, Window.height))[0])
-        h = int(getattr(Window, "system_size", (Window.width, Window.height))[1])
+        w, h = int(Window.width), int(Window.height)
     except Exception:
-        w, h = _desktop_size()
-    scale = _fit_scale(w, h)
+        return Metrics.density
+    if w <= 0 or h <= 0:
+        return Metrics.density
+    scale = min(w / float(DESIGN_W), h / float(DESIGN_H))
+    # Ограничения: слишком вытянутый или слишком мелкий коэффициент
+    # ломает пропорции макета.
+    scale = max(0.5, min(scale, 5.0))
     Metrics.density = scale
     return scale
 
@@ -199,10 +205,30 @@ def _report_scale(scale) -> None:
         from kivy.core.window import Window
         size = getattr(Window, "system_size", None) or Window.size
         sys.stderr.write(
-            "[raisehand] окно %sx%s, плотность %s, максет %sx%s, "
+            "[raisehand] окно %sx%s (пиксели), плотность %s, макет %sx%s, "
             "коэффициент %s\n"
             % (size[0], size[1], Metrics.density, DESIGN_W, DESIGN_H, scale))
         sys.stderr.flush()
+    except Exception:
+        pass
+
+
+def _kill_mouse_emulation() -> None:
+    """Убрать с телефона события мыши, которые дублируют касание.
+
+    На iOS одно касание приходит дважды: SDL2 шлёт его и как событие
+    пальца, и как событие мыши. Оба доходят до приложения, и любая
+    кнопка срабатывает два раза.
+
+    Ключ disable_on_activity - штатный для этого случая: он снимает
+    событие мыши, если по этому же месту уже пришло касание от другого
+    провайдера. Провайдера мыши целиком убирать нельзя: тогда пропадёт
+    ввод, а на ПК он нужен по-настоящему.
+    """
+    try:
+        from kivy.config import Config
+        Config.set("input", "mouse",
+                   "mouse,disable_multitouch,disable_on_activity")
     except Exception:
         pass
 
@@ -243,10 +269,9 @@ def init_window():
         pass
     if IS_MOBILE:
         # На телефоне размер окна задаёт система — переопределять нельзя.
-        forced = _env_scale()
         UI_SCALE = fit_design_to_screen()
         _report_scale(UI_SCALE)
-        Config.set("input", "mouse", "mouse,disable_multitouch")
+        _kill_mouse_emulation()
         return UI_SCALE
 
     scale = _env_scale() or _fit_scale(*_desktop_size())
