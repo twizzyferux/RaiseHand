@@ -41,7 +41,7 @@
         # логотип + надпись RaiseHand
         Image:
             size_hint: None, None
-            pos: dp(54), dp(775)
+            pos: dp(104), dp(775)
             id: w_logo
             size: dp(55), dp(55)
             source: app.sprite('rh_logo')
@@ -49,7 +49,7 @@
 
         Image:
             size_hint: None, None
-            pos: dp(115), dp(786)
+            pos: dp(165), dp(786)
             id: w_word
             size: dp(181), dp(33)
             source: app.sprite('rh_wordmark')
@@ -59,9 +59,9 @@
         # заголовок: три фразы по очереди (см. WelcomeScreen)
         Label:
             size_hint: None, None
-            pos: dp(51), dp(633)
+            pos: dp(25), dp(633)
             id: w_title
-            size: dp(340), dp(100)
+            size: dp(400), dp(100)
             text: root.slide_title
             font_size: dp(41)
             bold: True
@@ -73,9 +73,9 @@
         # подзаголовок
         Label:
             size_hint: None, None
-            pos: dp(51), dp(542)
+            pos: dp(25), dp(542)
             id: w_sub
-            size: dp(340), dp(74)
+            size: dp(400), dp(74)
             text: root.slide_subtitle
             font_size: dp(22.5)
             color: 0.278, 0.278, 0.278, 1
@@ -108,9 +108,9 @@
             # Блок шире строки: при кегле 25 текст не помещался в 260 и
             # переносился на вторую строку, наезжая на кнопку. Ширина
             # блока — по макетной строке целиком, центр тот же.
-            pos: dp(45), dp(432)
+            pos: dp(30), dp(432)
             id: w_join
-            size: dp(360), dp(30)
+            size: dp(390), dp(30)
             text: 'Присоединяйтесь как…'
             font_size: dp(25)
             color: 0, 0, 0, 1
@@ -120,15 +120,15 @@
         # кнопки выбора роли
         PillButton:
             id: w_student
-            pos: dp(115), dp(360)
-            size: dp(218), dp(52.8)
+            pos: dp(45), dp(360)
+            size: dp(360), dp(52.8)
             text: 'Я Ученик'
             on_release: app.start_student_registration()
 
         PillOutlineButton:
             id: w_teacher
-            pos: dp(115), dp(287)
-            size: dp(218), dp(52.8)
+            pos: dp(45), dp(287)
+            size: dp(360), dp(52.8)
             text: 'Я Учитель'
             on_release: app.go('register_teacher')
 
@@ -136,8 +136,8 @@
         LinkButton:
             id: w_link
             size_hint: None, None
-            pos: dp(65), dp(240)
-            size: dp(320), dp(34)
+            pos: dp(25), dp(240)
+            size: dp(400), dp(34)
             font_size: dp(20)
             color: 0, 0, 0, 1
             halign: 'center'
