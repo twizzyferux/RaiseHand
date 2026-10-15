@@ -147,6 +147,7 @@ try:
     from core import auth, database, logs, session, teacher_proof  # noqa: E402
     from core.config import BASE_DIR, SETTINGS, sprite, text  # noqa: E402
     from ui import anim, screens, touch_fix  # noqa: E402
+    from ui.screens import PhoneStage  # noqa: E402,F401  (нужен .kv)
     from ui.avatar import GradientAvatar  # noqa: E402,F401  (нужен .kv)
     from ui.bubbles import WelcomeDecor  # noqa: E402,F401  (нужен .kv)
     from ui.chats import ChatList, ChatPane, ChatRow, NavItem  # noqa: E402,F401  (нужны .kv)

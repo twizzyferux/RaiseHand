@@ -33,7 +33,7 @@ def main():
     # Плотность 1 задаётся через RH_UI_SCALE: так размеры макета
     # равны пикселям, и окно можно сделать выше макета - как на телефоне.
     os.environ["RH_UI_SCALE"] = "1"
-    Config.set("graphics", "width", str(DESIGN_W))
+    Config.set("graphics", "width", "430")
     Config.set("graphics", "height", str(1050))
     Config.set("graphics", "resizable", "0")
 
@@ -49,7 +49,7 @@ def main():
     def go(_dt):
         # Плотность задаём прямо: иначе она считается от окна,
         # открытого прогонами раньше, и сцена выходит не того размера.
-        Window.size = (DESIGN_W, 1050)
+        Window.size = (430, 932)
         app.manager.current = "welcome"
         Clock.schedule_once(measure, 1.0)
 
@@ -80,13 +80,17 @@ def main():
             lines.append("сцена по высоте: %s" % state["stage"])
             lines.append("сверху пустого места: %s" % round(state["top"], 1))
             lines.append("снизу свободно: %s" % round(state["bottom"], 1))
-            # Сверху допустим только отступ системы, он на ПК нулевой.
+            # Сцена должна занять экран по высоте целиком: дыры ни
+            # сверху, ни снизу быть не должно - это и был предмет
+            # правки. По горизонтали сцена может выйти за края.
             if state["top"] > 1:
                 problems.append("сверху пустое место: %s px"
                                 % round(state["top"], 1))
-            if state["bottom"] < 1:
-                problems.append("снизу нет свободного места: %s"
-                                % round(state["bottom"], 1))
+            if abs(state["stage"] - state["win"]) > 1:
+                problems.append("сцена не во весь экран: %s против %s"
+                                % (round(state["stage"], 1), state["win"]))
+            lines.append("сверху: %s, снизу: %s"
+                         % (round(state["top"], 1), round(state["bottom"], 1)))
             lines.append("снимок: %s" % SHOT)
         lines.append("")
         lines.append("ИТОГ: %s" % ("сцена прижата к верху" if not problems
