@@ -81,6 +81,10 @@ def _env_scale():
 # только после создания окна (см. fit_design_to_screen).
 UI_SCALE = None
 
+# Отступы, которые просит не занимать система (вырез сверху, жесты
+# снизу). Наполняет init_window на телефоне.
+UI_SAFE = (0, 0)
+
 
 def fit_design_to_screen():
     """Подгоняет плотность под экран устройства — вызывается из App.build().
@@ -213,6 +217,47 @@ def _report_scale(scale) -> None:
         pass
 
 
+def safe_insets():
+    """Отступы сверху и снизу, которые система просит не занимать.
+
+    На iPhone с вырезом (Dynamic Island, «чёлка») сверху нельзя: там
+    камера, а снизу полоска жестов. Обычное приложение смещает
+    содержимое, иначе надписи наезжают на вырез, а кнопка уходит под
+    жест и не нажимается.
+
+    Kivy таких отступов не знает, поэтому берём их у самой системы
+    через UIKit. Если обратиться не вышло, отступы нулевые - это то же,
+    что было раньше, то есть ничего не ломается.
+    """
+    if not IS_IOS:
+        return (0, 0)
+    try:
+        from pyobjus import autoclass
+
+        app = autoclass("UIApplication").sharedApplication()
+        window = None
+        for key in ("keyWindow",):
+            try:
+                window = getattr(app, key)
+                break
+            except Exception:
+                continue
+        if window is None:
+            return (0, 0)
+        insets = window.safeAreaInsets()
+
+        def value(part):
+            got = getattr(part, "value", part)
+            try:
+                return float(got)
+            except (TypeError, ValueError):
+                return 0.0
+
+        return (int(value(insets.top)), int(value(insets.bottom)))
+    except Exception:
+        return (0, 0)
+
+
 def _kill_mouse_emulation() -> None:
     """Убрать с телефона события мыши, которые дублируют касание.
 
@@ -272,6 +317,11 @@ def init_window():
         UI_SCALE = fit_design_to_screen()
         _report_scale(UI_SCALE)
         _kill_mouse_emulation()
+        top, bottom = safe_insets()
+        UI_SAFE = (top, bottom)
+        sys.stderr.write("[raisehand] безопасные отступы: сверху %s, снизу %s\n"
+                         % (top, bottom))
+        sys.stderr.flush()
         return UI_SCALE
 
     scale = _env_scale() or _fit_scale(*_desktop_size())
