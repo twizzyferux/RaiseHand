@@ -192,6 +192,17 @@ jobs:
           echo "--- generated ---"
           ls -la "$WORK_DIR/${PROJ}-ios"
 
+      - name: Put the app icon
+        # kivy-ios takes the icon from the file icon.png next to the
+        # generated project, not from our assets. The file is put there
+        # after the project is created, so it does not matter where it
+        # came from before.
+        run: |
+          cd "$WORK_DIR"
+          cp "$WORK_DIR/${PROJ}-ios/icon.png" "$WORK_DIR/${PROJ}-ios/icon.original.png" 2>/dev/null || true
+          cp "$GITHUB_WORKSPACE/assets/images/app-icon.png" "$WORK_DIR/${PROJ}-ios/icon.png"
+          ls -la "$WORK_DIR/${PROJ}-ios" | head -20
+
       - name: Inspect the Xcode project
         # Printed before the build so that the real target and scheme
         # names are visible in the log. Guessing them was the reason the
