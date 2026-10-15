@@ -15,6 +15,7 @@
 """
 import ctypes
 import os
+import sys
 
 from kivy.config import Config
 from kivy.metrics import Metrics
@@ -82,11 +83,27 @@ UI_SCALE = None
 
 
 def fit_design_to_screen():
-    """Подгоняет плотность под экран устройства — вызывается из App.build()."""
+    """Подгоняет плотность под экран устройства — вызывается из App.build().
+
+    На ПК окно измеряется в точках, и макет надо вписать в него своим
+    коэффициентом.
+
+    На телефоне так делать нельзя. Там Kivy измеряет окно в пикселях и
+    сам выставляет плотность по экрану: dp() уже переводит точки в
+    пиксели. Если подменить её своим значением, посчитанным как будто
+    окно в точках, макет 450 точек нарисуется как 450 пикселей на
+    экране шириной около 1290 — то есть втрое меньше, чем нужно, и
+    прижмётся к левому нижнему краю. Поэтому на телефоне своё
+    значение не ставится, берётся то, которое вычислил Kivy.
+
+    Переопределить всё же можно: переменная окружения RH_UI_SCALE.
+    """
     forced = _env_scale()
     if forced:
         Metrics.density = forced
         return forced
+    if IS_MOBILE:
+        return Metrics.density
     try:
         from kivy.core.window import Window
         w = int(getattr(Window, "system_size", (Window.width, Window.height))[0])
@@ -171,6 +188,25 @@ def _center_window(window) -> None:
         pass
 
 
+def _report_scale(scale) -> None:
+    """Напечатать размеры окна и плотность.
+
+    Нужно для проверки на глаз нельзя: по этому сразу видно, во сколько
+    раз макет меньше или больше экрана и в каких единицах Kivy считает
+    окно - в точках или в пикселях.
+    """
+    try:
+        from kivy.core.window import Window
+        size = getattr(Window, "system_size", None) or Window.size
+        sys.stderr.write(
+            "[raisehand] окно %sx%s, плотность %s, максет %sx%s, "
+            "коэффициент %s\n"
+            % (size[0], size[1], Metrics.density, DESIGN_W, DESIGN_H, scale))
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
 def _max_fps() -> int:
     """Сколько кадров в секунду разрешаем приложению.
 
@@ -208,9 +244,8 @@ def init_window():
     if IS_MOBILE:
         # На телефоне размер окна задаёт система — переопределять нельзя.
         forced = _env_scale()
-        UI_SCALE = forced
-        if forced:
-            Metrics.density = forced
+        UI_SCALE = fit_design_to_screen()
+        _report_scale(UI_SCALE)
         Config.set("input", "mouse", "mouse,disable_multitouch")
         return UI_SCALE
 
