@@ -83,19 +83,6 @@ BUTTON_SIZE = 17
 __all__ = ["show"]
 
 
-def _window_centre():
-    """Середина окна экрана.
-
-    Считается от окна, а не от самого ModalView. ModalView центрируется
-    сам и меняет свою позицию уже после того, как вёрстка окна
-    посчитана, - брать его center_x значит зависеть от порядка событий:
-    в одной сборке карточка вставала по центру, в другой на 175
-    пикселей левее. От окна результат не зависит ни от чего.
-    """
-    from kivy.core.window import Window
-    return Window.size[0] / 2.0, Window.size[1] / 2.0
-
-
 class _Alert(ModalView):
     """Окно: затемнение от ModalView, карточка и надписи нарисованы здесь."""
 
@@ -164,40 +151,45 @@ class _Alert(ModalView):
         self.message_label.text_size = (inner, None)
         self.message_label.texture_update()
         message_h = max(dp(0), self.message_label.texture_size[1])
+        # Высота текста задаётся явно. Без этого у надписи остаётся
+        # старая высота, и строки налезают друг на друга - это и было
+        # видно на телефоне.
+        self.message_label.size = (inner, message_h)
 
         card_h = (dp(PAD_TOP) + title_h + dp(GAP) + message_h
                   + dp(PAD_BOTTOM) + dp(BUTTON_H))
 
-        cx, cy = _window_centre()
+        # ВСЕ координаты - от самого окна сообщения, а не от экрана.
+        #
+        # Ошибка была ровно здесь: надписи и карточка - дети ModalView,
+        # а координаты считались от центра экрана. ModalView стоит по
+        # центру и сам сдвинут на полсвоей ширины, поэтому содержимое
+        # уезжало вправо и вниз, надписи накладывались друг на друга, а
+        # карточка уходила за видимую область и не была видна вовсе.
+        # На ПК это не проявлялось из-за других размеров, на телефоне -
+        # сразу.
+        left = 0.0
+        top = card_h - dp(PAD_TOP)
+        self.title_label.pos = (left + dp(PAD_X), top - title_h)
+        y = top - title_h - dp(GAP) - message_h
+        self.message_label.pos = (left + dp(PAD_X), y)
 
-        # Окно iOS стоит чуть выше середины экрана, а не ровно в ней.
-        cy += dp(24)
-
-        top = cy + card_h / 2.0
-        y = top - dp(PAD_TOP) - title_h
-        self.title_label.pos = (cx - inner / 2.0, y)
-        y -= dp(GAP) + message_h
-        self.message_label.pos = (cx - inner / 2.0, y)
-
-        btn_y = cy - card_h / 2.0
         self.button_label.size = (inner, dp(BUTTON_H))
-        self.button_label.pos = (cx - inner / 2.0,
-                                 btn_y + (dp(BUTTON_H) - dp(BUTTON_SIZE) * 1.3)
-                                 / 2.0)
+        self.button_label.pos = (
+            left + dp(PAD_X),
+            (dp(BUTTON_H) - dp(BUTTON_SIZE) * 1.3) / 2.0)
 
-        left = cx - self.card_w / 2.0
-        bottom = cy - card_h / 2.0
-        self._card.pos = (left, bottom)
+        self._card.pos = (0.0, 0.0)
         self._card.size = (self.card_w, card_h)
         self._card.radius = [dp(RADIUS)]
 
         # Разделитель над кнопкой тянется по всей ширине карточки, а не
         # по полям: так он выглядит в системном окне.
-        self._sep.pos = (left, btn_y + dp(BUTTON_H))
+        self._sep.pos = (0.0, dp(BUTTON_H))
         self._sep.size = (self.card_w, dp(SEPARATOR_H))
 
-        # Размер самого ModalView равен карточке: за него ничего не
-        # кликается и ничего не рисуется.
+        # Размер самого ModalView равен карточке. По центру экрана он
+        # ставит себя сам, поэтому свой pos не задаётся.
         self.size = (self.card_w, card_h)
 
     # -- ввод ---------------------------------------------------------------- #
