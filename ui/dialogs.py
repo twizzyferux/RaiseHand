@@ -1,4 +1,9 @@
-"""Всплывающие окна: сообщение и выбор файла. Оформления нет — стандартный вид Kivy."""
+"""Всплывающие окна: сообщение и выбор файла.
+
+Сообщение на iOS показывается штатным окном iOS (ui/ios_alert.py), а
+не серым окном Kivy. На ПК остаётся окно Kivy: айфонского вида там
+быть не может.
+"""
 
 import os
 
@@ -8,8 +13,18 @@ from kivy.uix.filechooser import FileChooserIconView
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 
+from ui import ios_alert
+
 
 def show_message(title: str, message: str) -> None:
+    """Сообщение пользователю.
+
+    Сначала пробуем системное окно iOS. Не вышло - показываем окно
+    Kivy: лучше серое окно, чем ничего.
+    """
+    if ios_alert.show(title, message):
+        return
+
     box = BoxLayout(orientation="vertical", padding=12, spacing=10)
     label = Label(text=message, halign="center", valign="middle")
     label.bind(size=lambda inst, val: setattr(inst, "text_size", val))

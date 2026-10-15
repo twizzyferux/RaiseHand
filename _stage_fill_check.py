@@ -57,26 +57,28 @@ def main():
         got = ps.fit_design_to_screen()
         need_h = DESIGN_H * got
         need_w = DESIGN_W * got
-        # Высота макета обязана совпасть с высотой экрана - это и есть
-        # "интерфейс занимает весь экран".
-        fills_h = abs(need_h - h) < 1.0
-        # По ширине вылет терпим, пока он меньше поля макета (51dp с
-        # каждой стороны): срезается пустое поле, а не содержимое.
-        over = need_w - w
-        cut_dp = max(0.0, over) / 2.0 / got
+        # Правило теперь такое: масштаб по ширине, поэтому свободная
+        # полоса снизу на вытянутых экранах - это норма, её убирает
+        # вёрстка. А вот выйти за экран нельзя ни по одной оси, иначе
+        # часть интерфейса просто не попадёт в кадр. Это и есть то,
+        # что здесь проверяется.
+        fits_h = need_h <= h + 0.5
+        fits_w = need_w <= w + 0.5
+        slack = h - need_h
         lines.append("%-20s экран %dx%d, плотность %.3f, макет %.0fx%.0f, "
-                     "заполняет высоту=%s, срез поля %.0f dp"
-                     % (name, w, h, got, need_w, need_h, fills_h, cut_dp))
-        if not fills_h:
-            problems.append("%s: макет не во всю высоту (%.0f из %d)"
-                            % (name, need_h, h))
-        if cut_dp > MARGIN_DP:
-            problems.append("%s: срезается %.0f dp с края при поле макета "
-                            "%d dp" % (name, cut_dp, MARGIN_DP))
+                     "влезает=%s, свободно снизу %.0f px (%.0f dp)"
+                     % (name, w, h, got, need_w, need_h,
+                        fits_h and fits_w, max(0.0, slack), slack / got))
+        if not fits_h:
+            problems.append("%s: макет выше экрана на %.0f px, низ не "
+                            "попадёт в кадр" % (name, need_h - h))
+        if not fits_w:
+            problems.append("%s: макет шире экрана на %.0f px, срежется "
+                            "содержимое" % (name, need_w - w))
 
     kw.Window = old_window
     lines.append("")
-    lines.append("ИТОГ: %s" % ("макет занимает экран по высоте"
+    lines.append("ИТОГ: %s" % ("макет влезает в экран без среза"
                                  if not problems else "есть проблемы"))
     for p in problems:
         lines.append("  - %s" % p)
