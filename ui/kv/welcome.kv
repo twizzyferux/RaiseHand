@@ -39,17 +39,22 @@
             id: w_decor
 
         # логотип + надпись RaiseHand
+        #
+        # Логотип стоит на одной линии с заголовком: левый край у них
+        # общий, 25dp, как у текста ниже. Раньше логотип начинался на
+        # 54dp, и шапка выглядела сдвинутой вправо относительно
+        # заголовка.
         Image:
             size_hint: None, None
-            pos: dp(54), dp(775)
+            pos: dp(25), dp(775)
             id: w_logo
-            size: dp(55), dp(55)
+            size: dp(44), dp(44)
             source: app.sprite('rh_logo')
             mipmap: True
 
         Image:
             size_hint: None, None
-            pos: dp(115), dp(786)
+            pos: dp(75), dp(786)
             id: w_word
             size: dp(181), dp(33)
             source: app.sprite('rh_wordmark')
