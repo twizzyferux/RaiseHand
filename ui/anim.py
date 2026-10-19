@@ -34,6 +34,11 @@ TRANSITION_DURATION = 0.24
 TRANSITION_SHIFT = 0.09          # насколько въезжает новый экран, доля ширины
 TRANSITION_DIM = 0.45            # насколько притухает уходящий экран
 
+# Переход с затуханием и приближением. Длительность чуть больше, чем у
+# сдвига: одновременное изменение прозрачности и масштаба выглядит
+# спокойно на 340мс, а на 240мс превращается в рывок.
+ZOOM_DURATION = 0.34
+
 FADE_IN = 0.30
 FADE_OUT = 0.14
 RISE = 14                        # насколько элемент приподнимается при появлении
@@ -189,6 +194,111 @@ class SoftSlideTransition(TransitionBase):
 
 
 Factory.register("SoftSlideTransition", cls=SoftSlideTransition)
+
+
+class SoftZoomTransition(TransitionBase):
+    """Старый экран гаснет и отдаляется, новый приближается и проявляется.
+
+    Это то, что просили: экран не уезжает вбок, а «отпускается» и
+    уступает место следующему. Уходящий слегка уменьшается и гаснет,
+    входящий приходит чуть крупнее и проявляется на месте.
+
+    Правила взяты из практики анимации интерфейсов (emil-design-eng):
+
+    - масштаб никогда не начинается с нуля: элемент, возникающий из
+      ничего, выглядит выдуманным. Уходящий заканчивается на 94%,
+      входящий начинается на 106%;
+    - кривая - сильный ease-out: движение начинается сразу, без
+      задержки, и мягко останавливается. ease-in ощущается вялым;
+    - выход короче входа: уходящий не должен тянуться и задерживать
+      новый экран;
+    - анимируются только прозрачность и масштаб - они не требуют
+      перерисовки раскладки и идут на видеокарте.
+
+    Почему это не «системный движок», а свои инструкции: в Kivy
+    переходы и есть тот движок, который здесь работает. Другого движка
+    у приложения нет - рисует его canvas, а не UIKit.
+    """
+
+    direction = OptionProperty("left", options=("left", "right", "up", "down"))
+
+    def on_progress(self, p):
+        # out_cubic - мягкое ускорение в начале, спокойное торможение.
+        t = AnimationTransition.out_cubic(p)
+        new, old = self.screen_in, self.screen_out
+
+        # Уходящий экран: гаснет чуть быстрее, чем приходит новый.
+        # Так он не мешает новому и не висит в кадре лишнее время.
+        old.opacity = 1.0 - AnimationTransition.out_quad(min(1.0, p * 1.15))
+        _apply_zoom(old, 1.0 - 0.06 * t)
+
+        # Входящий: проявляется по той же кривой, но без ускорения,
+        # поэтому заметно позже уходящего. Ровно наоборот было бы
+        # неприятно - новый экран вспыхивал бы раньше, чем старый
+        # успел уйти.
+        new.opacity = AnimationTransition.out_quad(p)
+        _apply_zoom(new, 1.0 + 0.06 * (1.0 - t))
+
+    def on_complete(self):
+        super().on_complete()
+        for screen in (self.screen_in, self.screen_out):
+            if screen is None:
+                continue
+            _clear_zoom(screen)
+            screen.pos = self.manager.pos
+            screen.opacity = 1.0
+
+
+Factory.register("SoftZoomTransition", cls=SoftZoomTransition)
+
+
+# Масштаб вокруг центра экрана.
+#
+# Экран - это RelativeLayout, и обычное свойство scale в нём не
+# применяется к содержимому так, как нужно: оно умножается на
+# текущий размер и увозит всё в сторону. Поэтому масштаб идёт
+# матрицей в canvas.before с опорой в центре экрана.
+
+_ZOOM_ORIGIN = "_zoom_origin"
+
+
+def _apply_zoom(screen, scale):
+    """Поставить экрану масштаб вокруг его центра."""
+    if screen is None:
+        return
+    if getattr(screen, _ZOOM_ORIGIN, None) is None:
+        with screen.canvas.before:
+            screen._zoom_push = PushMatrix()
+            screen._zoom_to = Translate(0, 0)
+            screen._zoom_scale = Scale(1, 1, 1)
+            screen._zoom_back = Translate(0, 0)
+            screen._zoom_pop = PopMatrix()
+        setattr(screen, _ZOOM_ORIGIN, True)
+
+    cx, cy = screen.center_x, screen.center_y
+    screen._zoom_to.x = cx
+    screen._zoom_to.y = cy
+    screen._zoom_back.x = -cx
+    screen._zoom_back.y = -cy
+    screen._zoom_scale.x = scale
+    screen._zoom_scale.y = scale
+    screen._zoom_scale.z = scale
+
+
+def _clear_zoom(screen):
+    """Убрать масштаб: иначе он останется висеть после перехода."""
+    if screen is None or getattr(screen, _ZOOM_ORIGIN, None) is None:
+        return
+    _apply_zoom(screen, 1.0)
+    try:
+        screen.canvas.before.remove(screen._zoom_push)
+        screen.canvas.before.remove(screen._zoom_to)
+        screen.canvas.before.remove(screen._zoom_scale)
+        screen.canvas.before.remove(screen._zoom_back)
+        screen.canvas.before.remove(screen._zoom_pop)
+    except Exception:
+        pass
+    setattr(screen, _ZOOM_ORIGIN, None)
 
 
 # --------------------------------------------------------------------------- #
