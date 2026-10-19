@@ -66,6 +66,15 @@ SHIFT_LEFT_DP = 0
 
 
 class BaseScreen(Screen):
+    """Общий для всех экранов: фон, сцена по центру, появление лесенкой.
+
+    INTRO - идентификаторы элементов, которые проявляются по очереди при
+    входе на экран. Пустой список означает «без лесенки»: у экрана
+    нет содержимого, которое имеет смысл показывать по одному.
+    """
+
+    INTRO = ()
+    _intro_played = False
     """Общее для всех экранов: кремовый фон и удобства.
 
     ФОН
@@ -149,6 +158,23 @@ class BaseScreen(Screen):
     def _sync_bg(self, *_):
         self._screen_bg.pos = self.pos
         self._screen_bg.size = self.size
+
+    def on_enter(self, *_):
+        """Проявить содержимое экрана лесенкой.
+
+        Появление повторяется только один раз за сеанс: при возврате
+        «Назад» человек уже всё видел, и повторять показ незачем.
+        """
+        self._play_intro()
+
+    def _play_intro(self):
+        """Лесенка появления по списку INTRO."""
+        if self._intro_played:
+            return
+        self._intro_played = True
+        widgets = [self.ids.get(name) for name in self.INTRO]
+        anim.stagger_in([w for w in widgets if w is not None],
+                        start=0.06, step=0.035)
 
     @property
     def app(self):
@@ -317,6 +343,7 @@ class WelcomeScreen(BaseScreen):
 
 
 class LoginScreen(BaseScreen):
+    INTRO = ("login_field", "password_field", "remember_toggle")
     login_field = ObjectProperty(None)
     password_field = ObjectProperty(None)
     remember_toggle = ObjectProperty(None)
@@ -458,6 +485,7 @@ class RegChrome(FloatLayout):
 
 class RegStep1Screen(NameFieldsMixin, BaseScreen):
     """Шаг 1 — «Как вас зовут?» (имя и фамилия)."""
+    INTRO = ("first_name", "last_name")
 
     first_name = ObjectProperty(None)
     last_name = ObjectProperty(None)
@@ -479,6 +507,7 @@ class RegStep1Screen(NameFieldsMixin, BaseScreen):
 
 class RegStep2Screen(BaseScreen):
     """Шаг 2 — «Введите пароль». password + повтор + «Запомнить меня»."""
+    INTRO = ("password", "password_repeat", "remember")
 
     password = ObjectProperty(None)
     password_repeat = ObjectProperty(None)
@@ -502,6 +531,7 @@ class RegStep2Screen(BaseScreen):
 
 class RegStep3Screen(BaseScreen):
     """Шаг 3 — «Где вы учитесь?» (город и код приглашения)."""
+    INTRO = ("city", "invite_code")
 
     invite_code = ObjectProperty(None)
     # подсказки городов под полем ввода
@@ -592,6 +622,7 @@ class RegStep3Screen(BaseScreen):
 
 class RegStep4Screen(BaseScreen):
     """Шаг 4 — «Подтверждение» (почта/телефон + код)."""
+    INTRO = ("contact_label", "contact", "code_field")
 
     contact = ObjectProperty(None)
     code_field = ObjectProperty(None)
@@ -702,6 +733,7 @@ class RegStep4Screen(BaseScreen):
 
 class RegStep5Screen(BaseScreen):
     """Шаг 5 — «Всё готово!» (аватар, приветствие, класс/школа/роль)."""
+    INTRO = ("avatar")
 
     initials = StringProperty("")
     welcome_text = StringProperty("")
@@ -762,6 +794,7 @@ def _save_remember(remember: bool, login_value: str) -> None:
 
 
 class RegisterTeacherScreen(NameFieldsMixin, BaseScreen):
+    INTRO = ("first_name", "last_name", "password", "password_repeat")
     first_name = ObjectProperty(None)
     last_name = ObjectProperty(None)
     password = ObjectProperty(None)
@@ -783,6 +816,7 @@ class RegisterTeacherScreen(NameFieldsMixin, BaseScreen):
 
 
 class TeacherProofScreen(BaseScreen):
+    INTRO = ("platform_spinner", "code_field")
     mode = StringProperty("code")            # 'code' или 'screenshot'
     selected_file = StringProperty("")
     platform_spinner = ObjectProperty(None)
@@ -822,6 +856,7 @@ class TeacherProofScreen(BaseScreen):
 
 
 class VerifyScreen(BaseScreen):
+    INTRO = ("target_field", "code_field")
     channel = StringProperty("email")
     hint = StringProperty("")
     target_field = ObjectProperty(None)
@@ -878,6 +913,7 @@ class HomeScreen(BaseScreen):
     нарисован только активный пункт, поэтому переключение — мягкая
     смена прозрачности, без перезагрузки экрана.
     """
+    INTRO = ("tab_title", "chats_scroll", "search_pane", "groups_pane", "fab")
 
     TAB_TITLES = {"search": "Поиск", "chats": "Чаты", "groups": "Группы"}
 
@@ -1128,6 +1164,7 @@ class HomeScreen(BaseScreen):
 
 
 class ChatScreen(BaseScreen):
+    INTRO = ("scroller", "messages_box", "message_field")
     partner_title = StringProperty("")
     messages_box = ObjectProperty(None)
     scroller = ObjectProperty(None)
@@ -1179,6 +1216,7 @@ class ChatScreen(BaseScreen):
 
 
 class SettingsScreen(BaseScreen):
+    INTRO = ("solid_glass", "nickname_field", "status_field")
     avatar_hint = StringProperty("")
     nickname_field = ObjectProperty(None)
     status_field = ObjectProperty(None)
@@ -1273,6 +1311,7 @@ class LogsScreen(BaseScreen):
     Лог пишется всегда в data/app.log, а на этом экране видно его хвост —
     удобно проверять, что приложение делало, не открывая файлы вручную.
     """
+    INTRO = ("log_scroll")
 
     log_text = StringProperty("")
     log_path = StringProperty("")

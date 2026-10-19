@@ -381,8 +381,14 @@ class MessengerApp(App):
 
     @staticmethod
     def _transition():
-        """Мягкий переход между экранами (см. ui/anim.py)."""
-        return anim.SoftSlideTransition(duration=anim.TRANSITION_DURATION)
+        """Переход между экранами: затухание с приближением (ui/anim.py).
+
+        Старый экран гаснет и отдаляется, новый приходит крупнее и
+        проявляется на месте. Длится чуть дольше сдвига, потому что
+        движение сразу по двум осям читается как спокойное, а короткое
+        превращается в рывок.
+        """
+        return anim.SoftZoomTransition(duration=anim.ZOOM_DURATION)
 
     def go(self, screen_name: str, direction: str = "left"):
         self.manager.transition.direction = direction
