@@ -343,7 +343,7 @@ class WelcomeScreen(BaseScreen):
 
 
 class LoginScreen(BaseScreen):
-    INTRO = ("login_field", "password_field", "remember_toggle")
+    INTRO = ("login_field", "password_field")
     login_field = ObjectProperty(None)
     password_field = ObjectProperty(None)
     remember_toggle = ObjectProperty(None)
@@ -507,7 +507,7 @@ class RegStep1Screen(NameFieldsMixin, BaseScreen):
 
 class RegStep2Screen(BaseScreen):
     """Шаг 2 — «Введите пароль». password + повтор + «Запомнить меня»."""
-    INTRO = ("password", "password_repeat", "remember")
+    INTRO = ("password", "password_repeat")
 
     password = ObjectProperty(None)
     password_repeat = ObjectProperty(None)
@@ -913,7 +913,7 @@ class HomeScreen(BaseScreen):
     нарисован только активный пункт, поэтому переключение — мягкая
     смена прозрачности, без перезагрузки экрана.
     """
-    INTRO = ("tab_title", "chats_scroll", "search_pane", "groups_pane", "fab")
+    INTRO = ("tab_title", "chats_scroll", "search_pane", "groups_pane")
 
     TAB_TITLES = {"search": "Поиск", "chats": "Чаты", "groups": "Группы"}
 
