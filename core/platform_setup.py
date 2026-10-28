@@ -120,8 +120,7 @@ def fit_design_to_screen():
     by_width = w / float(DESIGN_W)
     by_height = h / float(DESIGN_H)
     # По ширине, если макет при этом влезает по высоте; иначе по высоте.
-    scale = by_width if by_width * DESIGN_H <= h else by_height
-    scale = max(0.5, min(scale, 5.0))
+    scale = by_height
     Metrics.density = scale
     return scale
 
