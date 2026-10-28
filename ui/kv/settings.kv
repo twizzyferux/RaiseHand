@@ -1,4 +1,5 @@
 # Настройки: ник, статус, аватар, смена пароля (старый не нужен).
+# Стиль — pill-поля и FormButton, как на шагах регистрации.
 
 <SettingsScreen>:
     nickname_field: nickname_field
@@ -14,22 +15,23 @@
             TitleLabel:
                 text: 'Настройки'
 
-            # --- Простота оформления ---
-            # То же, что системная «Меньше прозрачности» в iOS: стекло
-            # становится плотнее и почти не просвечивает.
             BodyLabel:
                 text: 'Интерфейс'
+                bold: True
+                color: 0, 0, 0, 1
+                font_size: dp(16)
 
-            # --- стекло ---
-            # Галочка ведёт себя как системная «Меньше прозрачности»:
+            # Галочка как системная «Меньше прозрачности»:
             # стекло становится плотнее и почти не просвечивает.
-
             CheckRow:
                 id: solid_glass
                 text: 'Меньше прозрачности'
 
             BodyLabel:
                 text: 'Профиль'
+                bold: True
+                color: 0, 0, 0, 1
+                font_size: dp(16)
 
             Field:
                 id: nickname_field
@@ -39,19 +41,23 @@
                 id: status_field
                 hint_text: 'Статус (например: 9А класс)'
 
-            Btn:
+            FormOutlineButton:
                 text: 'Выбрать аватар'
                 on_release: root.choose_avatar()
 
             BodyLabel:
                 text: root.avatar_hint
+                color: 0.4, 0.4, 0.42, 1
 
-            Btn:
+            FormButton:
                 text: 'Сохранить профиль'
                 on_release: root.save_profile()
 
             BodyLabel:
                 text: 'Смена пароля'
+                bold: True
+                color: 0, 0, 0, 1
+                font_size: dp(16)
 
             PasswordField:
                 id: password_field
@@ -63,14 +69,17 @@
                 hint_text: 'Повторите новый пароль'
                 password: True
 
-            Btn:
+            FormButton:
                 text: 'Сменить пароль'
                 on_release: root.save_password()
 
             BodyLabel:
                 text: 'Приложение'
+                bold: True
+                color: 0, 0, 0, 1
+                font_size: dp(16)
 
-            Btn:
+            FormOutlineButton:
                 text: 'Логи приложения'
                 on_release: app.go('logs')
 
@@ -80,4 +89,5 @@
 
             LinkButton:
                 text: 'Выйти'
+                color: 0.75, 0.2, 0.2, 1
                 on_release: root.do_logout()

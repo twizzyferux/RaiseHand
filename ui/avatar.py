@@ -31,7 +31,8 @@ class GradientAvatar(Widget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._initials = ""
-        self._picture = Image(mipmap=True, keep_ratio=True, allow_stretch=True)
+        # fit_mode вместо deprecated keep_ratio/allow_stretch (Kivy 2.3+)
+        self._picture = Image(mipmap=True, fit_mode="contain")
         self._label = Label(markup=False, halign="center", valign="middle",
                             color=(1, 1, 1, 1), bold=True)
         super().add_widget(self._picture)

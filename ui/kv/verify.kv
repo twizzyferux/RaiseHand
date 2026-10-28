@@ -1,4 +1,5 @@
 # Подтверждение аккаунта: почта или телефон + код.
+# Стиль — pill-поля и FormButton.
 
 <VerifyScreen>:
     target_field: target_field
@@ -17,35 +18,37 @@
 
             BoxLayout:
                 size_hint_y: None
-                height: 48
-                spacing: 10
+                height: dp(52)
+                spacing: dp(10)
 
-                Btn:
+                FormOutlineButton:
                     text: 'Почта'
                     on_release: root.set_channel('email')
 
-                Btn:
+                FormOutlineButton:
                     text: 'Телефон'
                     on_release: root.set_channel('phone')
 
             BodyLabel:
                 text: 'Способ: ' + ('почта' if root.channel == 'email' else 'телефон')
+                color: 0.25, 0.25, 0.27, 1
 
             Field:
                 id: target_field
                 hint_text: 'ivan@mail.ru' if root.channel == 'email' else '+79001234567'
 
-            Btn:
+            FormButton:
                 text: 'Отправить код'
                 on_release: root.send_code()
 
             BodyLabel:
                 text: root.hint
+                color: 0.294, 0.184, 0.878, 1
 
             Field:
                 id: code_field
                 hint_text: 'Код из сообщения'
 
-            Btn:
+            FormButton:
                 text: 'Подтвердить'
                 on_release: root.confirm()
