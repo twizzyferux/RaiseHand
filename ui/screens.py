@@ -102,25 +102,26 @@ class BaseScreen(Screen):
         self._pin_stage()
 
     def _pin_stage(self, *_):
-        """Центрировать сцену на экране.
+        """Центрировать сцену на экране явными координатами.
 
-        Масштаб (cover) задаёт fit_design_to_screen: density =
-        max(px_w/450, px_h/920), поэтому сцена не меньше экрана по
-        обеим осям. Лишнее по более короткой стороне срезается
-        симметрично — pos_hint center_x/center_y.
+        Масштаб (cover) даёт density = max(px_w/450, px_h/920), поэтому
+        на вытянутом iPhone сцена шире экрана (~1368px при 1290px).
+        Лишнее должно срезаться поровну слева и справа.
 
-        Раньше масштаб брался только по ширине, сцена была ниже
-        экрана, её прижимали к низу (y=0), и сверху оставалась
-        пустая полоса. Теперь пустого поля нет.
+        pos_hint center_x здесь ненадёжен: при width_сцены > width_экрана
+        на iOS x часто остаётся 0, сцена прилипает к левому краю, и весь
+        макет визуально уезжает вправо на половину обрезки (~13–14 dp).
+        Поэтому x/y считаем сами: (родитель − сцена) / 2.
         """
         for child in self.children:
             if child.__class__.__name__ != "PhoneStage":
                 continue
-            # Размер сцены не трогаем: контент в фиксированных dp,
-            # масштаб — через Metrics.density.
-            child.pos_hint = {"center_x": 0.5, "center_y": 0.5}
-            if SHIFT_LEFT_DP:
-                child.x -= dp(SHIFT_LEFT_DP)
+            # Сбрасываем pos_hint, иначе следующий do_layout перезапишет
+            # явные x/y обратно в «центр», который на части устройств
+            # не срабатывает при отрицательном x.
+            child.pos_hint = {}
+            child.x = self.x + (self.width - child.width) * 0.5 - dp(SHIFT_LEFT_DP)
+            child.y = self.y + (self.height - child.height) * 0.5
             return
 
     def _sync_bg(self, *_):
