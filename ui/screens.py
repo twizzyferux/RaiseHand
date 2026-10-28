@@ -343,7 +343,7 @@ class WelcomeScreen(BaseScreen):
 
 
 class LoginScreen(BaseScreen):
-    INTRO = ("login_field", "password_field")
+    INTRO = ("login_field", "password_field", "remember_toggle")
     login_field = ObjectProperty(None)
     password_field = ObjectProperty(None)
     remember_toggle = ObjectProperty(None)
@@ -485,7 +485,8 @@ class RegChrome(FloatLayout):
 
 class RegStep1Screen(NameFieldsMixin, BaseScreen):
     """Шаг 1 — «Как вас зовут?» (имя и фамилия)."""
-    INTRO = ("first_name", "last_name")
+    # Без лесенки: таблетки не проявляются при «Далее».
+    INTRO = ()
 
     first_name = ObjectProperty(None)
     last_name = ObjectProperty(None)
@@ -507,7 +508,7 @@ class RegStep1Screen(NameFieldsMixin, BaseScreen):
 
 class RegStep2Screen(BaseScreen):
     """Шаг 2 — «Введите пароль». password + повтор + «Запомнить меня»."""
-    INTRO = ("password", "password_repeat")
+    INTRO = ()
 
     password = ObjectProperty(None)
     password_repeat = ObjectProperty(None)
@@ -531,7 +532,7 @@ class RegStep2Screen(BaseScreen):
 
 class RegStep3Screen(BaseScreen):
     """Шаг 3 — «Где вы учитесь?» (город и код приглашения)."""
-    INTRO = ("city", "invite_code")
+    INTRO = ()
 
     invite_code = ObjectProperty(None)
     # подсказки городов под полем ввода
@@ -622,7 +623,7 @@ class RegStep3Screen(BaseScreen):
 
 class RegStep4Screen(BaseScreen):
     """Шаг 4 — «Подтверждение» (почта/телефон + код)."""
-    INTRO = ("contact_label", "contact", "code_field")
+    INTRO = ()
 
     contact = ObjectProperty(None)
     code_field = ObjectProperty(None)
@@ -733,7 +734,7 @@ class RegStep4Screen(BaseScreen):
 
 class RegStep5Screen(BaseScreen):
     """Шаг 5 — «Всё готово!» (аватар, приветствие, класс/школа/роль)."""
-    INTRO = ("avatar")
+    INTRO = ()
 
     initials = StringProperty("")
     welcome_text = StringProperty("")
@@ -913,7 +914,7 @@ class HomeScreen(BaseScreen):
     нарисован только активный пункт, поэтому переключение — мягкая
     смена прозрачности, без перезагрузки экрана.
     """
-    INTRO = ("tab_title", "chats_scroll", "search_pane", "groups_pane")
+    INTRO = ("tab_title", "chats_scroll", "search_pane", "groups_pane", "fab")
 
     TAB_TITLES = {"search": "Поиск", "chats": "Чаты", "groups": "Группы"}
 
@@ -1233,19 +1234,15 @@ class SettingsScreen(BaseScreen):
         self.status_field.text = user.status_text
         self.avatar_hint = user.avatar_path or "Аватар не выбран"
 
+        # Привязка галочки «Меньше прозрачности» — один раз за жизнь экрана.
+        row = self.ids.get("solid_glass")
+        if row is not None and not getattr(row, "_bound", False):
+            row._bound = True
+            row.ids["box"].fbind("state",
+                                 lambda *a: self.toggle_solid_glass())
+
     def choose_avatar(self):
         choose_file(self._on_avatar, "Выберите аватар")
-
-    def on_pre_enter(self, *args):
-        row = self.ids.get("solid_glass")
-        if row is None or getattr(row, "_bound", False):
-            return
-        # Строка CheckRow — контейнер, on_release у неё нет, поэтому
-        # слушаем саму галочку. Привязка одна на весь экран: иначе при
-        # каждом возврате в настройки настройка применялась бы дважды.
-        row._bound = True
-        row.ids["box"].fbind("state",
-                             lambda *a: self.toggle_solid_glass())
 
     def toggle_solid_glass(self):
         """«Меньше прозрачности» — как системная настройка в iOS.
@@ -1311,7 +1308,7 @@ class LogsScreen(BaseScreen):
     Лог пишется всегда в data/app.log, а на этом экране видно его хвост —
     удобно проверять, что приложение делало, не открывая файлы вручную.
     """
-    INTRO = ("log_scroll")
+    INTRO = ("log_scroll",)
 
     log_text = StringProperty("")
     log_path = StringProperty("")

@@ -101,8 +101,8 @@ def main():
             problems.append("у входящего остался масштаб %.3f" % i_zoom)
 
         # Второе: появление содержимого лесенкой.
-        # Поля должны проявляться по очереди, а кнопка-галочка — нет:
-        # пользователь попросил убрать лесенку с кнопок.
+        # Проверяется на экране входа: поле, пароль и галочка должны
+        # проявляться по очереди, а не разом.
         login = app.manager.get_screen("login")
         login._intro_played = False
         # Появление запускается напрямую: on_enter срабатывает только при
@@ -112,8 +112,7 @@ def main():
 
     def check_intro(_dt):
         login = app.manager.get_screen("login")
-        # Поля: должны анимироваться.
-        for name in ("login_field", "password_field"):
+        for name in ("login_field", "password_field", "remember_toggle"):
             widget = login.ids.get(name)
             if widget is None:
                 problems.append("%s: нет такого элемента" % name)
@@ -121,34 +120,10 @@ def main():
             lines.append("%-16s прозрачность %.2f" % (name, widget.opacity))
             if widget.opacity >= 1.0:
                 problems.append("%s проявился сразу, без лесенки" % name)
-        # Кнопка: НЕ должна анимироваться.
-        toggle = login.ids.get("remember_toggle")
-        if toggle is None:
-            problems.append("remember_toggle: нет такого элемента")
-        else:
-            lines.append("%-16s прозрачность %.2f" % ("remember_toggle", toggle.opacity))
-            if toggle.opacity < 1.0:
-                problems.append("кнопка анимируется, а не должна")
-
-        # Третье: на главном экране кнопка «+» тоже не анимируется.
-        home = app.manager.get_screen("home")
-        home._intro_played = False
-        home._play_intro()
-        Clock.schedule_once(check_home, 0.25)
-
-    def check_home(_dt):
-        home = app.manager.get_screen("home")
-        fab = home.ids.get("fab")
-        if fab is None:
-            problems.append("fab: нет такого элемента")
-        else:
-            lines.append("%-16s прозрачность %.2f" % ("fab", fab.opacity))
-            if fab.opacity < 1.0:
-                problems.append("кнопка «+» анимируется, а не должна")
 
         lines.append("")
         lines.append("ИТОГ: %s" % ("переход гаснет и приближает, "
-                                 "лесенка только у полей"
+                                 "лесенка работает"
                                  if not problems else "есть проблемы"))
         for p in problems:
             lines.append("  - %s" % p)

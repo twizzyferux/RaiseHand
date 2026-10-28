@@ -34,10 +34,9 @@ TRANSITION_DURATION = 0.24
 TRANSITION_SHIFT = 0.09          # насколько въезжает новый экран, доля ширины
 TRANSITION_DIM = 0.45            # насколько притухает уходящий экран
 
-# Переход с затуханием и приближением. Длительность чуть больше, чем у
-# сдвига: одновременное изменение прозрачности и масштаба выглядит
-# спокойно на 340мс, а на 240мс превращается в рывок.
-ZOOM_DURATION = 0.34
+# Переход как у iOS: чуть дольше и с сильным торможением в конце,
+# чтобы смена экрана не дёргалась.
+ZOOM_DURATION = 0.46
 
 FADE_IN = 0.30
 FADE_OUT = 0.14
@@ -196,6 +195,33 @@ class SoftSlideTransition(TransitionBase):
 Factory.register("SoftSlideTransition", cls=SoftSlideTransition)
 
 
+def _ios_ease(p):
+    """Кривая системных переходов iOS: cubic-bezier(0.32, 0.72, 0, 1).
+
+    Движение начинается сразу и долго, мягко останавливается.
+    """
+    x1, y1, x2, y2 = 0.32, 0.72, 0.0, 1.0
+
+    def sample(t, a, b):
+        u = 1.0 - t
+        return 3.0 * u * u * t * a + 3.0 * u * t * t * b + t * t * t
+
+    def deriv(t, a, b):
+        u = 1.0 - t
+        return (3.0 * u * u * a
+                + 6.0 * u * t * (b - a)
+                + 3.0 * t * t * (1.0 - b))
+
+    t = p
+    for _ in range(6):
+        x = sample(t, x1, x2) - p
+        dx = deriv(t, x1, x2)
+        if abs(dx) < 1e-5:
+            break
+        t = min(1.0, max(0.0, t - x / dx))
+    return sample(t, y1, y2)
+
+
 class SoftZoomTransition(TransitionBase):
     """Старый экран гаснет и отдаляется, новый приближается и проявляется.
 
@@ -223,21 +249,18 @@ class SoftZoomTransition(TransitionBase):
     direction = OptionProperty("left", options=("left", "right", "up", "down"))
 
     def on_progress(self, p):
-        # out_cubic - мягкое ускорение в начале, спокойное торможение.
-        t = AnimationTransition.out_cubic(p)
+        # Кривая iOS: старт сразу, длинное мягкое торможение.
+        t = _ios_ease(p)
         new, old = self.screen_in, self.screen_out
 
-        # Уходящий экран: гаснет чуть быстрее, чем приходит новый.
-        # Так он не мешает новому и не висит в кадре лишнее время.
-        old.opacity = 1.0 - AnimationTransition.out_quad(min(1.0, p * 1.15))
-        _apply_zoom(old, 1.0 - 0.06 * t)
+        # Уходящий чуть уменьшается и гаснет. Масштаб маленький,
+        # иначе на 60 кадрах переход выглядит рывком.
+        old.opacity = 1.0 - min(1.0, t * 1.05)
+        _apply_zoom(old, 1.0 - 0.03 * t)
 
-        # Входящий: проявляется по той же кривой, но без ускорения,
-        # поэтому заметно позже уходящего. Ровно наоборот было бы
-        # неприятно - новый экран вспыхивал бы раньше, чем старый
-        # успел уйти.
-        new.opacity = AnimationTransition.out_quad(p)
-        _apply_zoom(new, 1.0 + 0.06 * (1.0 - t))
+        # Входящий почти сразу читается и доезжает с 103% до 100%.
+        new.opacity = min(1.0, 0.18 + 0.82 * t)
+        _apply_zoom(new, 1.0 + 0.03 * (1.0 - t))
 
     def on_complete(self):
         super().on_complete()

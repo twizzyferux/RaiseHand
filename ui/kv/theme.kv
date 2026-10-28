@@ -15,12 +15,40 @@
 <TextInput>:
     font_name: app.font_name
 
+# Поле формы (полная ширина в FormScroll). Стиль как у PillInput:
+# таблетка #EFEFF4, без серой системной рамки Kivy.
 <Field@TextInput>:
     size_hint_y: None
-    height: dp(44)
+    height: dp(50)
     multiline: False
     write_tab: False
-    padding: [dp(10), (self.height - self.line_height) / 2]
+    padding: [dp(18), (self.height - self.line_height) / 2]
+    background_normal: ''
+    background_active: ''
+    background_color: 0, 0, 0, 0
+    foreground_color: 0.08, 0.08, 0.1, 1
+    hint_text_color: 0.557, 0.557, 0.576, 1
+    cursor_color: 0.294, 0.184, 0.878, 1
+    font_size: dp(17)
+
+    canvas.before:
+        Color:
+            rgba: 0.937, 0.937, 0.957, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.height / 2, ]
+        Color:
+            rgba:
+                (self.cursor_color
+                if self.focus and not self._cursor_blink
+                and int(self.x + self.padding[0]) <= self._cursor_visual_pos[0] <= int(self.x + self.width - self.padding[2])
+                else (0, 0, 0, 0))
+        Rectangle:
+            pos: self._cursor_visual_pos
+            size: self.cursor_width, -self._cursor_visual_height
+        Color:
+            rgba: self.disabled_foreground_color if self.disabled else (self.hint_text_color if not self.text else self.foreground_color)
 
 # Поля пароля с глазом.
 #
@@ -35,17 +63,42 @@
 # Слои внутри поля: подложка (canvas.before) -> текст (собственная
 # отрисовка поля) -> глаз (canvas.after).
 
-# --- обычное поле пароля + глаз ---------------------------------------------
-# Вид как у Field: своя серая заливка с рамкой, ничего не меняем.
+# --- поле пароля формы + глаз (полная ширина, стиль таблетки) -------------
 
 <PasswordField>:
     size_hint_y: None
-    height: dp(44)
+    height: dp(50)
     multiline: False
     write_tab: False
     password: True
     # Справа отступ под иконку, чтобы текст под неё не лез.
-    padding: [dp(10), (self.height - self.line_height) / 2, dp(44), (self.height - self.line_height) / 2]
+    padding: [dp(18), (self.height - self.line_height) / 2, dp(44), (self.height - self.line_height) / 2]
+    background_normal: ''
+    background_active: ''
+    background_color: 0, 0, 0, 0
+    foreground_color: 0.08, 0.08, 0.1, 1
+    hint_text_color: 0.557, 0.557, 0.576, 1
+    cursor_color: 0.294, 0.184, 0.878, 1
+    font_size: dp(17)
+
+    canvas.before:
+        Color:
+            rgba: 0.937, 0.937, 0.957, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.height / 2, ]
+        Color:
+            rgba:
+                (self.cursor_color
+                if self.focus and not self._cursor_blink
+                and int(self.x + self.padding[0]) <= self._cursor_visual_pos[0] <= int(self.x + self.width - self.padding[2])
+                else (0, 0, 0, 0))
+        Rectangle:
+            pos: self._cursor_visual_pos
+            size: self.cursor_width, -self._cursor_visual_height
+        Color:
+            rgba: self.disabled_foreground_color if self.disabled else (self.hint_text_color if not self.text else self.foreground_color)
 
     canvas.after:
         Color:
@@ -127,8 +180,56 @@
     background_color: 0, 0, 0, 0
     # Подложки нет (фона 0,0,0,0), поэтому текст должен быть тёмным —
     # иначе на кремовом фоне он не читается. Свои цвета у кнопок с
-    # заливкой (ChoiceButton, PillButton) заданы отдельно и ниже.
+    # заливкой (ChoiceButton, PillButton, FormButton) заданы отдельно.
     color: 0, 0, 0, 1
+
+# Основная кнопка форм (Settings / Verify / Login / Teacher):
+# фиолетовая таблетка на всю ширину, белый текст — как PillButton.
+<FormButton@Btn>:
+    size_hint_y: None
+    height: dp(52)
+    color: 1, 1, 1, 1
+    font_size: dp(17)
+    bold: True
+    halign: 'center'
+    text_size: self.width - dp(16), None
+
+    canvas.before:
+        Color:
+            rgba: 0, 0, 0, 0.04
+        RoundedRectangle:
+            pos: self.x, self.y - dp(2)
+            size: self.size
+            radius: [self.height / 2, ]
+        Color:
+            rgba: 0.294 - 0.074 * self.press_tint, 0.184 - 0.064 * self.press_tint, 0.878 - 0.158 * self.press_tint, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.height / 2, ]
+
+# Вторичная кнопка форм: белая с фиолетовой обводкой.
+<FormOutlineButton@Btn>:
+    size_hint_y: None
+    height: dp(52)
+    color: 0, 0, 0, 1
+    font_size: dp(17)
+    bold: True
+    halign: 'center'
+    text_size: self.width - dp(16), None
+
+    canvas.before:
+        Color:
+            rgba: 1, 1, 1, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.height / 2, ]
+        Color:
+            rgba: 0.294, 0.184, 0.878, 1
+        Line:
+            rounded_rectangle: (self.x, self.y, self.width, self.height, self.height / 2)
+            width: dp(2.5)
 
 # === PRIMARY КНОПКА (синяя с тенью) ===
 # Если задан спрайт (config/settings.json -> sprites.choice_primary),
@@ -204,35 +305,41 @@
 
 <LinkButton@Btn>:
     height: dp(44)
-    font_size: dp(14)
+    font_size: dp(15)
+    color: 0.294, 0.184, 0.878, 1
+    bold: True
 
 # === ЛЕЙБЛЫ ===
 
 <TitleLabel@Label>:
     size_hint_y: None
     text_size: self.width, None
-    height: self.texture_size[1]
+    height: self.texture_size[1] + dp(8)
     halign: 'center'
     bold: True
+    font_size: dp(28)
+    color: 0, 0, 0, 1
 
 <BodyLabel@Label>:
     size_hint_y: None
     text_size: self.width, None
-    height: self.texture_size[1]
+    height: self.texture_size[1] + dp(4)
     halign: 'left'
     # Цвет основного текста из макета: #666666 (проект/регистрация.svg).
-    # Те же 0.4 уже используются в register.kv, где текст снят с макета.
-    color: 0.4, 0.4, 0.4, 1
+    color: 0.25, 0.25, 0.27, 1
+    font_size: dp(15)
 
 <MutedLabel@BodyLabel>:
     halign: 'center'
+    color: 0.4, 0.4, 0.42, 1
+    font_size: dp(14)
 
 # === КОНТЕЙНЕРЫ ===
 
 <Box@BoxLayout>:
     orientation: 'vertical'
-    padding: dp(16)
-    spacing: dp(10)
+    padding: dp(24), dp(28), dp(24), dp(24)
+    spacing: dp(12)
 
 <Card@BoxLayout>:
     orientation: 'vertical'
@@ -246,7 +353,19 @@
 
 <ThemedSpinner@Spinner>:
     size_hint_y: None
-    height: dp(44)
+    height: dp(50)
+    background_normal: ''
+    background_down: ''
+    background_color: 0, 0, 0, 0
+    color: 0.08, 0.08, 0.1, 1
+    font_size: dp(16)
+    canvas.before:
+        Color:
+            rgba: 0.937, 0.937, 0.957, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.height / 2, ]
 
 # =========================================================================== #
 #  НОВЫЙ ДИЗАЙН (макет: проект/регистрация.svg)
@@ -259,7 +378,9 @@
 # Сцена всегда в (0,0) размером 450x920 — все координаты ниже абсолютные,
 # как в макете (y вниз переворачиваем: kivy_y = 920 - y_макет - h).
 
-<PhoneStage@FloatLayout>:
+# Класс объявлен в ui/screens.py (PhoneStage) — здесь только стиль.
+# Не писать <PhoneStage@FloatLayout>: иначе Factory re-declaration.
+<PhoneStage>:
     size_hint: None, None
     size: dp(450), dp(920)
     # Размеры макета хранятся отдельно от size: на телефоне сцена
