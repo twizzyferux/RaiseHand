@@ -125,8 +125,8 @@ class BaseScreen(Screen):
                 child.bind(size=self._pin_stage)
                 self._stage_bound = child
             child.pos_hint = {}
-            new_x = self.x + (self.width - child.width) * 0.5 - dp(SHIFT_LEFT_DP)
-            new_y = self.y + self.height - child.height
+            new_x = self.x + (self.width - child.width) * 0.5
+            new_y = self.y + (self.height - child.height) * 0.5
             if abs(child.x - new_x) > 0.5:
                 child.x = new_x
             if abs(child.y - new_y) > 0.5:
