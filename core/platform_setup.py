@@ -89,22 +89,23 @@ UI_SAFE = (0, 0)
 def fit_design_to_screen():
     """Подгоняет плотность под экран устройства — вызывается из App.build().
 
-    Задача одна: чтобы макет 450x920 занял экран целиком.
+    Задача: макет 450x920 заполняет экран целиком (режим cover).
 
-    Коэффициент считается от Window.size — это размер окна в пикселях.
-    Именно в пикселях, потому что dp() умножает на плотность, и чтобы
-    макет шириной 450 точек стал шириной экрана, плотность должна быть
-    равна «ширина экрана в пикселях / 450».
+    Коэффициент считается от Window.size в пикселях: dp() умножает на
+    плотность, поэтому density = max(px_w/450, px_h/920) даёт сцену
+    не меньше экрана по обеим осям. Лишнее по более короткой стороне
+    срезается равномерно (сцена центрируется в BaseScreen._pin_stage).
 
-    Раньше здесь брался Window.system_size, а на iOS он отдаёт размер в
-    точках (у iPhone 15 Pro Max это 440x956). Делив 440 на 450, получали
-    коэффициент меньше единицы, но он зажимался снизу единицей - и
-    плотность становилась 1.0. Тогда 450 точек рисовались как 450
-    пикселей на экране шириной 1290: макет занимал треть экрана и
-    прижимался к левому нижнему краю. По этой же причине интерфейс
-    уезжал вправо, а не стоял по центру.
+    Раньше масштаб брался только по ширине. На вытянутых iPhone
+    (430x932 точек при макете 450x920) сцена получалась ниже экрана
+    на ~55 точек, и при прижатии к низу сверху оставалась пустая
+    полоса — именно тот зазор, который виден на скриншоте.
 
-    Переопределить всё же можно: переменная окружения RH_UI_SCALE.
+    Обрезка по бокам при cover невелика (~13–14 точек с каждой
+    стороны на iPhone 15 Pro Max) и укладывается в поля контента
+    (25dp и больше). Элементы у правого края остаются на экране.
+
+    Переопределить вручную: переменная окружения RH_UI_SCALE.
     """
     forced = _env_scale()
     if forced:
@@ -118,27 +119,12 @@ def fit_design_to_screen():
     if w <= 0 or h <= 0:
         return Metrics.density
 
-    # Масштаб - ПО ШИРИНЕ. Это единственный вариант, при котором
-    # ничего не срезается.
-    #
-    # Проверено на телефоне: при подгонке по высоте макет выходит
-    # 1368px при экране 1290px, и всё, что привязано к правому краю
-    # макета, уезжает за границу экрана. Так потеряли вид кнопка "+"
-    # на экранах "Чаты", "Группы" и "Поиск" и строка поиска, и так
-    # было на всех восьми экранах. Это не косметика: элемент за краем
-    # экрана не нажать.
-    #
-    # По ширине макет равен ширине экрана, поэтому правый край встаёт
-    # точно на край экрана и центрирование не съедает поля. Цена -
-    # свободная полоса снизу на вытянутых экранах; её убирает
-    # вёрстка, а не масштаб.
-    scale = w / float(DESIGN_W)
-    # Страховка от обрезки снизу на коротких экранах (iPhone SE и
-    # подобные): там, где по ширине макет выше экрана, держимся уже
-    # высоты, чтобы нижний край не ушёл за кадр.
+    # Cover: берём больший из двух коэффициентов, чтобы сцена
+    # закрывала экран и по ширине, и по высоте. Меньшая сторона
+    # чуть вылезает за край — её центрирование обрезает симметрично.
+    by_width = w / float(DESIGN_W)
     by_height = h / float(DESIGN_H)
-    if by_height < scale:
-        scale = by_height
+    scale = max(by_width, by_height)
     scale = max(0.5, min(scale, 5.0))
     Metrics.density = scale
     return scale
@@ -271,25 +257,13 @@ def safe_insets():
     жест и не нажимается.
 
     Kivy таких отступов не знает, поэтому берём их у самой системы
-    через UIKit. Если обратиться не вышло, отступы нулевые - это то же,
-    что было раньше, то есть ничего не ломается.
+    через UIKit. keyWindow на современных iOS часто пустой (сцены),
+    поэтому пробуем и windows из connectedScenes.
     """
     if not IS_IOS:
         return (0, 0)
     try:
         from pyobjus import autoclass
-
-        app = autoclass("UIApplication").sharedApplication()
-        window = None
-        for key in ("keyWindow",):
-            try:
-                window = getattr(app, key)
-                break
-            except Exception:
-                continue
-        if window is None:
-            return (0, 0)
-        insets = window.safeAreaInsets()
 
         def value(part):
             got = getattr(part, "value", part)
@@ -298,7 +272,52 @@ def safe_insets():
             except (TypeError, ValueError):
                 return 0.0
 
-        return (int(value(insets.top)), int(value(insets.bottom)))
+        def from_window(window):
+            if window is None:
+                return None
+            try:
+                insets = window.safeAreaInsets()
+                top = int(value(insets.top))
+                bottom = int(value(insets.bottom))
+                if top or bottom:
+                    return (top, bottom)
+            except Exception:
+                pass
+            return None
+
+        app = autoclass("UIApplication").sharedApplication()
+        # 1) классический keyWindow
+        try:
+            got = from_window(app.keyWindow)
+            if got is not None:
+                return got
+        except Exception:
+            pass
+        # 2) любое окно приложения
+        try:
+            windows = app.windows
+            count = int(windows.count()) if windows is not None else 0
+            for i in range(count):
+                got = from_window(windows.objectAtIndex_(i))
+                if got is not None:
+                    return got
+        except Exception:
+            pass
+        # 3) окна из connectedScenes (iOS 13+)
+        try:
+            scenes = app.connectedScenes
+            if scenes is not None:
+                for scene in scenes.allObjects():
+                    try:
+                        for window in scene.windows:
+                            got = from_window(window)
+                            if got is not None:
+                                return got
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        return (0, 0)
     except Exception:
         return (0, 0)
 
@@ -351,7 +370,7 @@ def _max_fps() -> int:
 
 def init_window():
     """Настройка окна. Вызывается до создания Window (на ПК)."""
-    global UI_SCALE
+    global UI_SCALE, UI_SAFE
     max_fps = _max_fps()
     Config.set("graphics", "maxfps", str(max_fps))
     # Часы берут лимит из конфига ОДИН РАЗ — при создании экземпляра
