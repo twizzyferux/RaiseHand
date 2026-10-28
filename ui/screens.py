@@ -103,14 +103,15 @@ class BaseScreen(Screen):
         self._pin_stage()
 
     def _pin_stage(self, *_):
-        """Центрировать сцену (вертикальный fill + ровные края по X).
+        """Прижать сцену к верху; по ширине — ровно в экран.
 
-        Масштаб по высоте: сцена = высота экрана, пустоты сверху/снизу
-        нет. По ширине сцена может быть на ~13 pt шире — центрируем,
-        обрезка симметричная, кнопки (поля ≥25 dp) не срезаются.
+        Масштаб по ширине: ширина сцены = ширина экрана, x ≈ 0,
+        сдвиг вправо математически невозможен.
 
-        Подписка на size обязательна: иначе x считается от дефолтного
-        размера и после роста до dp(450) макет уезжает вправо.
+        Высота сцены на вытянутом iPhone чуть меньше экрана →
+        top = parent.top, пустота ~55 pt уходит вниз.
+
+        Подписка на size: пересчёт после реального dp(450)×dp(920).
         """
         for child in self.children:
             if child.__class__.__name__ != "PhoneStage":
@@ -121,13 +122,11 @@ class BaseScreen(Screen):
                         self._stage_bound.unbind(size=self._pin_stage)
                     except Exception:
                         pass
-                # Только size: на pos подписываться нельзя — мы сами
-                # пишем x/y, и получится рекурсия.
                 child.bind(size=self._pin_stage)
                 self._stage_bound = child
             child.pos_hint = {}
             new_x = self.x + (self.width - child.width) * 0.5 - dp(SHIFT_LEFT_DP)
-            new_y = self.y + (self.height - child.height) * 0.5
+            new_y = self.y + self.height - child.height
             if abs(child.x - new_x) > 0.5:
                 child.x = new_x
             if abs(child.y - new_y) > 0.5:
