@@ -91,6 +91,7 @@ class BaseScreen(Screen):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._stage_bound = None
         with self.canvas.before:
             Color(rgba=(1, 0.984, 0.969, 1))      # кремовый #FFFBF7
             self._screen_bg = Rectangle(pos=self.pos, size=self.size)
@@ -102,26 +103,45 @@ class BaseScreen(Screen):
         self._pin_stage()
 
     def _pin_stage(self, *_):
-        """Центрировать сцену на экране явными координатами.
+        """Прижать сцену к верху и выровнять по ширине.
 
-        Масштаб (cover) даёт density = max(px_w/450, px_h/920), поэтому
-        на вытянутом iPhone сцена шире экрана (~1368px при 1290px).
-        Лишнее должно срезаться поровну слева и справа.
+        Масштаб — по ширине (fit_design_to_screen), поэтому сцена равна
+        ширине экрана: горизонтального сдвига быть не может.
 
-        pos_hint center_x здесь ненадёжен: при width_сцены > width_экрана
-        на iOS x часто остаётся 0, сцена прилипает к левому краю, и весь
-        макет визуально уезжает вправо на половину обрезки (~13–14 dp).
-        Поэтому x/y считаем сами: (родитель − сцена) / 2.
+        По высоте на вытянутых iPhone сцена чуть ниже экрана. Раньше
+        её прижимали к низу (y=0) — сверху оставалась пустая полоса.
+        Теперь прижимаем к верху: зазор уходит вниз, под декоративные
+        пузыри / кнопку «Далее», где он почти незаметен.
+
+        Важно: подписываемся на size сцены. Иначе _pin_stage успевает
+        сработать, пока у PhoneStage ещё дефолтный размер (не dp(450)),
+        x считается от него и после роста сцены макет остаётся
+        сдвинутым вправо — именно тот баг со скриншотов 2 и 3.
         """
         for child in self.children:
             if child.__class__.__name__ != "PhoneStage":
                 continue
-            # Сбрасываем pos_hint, иначе следующий do_layout перезапишет
-            # явные x/y обратно в «центр», который на части устройств
-            # не срабатывает при отрицательном x.
+            if self._stage_bound is not child:
+                if self._stage_bound is not None:
+                    try:
+                        self._stage_bound.unbind(size=self._pin_stage)
+                    except Exception:
+                        pass
+                # Только size: на pos подписываться нельзя — мы сами
+                # пишем x/y, и получится рекурсия.
+                child.bind(size=self._pin_stage)
+                self._stage_bound = child
+            # Явные координаты: pos_hint на iOS с отрицательным x
+            # отрабатывает нестабильно.
             child.pos_hint = {}
-            child.x = self.x + (self.width - child.width) * 0.5 - dp(SHIFT_LEFT_DP)
-            child.y = self.y + (self.height - child.height) * 0.5
+            new_x = self.x + (self.width - child.width) * 0.5 - dp(SHIFT_LEFT_DP)
+            new_y = self.y + self.height - child.height
+            # Не трогаем свойства, если значение то же — меньше лишних
+            # перерисовок и событий.
+            if abs(child.x - new_x) > 0.5:
+                child.x = new_x
+            if abs(child.y - new_y) > 0.5:
+                child.y = new_y
             return
 
     def _sync_bg(self, *_):
