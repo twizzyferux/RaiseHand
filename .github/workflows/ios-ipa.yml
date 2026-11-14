@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+env:
+  UV_PYTHON: "3.12"
+  FLET_CLI_NO_RICH_OUTPUT: "1"
+
 jobs:
   build-ios:
     runs-on: macos-latest
@@ -17,7 +21,8 @@ jobs:
         uses: flet-dev/flet-build-action@v1
         with:
           target: ipa
-          # runner-python-version можно не указывать, если он не важен
+          runner-python-version: "3.12"
+          bundled-python-version: "3.12"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v7
