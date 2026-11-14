@@ -1,0 +1,3 @@
+flet>=0.25.0
+# core RaiseHand (auth/db) — без Kivy
+# sqlite3 входит в стандартную библиотеку

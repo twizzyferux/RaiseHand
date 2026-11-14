@@ -1,0 +1,17 @@
+[project]
+name = "school-messenger-plain"
+version = "0.1.0"
+requires-python = ">=3.9"
+dependencies = [
+    "flet",
+    # Ваши основные зависимости
+]
+
+[tool.flet]
+org = "com.yourcompany"
+product = "School Messenger"
+company = "Your Company"
+
+[tool.flet.app]
+module = "flet_app.main"  # Указываем полный путь к модулю
+

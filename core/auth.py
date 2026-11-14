@@ -199,6 +199,38 @@ def register_student(first_name: str, last_name: str,
                         city=city, class_name=class_name, school_name=school_name)
 
 
+def create_class_invite(teacher_id: int, class_name: str, school_name: str = "") -> str:
+    """Учитель создаёт класс — генерируется уникальный код приглашения."""
+    class_name = (class_name or "").strip()
+    if len(class_name) < 1:
+        raise AuthError("Укажите название класса")
+    import secrets
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    for _ in range(8):
+        raw = "".join(secrets.choice(alphabet) for _ in range(6))
+        code = f"{raw[:3]}-{raw[3:]}"
+        exists = db.query_one(
+            "SELECT id FROM classes WHERE py_upper(invite_code) = py_upper(?)",
+            (code,),
+        )
+        if exists:
+            continue
+        db.execute(
+            """INSERT INTO classes (invite_code, class_name, school_name, teacher_id)
+               VALUES (?, ?, ?, ?)""",
+            (code, class_name, (school_name or "").strip(), teacher_id),
+        )
+        return code
+    raise AuthError("Не удалось создать код, попробуйте ещё раз")
+
+
+def list_teacher_classes(teacher_id: int):
+    return db.query(
+        "SELECT * FROM classes WHERE teacher_id = ? ORDER BY id DESC",
+        (teacher_id,),
+    ) or []
+
+
 def find_class(invite_code: str):
     """Код приглашения -> строка таблицы classes (class_name, school_name).
 
@@ -316,3 +348,38 @@ def update_profile(user_id: int, nickname=KEEP,
     if status_text is not None:
         db.execute("UPDATE users SET status_text = ? WHERE id = ?", (status_text, user_id))
     return get_user_by_id(user_id)
+
+
+
+def create_class_invite(teacher_id: int, class_name: str, school_name: str = "") -> str:
+    """Учитель создаёт класс и получает уникальный код приглашения."""
+    class_name = (class_name or "").strip()
+    school_name = (school_name or "").strip()
+    if len(class_name) < 1:
+        raise AuthError("Укажите название класса")
+    import secrets
+    import string
+    alphabet = string.ascii_uppercase + string.digits
+    for _ in range(20):
+        raw = "".join(secrets.choice(alphabet) for _ in range(7))
+        code = f"{raw[:3]}-{raw[3:]}"
+        exists = db.query_one(
+            "SELECT id FROM classes WHERE py_upper(invite_code) = py_upper(?)",
+            (code,),
+        )
+        if exists:
+            continue
+        db.execute(
+            """INSERT INTO classes (invite_code, class_name, school_name, teacher_id)
+               VALUES (?, ?, ?, ?)""",
+            (code, class_name, school_name, teacher_id),
+        )
+        return code
+    raise AuthError("Не удалось создать код, попробуйте ещё раз")
+
+
+def list_teacher_classes(teacher_id: int) -> list:
+    return db.query_all(
+        "SELECT * FROM classes WHERE teacher_id = ? ORDER BY id DESC",
+        (teacher_id,),
+    )

@@ -67,15 +67,27 @@ def create_code(user_id: int, channel: str, target: str) -> str:
     return code
 
 
+def send_registration_code(channel: str, target: str) -> str:
+    """Генерирует и отправляет код на почту или телефон. Возвращает код.
+
+    Для регистрации до создания пользователя.
+    """
+    target = validate_target(channel, target)
+    code = _generate_code()
+    _deliver(channel, target, code)
+    return code
+
+
 def _deliver(channel: str, target: str, code: str) -> None:
-    text = f"Код подтверждения: {code}"
-    if channel == CHANNEL_EMAIL and SETTINGS["email"].get("enabled"):
+    text = f"Код подтверждения RaiseHand: {code}"
+    if channel == CHANNEL_EMAIL and SETTINGS.get("email", {}).get("enabled"):
         _send_email(target, text)
-    elif channel == CHANNEL_PHONE and SETTINGS["sms"].get("enabled"):
-        # Сюда можно вставить вызов любого SMS-сервиса (SMS.ru, Twilio и т.п.).
-        _write_outbox(channel, target, text + "  [SMS-провайдер не настроен]")
+        _write_outbox(channel, target, text + "  [отправлено по SMTP]")
+    elif channel == CHANNEL_PHONE and SETTINGS.get("sms", {}).get("enabled"):
+        _send_sms(target, text)
+        _write_outbox(channel, target, text + "  [отправлено по SMS]")
     else:
-        _write_outbox(channel, target, text)
+        _write_outbox(channel, target, text + "  [dev: провайдер выключен]")
 
 
 def _write_outbox(channel: str, target: str, text: str) -> None:
@@ -102,6 +114,38 @@ def _send_email(target: str, text: str) -> None:
             server.send_message(message)
     except Exception as exc:  # noqa: BLE001 — показываем пользователю понятную ошибку
         raise VerificationError(f"Не удалось отправить письмо: {exc}") from exc
+
+
+def _send_sms(target: str, text: str) -> None:
+    """Отправка SMS. Сейчас: SMS.ru (api_id в settings)."""
+    cfg = SETTINGS.get("sms", {})
+    provider = (cfg.get("provider") or "smsru").lower()
+    api_key = cfg.get("api_key") or ""
+    if not api_key:
+        raise VerificationError("SMS не настроен: укажите api_key в config/settings.json")
+    phone = target.lstrip("+")
+    try:
+        import urllib.request
+        import urllib.parse
+        import json
+        if provider in ("smsru", "sms.ru"):
+            data = urllib.parse.urlencode({
+                "api_id": api_key,
+                "to": phone,
+                "msg": text,
+                "json": "1",
+            }).encode()
+            req = urllib.request.Request("https://sms.ru/sms/send", data=data)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                body = json.loads(resp.read().decode())
+            if str(body.get("status")) != "OK":
+                raise VerificationError(f"SMS.ru: {body.get('status_text') or body}")
+        else:
+            raise VerificationError(f"SMS-провайдер «{provider}» не поддержан. Используйте smsru.")
+    except VerificationError:
+        raise
+    except Exception as exc:
+        raise VerificationError(f"Не удалось отправить SMS: {exc}") from exc
 
 
 def check_code(user_id: int, code: str) -> None:

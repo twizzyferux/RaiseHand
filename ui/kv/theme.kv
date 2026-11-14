@@ -382,19 +382,12 @@
 # Не писать <PhoneStage@FloatLayout>: иначе Factory re-declaration.
 <PhoneStage>:
     size_hint: None, None
-    size: dp(450), dp(920)
-    # Размеры макета хранятся отдельно от size: на телефоне сцена
-    # растягивается по высоте экрана (ui/screens.py -> _pin_stage), и
-    # пересчёт идёт от них, а не от уже изменённого размера. Иначе
-    # масштаб с каждым кадром считался бы от предыдущего и уезжал.
+    # size/pos выставляет LayoutEngine (PhoneStage._relayout).
+    # Без pos_hint — иначе iOS снова сдвигает сцену.
     design_w: 450
     design_h: 920
-    # На телефоне и планшете экран может быть шире макета — держим сцену
-    # по центру, чтобы не прилипала к краю.
-    pos_hint: {'center_x': 0.5, 'center_y': 0.5}
 
     canvas.before:
-        # кремовый экран #FFFBF7 на всё окно
         Color:
             rgba: 1, 0.984, 0.969, 1
         Rectangle:

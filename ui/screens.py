@@ -42,100 +42,74 @@ Factory.register("MessageBubble", cls=MessageBubble)
 
 
 class PhoneStage(FloatLayout):
-    """Сцена макета.
+    """Сцена макета 450×920.
 
-    Объявлена классом, а не только правилом в .kv, потому что размеры
-    макета нужны как числа: на телефоне сцена растягивается по высоте
-    экрана, и пересчёт идёт от размера макета. Если бы размеры
-    хранились только в size, то масштаб с каждым кадром считался бы от
-    уже изменённого размера и уезжал.
+    Размер и позиция задаются LayoutEngine (core.platform_setup):
+    не через pos_hint, а явными пикселями. Так на iOS нет сдвига
+    вправо при сцене шире/уже экрана.
     """
 
     design_w = NumericProperty(450)
     design_h = NumericProperty(920)
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint = (None, None)
+        self.bind(parent=self._on_parent)
 
-# Сдвиг сцены влево от геометрического центра. Ноль - строго по центру.
-#
-# Величина ненулевая была поставлена по просьбе сдвинуть интерфейс
-# чуть влево, но замер показал, что по центру он уже стоит: на iPhone
-# 15 Pro Max кнопка попадала на 1dp левее центра экрана, декор был
-# симметричен (поле 29dp с каждой стороны). Сдвиг только вносил
-# неточность, поэтому убран.
-SHIFT_LEFT_DP = 0
+    def _on_parent(self, *_):
+        parent = self.parent
+        if parent is None:
+            return
+        parent.bind(size=self._relayout, pos=self._relayout)
+        self._relayout()
+
+    def _relayout(self, *_):
+        parent = self.parent
+        if parent is None:
+            return
+        from core.platform_setup import (UI_LAYOUT, UI_SAFE, apply_layout_to_widget,
+                                         compute_layout, fit_design_to_screen)
+        # На смене размера окна — пересчёт scale.
+        try:
+            fit_design_to_screen()
+        except Exception:
+            pass
+        layout = UI_LAYOUT
+        if layout is None or layout.window_w != int(parent.width) \
+                or layout.window_h != int(parent.height):
+            top, bottom = UI_SAFE
+            layout = compute_layout(int(parent.width), int(parent.height),
+                                    top, bottom)
+        apply_layout_to_widget(self, parent, layout)
 
 
 class BaseScreen(Screen):
-    """Общий для всех экранов: фон, сцена по центру, появление лесенкой.
+    """Общий для всех экранов: фон, сцена, появление лесенкой.
 
-    INTRO - идентификаторы элементов, которые проявляются по очереди при
-    входе на экран. Пустой список означает «без лесенки»: у экрана
-    нет содержимого, которое имеет смысл показывать по одному.
+    INTRO - id элементов, которые проявляются по очереди при входе.
     """
 
     INTRO = ()
     _intro_played = False
-    """Общее для всех экранов: кремовый фон и удобства.
-
-    ФОН
-    ---
-    Раньше фон рисовала только PhoneStage — обёртка экрана, которая есть
-    не везде (в настройках, проверке и регистрации её нет). Экраны без
-    неё оставались без фона, и сквозь них был виден чёрный цвет окна.
-    Теперь фон рисует сам экран: так он есть везде и не зависит от того,
-    обёрнут ли экран в сцену.
-
-    Экраны со сценой дублировать фон не надо: он нарисован там же
-    (theme.kv, PhoneStage) и лежит под содержимым экрана.
-    """
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._stage_bound = None
         with self.canvas.before:
             Color(rgba=(1, 0.984, 0.969, 1))      # кремовый #FFFBF7
             self._screen_bg = Rectangle(pos=self.pos, size=self.size)
-        self.bind(pos=self._sync_all, size=self._sync_all,
-                  children=self._sync_all)
-
-    def _sync_all(self, *_):
-        self._sync_bg()
-        self._pin_stage()
-
-    def _pin_stage(self, *_):
-        """Прижать сцену к верху; по ширине — ровно в экран.
-
-        Масштаб по ширине: ширина сцены = ширина экрана, x ≈ 0,
-        сдвиг вправо математически невозможен.
-
-        Высота сцены на вытянутом iPhone чуть меньше экрана →
-        top = parent.top, пустота ~55 pt уходит вниз.
-
-        Подписка на size: пересчёт после реального dp(450)×dp(920).
-        """
-        for child in self.children:
-            if child.__class__.__name__ != "PhoneStage":
-                continue
-            if self._stage_bound is not child:
-                if self._stage_bound is not None:
-                    try:
-                        self._stage_bound.unbind(size=self._pin_stage)
-                    except Exception:
-                        pass
-                child.bind(size=self._pin_stage)
-                self._stage_bound = child
-            child.pos_hint = {}
-            new_x = self.x + (self.width - child.width) * 0.5
-            new_y = self.y + (self.height - child.height) * 0.5
-            if abs(child.x - new_x) > 0.5:
-                child.x = new_x
-            if abs(child.y - new_y) > 0.5:
-                child.y = new_y
-            return
+        self.bind(pos=self._sync_bg, size=self._sync_bg,
+                  children=self._relayout_stages)
 
     def _sync_bg(self, *_):
         self._screen_bg.pos = self.pos
         self._screen_bg.size = self.size
+
+    def _relayout_stages(self, *_):
+        for child in self.children:
+            if isinstance(child, PhoneStage) or child.__class__.__name__ == "PhoneStage":
+                if hasattr(child, "_relayout"):
+                    child._relayout()
 
     def on_enter(self, *_):
         """Проявить содержимое экрана лесенкой.

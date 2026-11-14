@@ -9,7 +9,21 @@ import os
 import sys
 import tempfile
 
-from kivy.utils import platform as _kivy_platform
+def _detect_platform() -> str:
+    """ios / android / win / linux / macos — без обязательного Kivy."""
+    try:
+        from kivy.utils import platform as kp
+        return str(kp)
+    except Exception:
+        pass
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform.startswith("win"):
+        return "win"
+    return "linux"
+
+
+_kivy_platform = _detect_platform()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
