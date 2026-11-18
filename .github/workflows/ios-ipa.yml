@@ -47,19 +47,47 @@ jobs:
             --build-version "0.1.0" \
             --output build/ipa
 
-      - name: Find IPA
+      - name: Pack unsigned IPA from xcarchive
         id: ipa
         run: |
           set -euo pipefail
-          IPA="$(find build/ipa -type f -name '*.ipa' | head -1)"
-          if [ -z "$IPA" ]; then
-            echo "No .ipa found under build/ipa"
-            find build/ipa -maxdepth 4 -type f | head -50 || true
+          # Без Apple Developer профиля flet отдаёт .xcarchive, не .ipa.
+          # Sideloadly сам подпишет zip Payload/*.app — собираем его вручную.
+          OUT_DIR="${{ github.workspace }}/dist"
+          mkdir -p "$OUT_DIR"
+          IPA_OUT="$OUT_DIR/RaiseHand.ipa"
+
+          if IPA="$(find build/ipa build/ios -type f -name '*.ipa' 2>/dev/null | head -1)"; then
+            if [ -n "${IPA:-}" ]; then
+              cp "$IPA" "$IPA_OUT"
+              echo "path=$IPA_OUT" >> "$GITHUB_OUTPUT"
+              ls -lh "$IPA_OUT"
+              exit 0
+            fi
+          fi
+
+          APP="$(find build/ipa build/ios -type d -name '*.app' -path '*Products/Applications*' 2>/dev/null | head -1)"
+          if [ -z "${APP:-}" ]; then
+            APP="$(find build/ipa build/ios -type d -name '*.app' 2>/dev/null | head -1)"
+          fi
+          if [ -z "${APP:-}" ]; then
+            echo "No .app / .ipa found"
+            find build -maxdepth 6 -type d \( -name '*.app' -o -name '*.xcarchive' \) 2>/dev/null | head -40 || true
             exit 1
           fi
-          echo "path=$IPA" >> "$GITHUB_OUTPUT"
-          echo "Found $IPA"
-          ls -lh "$IPA"
+
+          echo "Packing from: $APP"
+          STAGE="$(mktemp -d)"
+          mkdir -p "$STAGE/Payload"
+          cp -R "$APP" "$STAGE/Payload/"
+          (
+            cd "$STAGE"
+            zip -qry "$IPA_OUT" Payload
+          )
+          rm -rf "$STAGE"
+          echo "path=$IPA_OUT" >> "$GITHUB_OUTPUT"
+          ls -lh "$IPA_OUT"
+          unzip -l "$IPA_OUT" | head -20
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
@@ -75,8 +103,8 @@ jobs:
           tag_name: ios-build-${{ github.run_number }}
           name: RaiseHand iOS IPA ${{ github.run_number }}
           body: |
-            Свежая iOS-сборка RaiseHand (Flet).
-            Скачай IPA из Assets и поставь через Sideloadly / AltStore.
+            Свежая iOS-сборка RaiseHand (Flet), unsigned.
+            Скачай `RaiseHand.ipa` и поставь через Sideloadly / AltStore со своим Apple ID.
           files: ${{ steps.ipa.outputs.path }}
           fail_on_unmatched_files: true
         env:
