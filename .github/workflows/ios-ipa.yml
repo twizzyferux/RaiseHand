@@ -50,29 +50,30 @@ jobs:
       - name: Pack unsigned IPA from xcarchive
         id: ipa
         run: |
-          set -euo pipefail
+          set -eu
           # Без Apple Developer профиля flet отдаёт .xcarchive, не .ipa.
-          # Sideloadly сам подпишет zip Payload/*.app — собираем его вручную.
+          # Sideloadly подпишет zip Payload/*.app — собираем его вручную.
           OUT_DIR="${{ github.workspace }}/dist"
           mkdir -p "$OUT_DIR"
           IPA_OUT="$OUT_DIR/RaiseHand.ipa"
 
-          if IPA="$(find build/ipa build/ios -type f -name '*.ipa' 2>/dev/null | head -1)"; then
-            if [ -n "${IPA:-}" ]; then
-              cp "$IPA" "$IPA_OUT"
-              echo "path=$IPA_OUT" >> "$GITHUB_OUTPUT"
-              ls -lh "$IPA_OUT"
-              exit 0
-            fi
+          echo "=== build tree (app/archive) ==="
+          find build -maxdepth 8 \( -type d -name '*.app' -o -type d -name '*.xcarchive' -o -type f -name '*.ipa' \) 2>/dev/null | head -60 || true
+
+          IPA="$(find build -type f -name '*.ipa' 2>/dev/null | head -1 || true)"
+          if [ -n "${IPA}" ]; then
+            cp "$IPA" "$IPA_OUT"
+            echo "path=$IPA_OUT" >> "$GITHUB_OUTPUT"
+            ls -lh "$IPA_OUT"
+            exit 0
           fi
 
-          APP="$(find build/ipa build/ios -type d -name '*.app' -path '*Products/Applications*' 2>/dev/null | head -1)"
-          if [ -z "${APP:-}" ]; then
-            APP="$(find build/ipa build/ios -type d -name '*.app' 2>/dev/null | head -1)"
+          APP="$(find build -type d -name '*.app' -path '*Products/Applications*' 2>/dev/null | head -1 || true)"
+          if [ -z "${APP}" ]; then
+            APP="$(find build -type d -name '*.app' 2>/dev/null | head -1 || true)"
           fi
-          if [ -z "${APP:-}" ]; then
-            echo "No .app / .ipa found"
-            find build -maxdepth 6 -type d \( -name '*.app' -o -name '*.xcarchive' \) 2>/dev/null | head -40 || true
+          if [ -z "${APP}" ]; then
+            echo "No .app / .ipa found under build/"
             exit 1
           fi
 
