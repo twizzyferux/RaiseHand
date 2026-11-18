@@ -19,7 +19,7 @@ company = "RaiseHand"
 bundle_id = "com.raisehand.app"
 
 [tool.flet.app]
-module = "flet_app.main"
+module = "main.py"
 # Не тащим в IPA десктопный мусор / бота / админку
 exclude = [
     "discord_bot",

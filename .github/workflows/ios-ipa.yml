@@ -29,6 +29,7 @@ jobs:
           build-version: "0.1.0"
           build-number: "${{ github.run_number }}"
           archive-output: "true"
+          extra-args: "--module-name main.py"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
