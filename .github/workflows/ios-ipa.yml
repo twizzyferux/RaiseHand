@@ -12,30 +12,60 @@ permissions:
   contents: write
   actions: read
 
+env:
+  UV_PYTHON: "3.12"
+  PYTHONUTF8: "1"
+  FLET_CLI_NO_RICH_OUTPUT: "1"
+
 jobs:
   build-ios:
     runs-on: macos-latest
+    timeout-minutes: 120
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build IPA
-        id: build
-        uses: flet-dev/flet-build-action@v1
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
         with:
-          target: ipa
-          runner-python-version: "3.12"
-          bundled-python-version: "3.12"
-          build-version: "0.1.0"
-          build-number: "${{ github.run_number }}"
-          archive-output: "true"
-          extra-args: "--module-name main.py"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install build toolchain
+        run: |
+          uv sync --group build
+          uv run flet --version --json
+
+      - name: Build IPA
+        run: |
+          uv run flet build ipa \
+            --yes \
+            --verbose \
+            --module-name main.py \
+            --python-version 3.12 \
+            --build-number "${{ github.run_number }}" \
+            --build-version "0.1.0" \
+            --output build/ipa
+
+      - name: Find IPA
+        id: ipa
+        run: |
+          set -euo pipefail
+          IPA="$(find build/ipa -type f -name '*.ipa' | head -1)"
+          if [ -z "$IPA" ]; then
+            echo "No .ipa found under build/ipa"
+            find build/ipa -maxdepth 4 -type f | head -50 || true
+            exit 1
+          fi
+          echo "path=$IPA" >> "$GITHUB_OUTPUT"
+          echo "Found $IPA"
+          ls -lh "$IPA"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: RaiseHand-ios
-          path: ${{ steps.build.outputs.archive-path }}
+          path: ${{ steps.ipa.outputs.path }}
           if-no-files-found: error
           retention-days: 14
 
@@ -45,9 +75,9 @@ jobs:
           tag_name: ios-build-${{ github.run_number }}
           name: RaiseHand iOS IPA ${{ github.run_number }}
           body: |
-            Свежая iOS-сборка RaiseHand.
+            Свежая iOS-сборка RaiseHand (Flet).
             Скачай IPA из Assets и поставь через Sideloadly / AltStore.
-          files: ${{ steps.build.outputs.archive-path }}
+          files: ${{ steps.ipa.outputs.path }}
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

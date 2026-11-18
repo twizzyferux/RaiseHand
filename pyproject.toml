@@ -4,12 +4,18 @@ version = "0.1.0"
 description = "RaiseHand school messenger"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    # cli extra нужен для `flet build` / GitHub Action (иначе --version --json пустой)
-    "flet[cli]>=0.86.0,<2",
+    # Без [cli]: flet-cli тянет watchdog, для которого нет iOS-wheel.
+    "flet>=0.86.0,<2",
     "SQLAlchemy>=2.0",
     "bcrypt>=4.0",
     "passlib>=1.7.4",
     "PyJWT>=2.8",
+]
+
+[dependency-groups]
+# Только для хоста сборки (GitHub Actions / локальный `flet build`)
+build = [
+    "flet[cli]>=0.86.0,<2",
 ]
 
 [tool.flet]
@@ -20,7 +26,6 @@ bundle_id = "com.raisehand.app"
 
 [tool.flet.app]
 module = "main.py"
-# Не тащим в IPA десктопный мусор / бота / админку
 exclude = [
     "discord_bot",
     "admin_panel",
@@ -36,7 +41,3 @@ exclude = [
     "school_messenger_plain.rar",
     "notification_sound.mp3",
 ]
-
-[tool.flet.ios]
-# pygame/discord не нужны на телефоне
-dependencies = []
