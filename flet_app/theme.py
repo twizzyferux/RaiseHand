@@ -7,18 +7,72 @@ from typing import Callable, Optional
 
 import flet as ft
 
-BG = "#FFFBF7"
-SURFACE = "#F5F5F7"
-FIELD_BG = "#EFEFF4"
-PRIMARY = "#4B2FE0"
-PRIMARY_TEXT = "#FFFFFF"
-INK = "#000000"
-MUTED = "#474747"
-HINT = "#9E9E9E"
-LINK = "#4B2FE0"
-DOT_ON = "#4B2FE0"
-DOT_OFF = "#B7ACEC"
-STROKE = "#E5E5EA"
+PRIMARY = "#6A5AC8"
+PRIMARY_TEXT = "#FFFBFF"
+LINK = "#6A5AC8"
+DOT_ON = "#6A5AC8"
+DOT_OFF = "#C4BED8"
+BADGE = "#C46B8A"
+
+# Светлая / тёмная — мягче, без «вырвиглаз»
+_LIGHT = {
+    "BG": "#F4F2EE",
+    "SURFACE": "#EBE8E3",
+    "CARD": "#FBF9F6",
+    "FIELD_BG": "#E6E2DC",
+    "INK": "#3A3644",
+    "MUTED": "#7A7486",
+    "HINT": "#A39EAE",
+    "STROKE": "#E0DCD6",
+    "BUBBLE_IN": "#E8E4DE",
+    "BUBBLE_OUT": "#6A5AC8",
+    "TIME_IN": "#8A8496",
+    "TIME_OUT": "#F3EEF8",
+    "DIVIDER": "#E4E0DA",
+    "DATE_CHIP": "#E6E2DC",
+    "MENU_SCRIM": "#2A243844",
+    "NAV_IDLE": "#6E6878",
+    "PRIMARY_SOFT": "#E8E4F4",
+}
+# Тёмная: тёплый уголь, приглушённый текст, не неоновый акцент
+_DARK = {
+    "BG": "#141318",
+    "SURFACE": "#1C1B22",
+    "CARD": "#24232C",
+    "FIELD_BG": "#2A2832",
+    "INK": "#D2CEDC",
+    "MUTED": "#8A8498",
+    "HINT": "#6A6576",
+    "STROKE": "#34323C",
+    "BUBBLE_IN": "#2C2A36",
+    "BUBBLE_OUT": "#7A6BC4",
+    "TIME_IN": "#8A8496",
+    "TIME_OUT": "#E4DFF0",
+    "DIVIDER": "#2E2C36",
+    "DATE_CHIP": "#26242E",
+    "MENU_SCRIM": "#0A0910CC",
+    "NAV_IDLE": "#8A8496",
+    "PRIMARY_SOFT": "#2A2640",
+}
+
+BG = _LIGHT["BG"]
+SURFACE = _LIGHT["SURFACE"]
+CARD = _LIGHT["CARD"]
+FIELD_BG = _LIGHT["FIELD_BG"]
+INK = _LIGHT["INK"]
+MUTED = _LIGHT["MUTED"]
+HINT = _LIGHT["HINT"]
+STROKE = _LIGHT["STROKE"]
+BUBBLE_IN = _LIGHT["BUBBLE_IN"]
+BUBBLE_OUT = _LIGHT["BUBBLE_OUT"]
+TIME_IN = _LIGHT["TIME_IN"]
+TIME_OUT = _LIGHT["TIME_OUT"]
+DIVIDER = _LIGHT["DIVIDER"]
+DATE_CHIP = _LIGHT["DATE_CHIP"]
+MENU_SCRIM = _LIGHT["MENU_SCRIM"]
+NAV_IDLE = _LIGHT["NAV_IDLE"]
+PRIMARY_SOFT = _LIGHT["PRIMARY_SOFT"]
+_MODE = "light"
 
 PAGE_PADDING = 24
 PHONE_WIDTH = 390
@@ -28,6 +82,132 @@ MAX_CONTENT_WIDTH = PHONE_WIDTH
 FONT_FAMILY = "SFPro"
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def is_dark() -> bool:
+    return _MODE == "dark"
+
+
+def _hex_rgb(value: str) -> tuple[int, int, int]:
+    s = (value or "").strip().lstrip("#")
+    if len(s) == 8:
+        s = s[2:]
+    if len(s) != 6:
+        return 106, 90, 200
+    return int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
+
+
+def soften(value: str, amount: float | None = None) -> str:
+    """Приглушить насыщенность: смешать с тёплым серым."""
+    if amount is None:
+        amount = 0.34 if not is_dark() else 0.28
+    amount = max(0.0, min(0.7, float(amount)))
+    r, g, b = _hex_rgb(value)
+    gray = (168, 160, 176) if not is_dark() else (92, 86, 108)
+    r = int(r * (1 - amount) + gray[0] * amount)
+    g = int(g * (1 - amount) + gray[1] * amount)
+    b = int(b * (1 - amount) + gray[2] * amount)
+    return "#%02X%02X%02X" % (r, g, b)
+
+
+def apply_mode(page: Optional[ft.Page] = None, mode: Optional[str] = None) -> str:
+    """Переключить светлую/тёмную палитру + акцент/пузыри из branding. Возвращает 'light'|'dark'."""
+    global BG, SURFACE, CARD, FIELD_BG, INK, MUTED, HINT, STROKE
+    global BUBBLE_IN, BUBBLE_OUT, TIME_IN, TIME_OUT, DIVIDER
+    global DATE_CHIP, MENU_SCRIM, NAV_IDLE, PRIMARY_SOFT, _MODE
+    global PRIMARY, LINK, DOT_ON, PRIMARY_TEXT, BADGE
+    if mode is None:
+        try:
+            from core import prefs
+
+            mode = prefs.theme_mode()
+        except Exception:
+            mode = "light"
+    mode = "dark" if str(mode).lower() == "dark" else "light"
+    pal = _DARK if mode == "dark" else _LIGHT
+    _MODE = mode
+    BG = pal["BG"]
+    SURFACE = pal["SURFACE"]
+    CARD = pal["CARD"]
+    FIELD_BG = pal["FIELD_BG"]
+    INK = pal["INK"]
+    MUTED = pal["MUTED"]
+    HINT = pal["HINT"]
+    STROKE = pal["STROKE"]
+    BUBBLE_IN = pal["BUBBLE_IN"]
+    BUBBLE_OUT = pal["BUBBLE_OUT"]
+    TIME_IN = pal["TIME_IN"]
+    TIME_OUT = pal["TIME_OUT"]
+    DIVIDER = pal["DIVIDER"]
+    DATE_CHIP = pal["DATE_CHIP"]
+    MENU_SCRIM = pal["MENU_SCRIM"]
+    NAV_IDLE = pal["NAV_IDLE"]
+    PRIMARY_SOFT = pal["PRIMARY_SOFT"]
+
+    # акцент и пузыри из токенов RaiseHand
+    try:
+        from core import branding, prefs
+
+        accent_key = prefs.accent_theme()
+        bubble_key = prefs.bubble_theme()
+        tok = branding.theme_tokens(accent_key, mode)
+        bub = branding.theme_tokens(bubble_key, mode)
+        if tok.get("fill"):
+            soft_fill = soften(tok["fill"])
+            PRIMARY = soft_fill
+            LINK = soft_fill
+            DOT_ON = soft_fill
+        if tok.get("soft"):
+            PRIMARY_SOFT = tok["soft"]
+        if tok.get("bubble_in"):
+            BUBBLE_IN = tok["bubble_in"]
+        # исходящие — приглушённый fill выбранной bubble-темы
+        if bub.get("fill"):
+            BUBBLE_OUT = soften(bub["fill"], 0.22 if mode == "light" else 0.18)
+        if tok.get("badge"):
+            BADGE = soften(tok["badge"], 0.3)
+        if tok.get("onfill"):
+            PRIMARY_TEXT = "#FFFBFF"
+    except Exception:
+        pass
+    if page is not None:
+        try:
+            page.theme_mode = ft.ThemeMode.DARK if mode == "dark" else ft.ThemeMode.LIGHT
+        except Exception:
+            pass
+        try:
+            page.theme = page_theme()
+        except Exception:
+            pass
+        sync_window_bg(page)
+        try:
+            apply_window_icon(page)
+        except Exception:
+            pass
+        try:
+            page.update()
+        except Exception:
+            pass
+    return mode
+
+
+def apply_window_icon(page: Optional[ft.Page] = None) -> None:
+    """Поставить иконку окна из prefs (десктоп)."""
+    if page is None:
+        return
+    try:
+        from core import branding, prefs
+
+        path = branding.app_icon_path(prefs.app_icon_key(), dark=is_dark())
+        if not _image_exists(path):
+            return
+        win = getattr(page, "window", None)
+        if win is not None and hasattr(win, "icon"):
+            win.icon = path
+        elif hasattr(page, "window_icon"):
+            page.window_icon = path
+    except Exception:
+        pass
 
 
 def asset(*parts: str) -> str:
@@ -88,13 +268,52 @@ def setup_fonts(page: ft.Page) -> None:
 
 
 def page_theme() -> ft.Theme:
-    kwargs = {"color_scheme_seed": PRIMARY}
+    kwargs: dict = {"color_scheme_seed": PRIMARY}
     try:
         kwargs["font_family"] = FONT_FAMILY
     except Exception:
         pass
     try:
         kwargs["visual_density"] = ft.VisualDensity.COMFORTABLE
+    except Exception:
+        pass
+    # Явная схема — чтобы тёмная не выглядела как авто-инверсия Material
+    try:
+        if is_dark():
+            kwargs["color_scheme"] = ft.ColorScheme(
+                primary=PRIMARY,
+                on_primary=PRIMARY_TEXT,
+                secondary="#9B8CFF",
+                surface=CARD,
+                on_surface=INK,
+                background=BG,
+                on_background=INK,
+                outline=STROKE,
+            )
+        else:
+            kwargs["color_scheme"] = ft.ColorScheme(
+                primary=PRIMARY,
+                on_primary=PRIMARY_TEXT,
+                surface=SURFACE,
+                on_surface=INK,
+                background=BG,
+                on_background=INK,
+            )
+    except Exception:
+        pass
+    # скролл у края окна, без серой «полосы»-трека
+    try:
+        kwargs["scrollbar_theme"] = ft.ScrollbarTheme(
+            thickness=3,
+            radius=8,
+            main_axis_margin=0,
+            cross_axis_margin=0,
+            thumb_visibility=False,
+            track_visibility=False,
+            thumb_color=ft.Colors.with_opacity(0.35, PRIMARY if is_dark() else "#1A1528"),
+            track_color=BG,
+            track_border_color=BG,
+        )
     except Exception:
         pass
     try:
@@ -104,11 +323,12 @@ def page_theme() -> ft.Theme:
 
 
 def lock_phone_window(page: ft.Page) -> None:
-    """Окно ровно под телефон, без ресайза; фон на весь клиент — без белой полосы."""
+    """Окно ровно под телефон, без ресайза; фон на весь клиент — без полос по бокам."""
     w, h = PHONE_WIDTH, PHONE_HEIGHT
     page.bgcolor = BG
     page.padding = 0
-    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+    # START/STRETCH — без центрирования «карточки» на чужом фоне
+    page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
     page.vertical_alignment = ft.MainAxisAlignment.START
     win = getattr(page, "window", None)
     if win is not None:
@@ -122,6 +342,15 @@ def lock_phone_window(page: ft.Page) -> None:
             ("resizable", False),
             ("maximizable", False),
             ("bgcolor", BG),
+        ):
+            try:
+                setattr(win, name, val)
+            except Exception:
+                pass
+        # прозрачный title-bar фон на Windows часто даёт чёрные/белые кромки
+        for name, val in (
+            ("title_bar_hidden", False),
+            ("frameless", False),
         ):
             try:
                 setattr(win, name, val)
@@ -143,6 +372,22 @@ def lock_phone_window(page: ft.Page) -> None:
                 pass
 
 
+def sync_window_bg(page: Optional[ft.Page] = None) -> None:
+    """Подтянуть page/window bgcolor под текущую тему (без полос)."""
+    if page is None:
+        return
+    try:
+        page.bgcolor = BG
+    except Exception:
+        pass
+    win = getattr(page, "window", None)
+    if win is not None:
+        try:
+            win.bgcolor = BG
+        except Exception:
+            pass
+
+
 def _press_scale(e):
     try:
         e.control.scale = 0.98 if e.data == "true" else 1.0
@@ -151,50 +396,23 @@ def _press_scale(e):
         pass
 
 
+def _btn_width() -> float:
+    return min(float(PHONE_WIDTH - PAGE_PADDING * 2) * 0.82, 300.0)
+
+
 def primary_button(text: str, on_click, *, expand: bool = True) -> ft.Control:
-    return ft.Container(
-        content=ft.Text(
-            text,
-            color=PRIMARY_TEXT,
-            size=17,
-            weight=ft.FontWeight.W_600,
-            text_align=ft.TextAlign.CENTER,
-            font_family=FONT_FAMILY,
-        ),
-        bgcolor=PRIMARY,
-        border_radius=28,
-        height=52,
-        alignment=ft.Alignment.CENTER,
-        expand=expand,
-        on_click=on_click,
-        ink=True,
-        animate_scale=ft.Animation(120, ft.AnimationCurve.EASE_OUT),
-        scale=1,
-        on_hover=_press_scale,
+    from flet_app import liquid_glass as lg
+
+    return lg.purple_glass_button(
+        text, on_click, width=None if expand else _btn_width(), height=52, expand=expand
     )
 
 
 def outline_button(text: str, on_click, *, expand: bool = True) -> ft.Control:
-    return ft.Container(
-        content=ft.Text(
-            text,
-            color=PRIMARY,
-            size=17,
-            weight=ft.FontWeight.W_600,
-            text_align=ft.TextAlign.CENTER,
-            font_family=FONT_FAMILY,
-        ),
-        bgcolor=BG,
-        border=ft.Border.all(2.5, PRIMARY),
-        border_radius=28,
-        height=52,
-        alignment=ft.Alignment.CENTER,
-        expand=expand,
-        on_click=on_click,
-        ink=True,
-        animate_scale=ft.Animation(120, ft.AnimationCurve.EASE_OUT),
-        scale=1,
-        on_hover=_press_scale,
+    from flet_app import liquid_glass as lg
+
+    return lg.white_glass_button(
+        text, on_click, width=None if expand else _btn_width(), height=52, expand=expand
     )
 
 
@@ -300,39 +518,48 @@ def image_button(
 
 
 def primary_image_button(text: str, on_click, *, expand: bool = True) -> ft.Control:
-    """«Далее» / primary — спрайт с тенью и подписью из макета."""
-    return image_button(
-        text,
-        on_click,
-        src=SPRITE_PRIMARY,
-        src_down=SPRITE_PRIMARY_DOWN,
-        text_color=PRIMARY_TEXT,
-        baked_label=False,
-    )
+    """«Далее» / primary — фиолетовый liquid glass (+ стрелка для «Далее»)."""
+    from flet_app import liquid_glass as lg
+
+    w = _btn_width()
+    label = (text or "").strip().lower()
+    if label in ("далее", "next"):
+        return lg.next_glass_button(text, on_click, width=w, height=52)
+    return lg.purple_glass_button(text, on_click, width=w, height=52)
 
 
 def secondary_image_button(text: str, on_click, *, expand: bool = True) -> ft.Control:
-    """«Я учитель» — outline-спрайт с тенью из макета."""
-    return image_button(
-        text,
-        on_click,
-        src=SPRITE_SECONDARY,
-        src_down=SPRITE_SECONDARY_DOWN,
-        text_color=PRIMARY,
-        baked_label=False,
-    )
+    """«Я учитель» — белый liquid glass."""
+    from flet_app import liquid_glass as lg
+
+    return lg.white_glass_button(text, on_click, width=_btn_width(), height=52)
 
 
 def student_image_button(text: str, on_click, *, expand: bool = True) -> ft.Control:
-    """«Я ученик» — filled-спрайт с тенью из макета."""
-    return image_button(
-        text,
-        on_click,
-        src=SPRITE_STUDENT,
-        src_down=SPRITE_STUDENT_DOWN,
-        text_color=PRIMARY_TEXT,
-        baked_label=False,
-    )
+    """«Я ученик» — фиолетовый liquid glass."""
+    from flet_app import liquid_glass as lg
+
+    return lg.purple_glass_button(text, on_click, width=_btn_width(), height=52)
+
+
+def field_border(
+    radius: float,
+    *,
+    color: str = "transparent",
+    focused_color: str = PRIMARY,
+    width: float = 1.0,
+) -> dict:
+    """Flet 1.x: вместо deprecated border_radius / border_color / focused_border_color."""
+    return {
+        ft.ControlState.DEFAULT: ft.OutlineInputBorder(
+            border_radius=radius,
+            side=ft.BorderSide(color=color, width=0 if color in ("transparent", "") else width),
+        ),
+        ft.ControlState.FOCUSED: ft.OutlineInputBorder(
+            border_radius=radius,
+            side=ft.BorderSide(color=focused_color, width=width),
+        ),
+    }
 
 
 def field(label: str, hint: str = "", password: bool = False, value: str = "", on_change=None) -> ft.TextField:
@@ -343,11 +570,9 @@ def field(label: str, hint: str = "", password: bool = False, value: str = "", o
         value=value,
         password=password,
         can_reveal_password=password,
-        border_radius=24,
         filled=True,
         bgcolor=SURFACE,
-        border_color="transparent",
-        focused_border_color=PRIMARY,
+        border=field_border(24, color="transparent", focused_color=PRIMARY),
         cursor_color=PRIMARY,
         text_size=16,
         on_change=on_change,

@@ -9,7 +9,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from core.config import DATA_DIR, SETTINGS
 
@@ -35,6 +35,34 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 @bot.event
 async def on_ready():
     print(f"Бот онлайн: {bot.user} — кнопки активны")
+    try:
+        from discord_bot.report_bridge import flush_pending_reports, reports_channel_id
+
+        n = await flush_pending_reports(bot)
+        print(f"Канал жалоб: {reports_channel_id()} · дослано из очереди: {n}")
+    except Exception as exc:
+        print(f"flush reports: {exc}")
+    if not getattr(bot, "_reports_loop_started", False):
+        try:
+            _reports_flush_loop.start()
+            bot._reports_loop_started = True
+        except Exception as exc:
+            print(f"reports loop: {exc}")
+
+
+@tasks.loop(seconds=20)
+async def _reports_flush_loop():
+    try:
+        from discord_bot.report_bridge import flush_pending_reports
+
+        await flush_pending_reports(bot)
+    except Exception:
+        pass
+
+
+@_reports_flush_loop.before_loop
+async def _reports_flush_before():
+    await bot.wait_until_ready()
 
 
 @bot.event
@@ -118,10 +146,14 @@ async def send_rules(ctx):
 # 3. Запуск бота (теперь он происходит ПОСЛЕ того, как команда зарегистрирована)
 def main():
     token = (SETTINGS.get("discord") or {}).get("bot_token") or ""
+
+    # --- ДОБАВЬ ЭТУ СТРОКУ ---
+    print("ПРОВЕРКА НАСТРОЕК:", SETTINGS)
+    # -------------------------
+
     if not token:
         raise SystemExit("Укажите discord.bot_token")
     bot.run(token)
-
 
 import asyncio
 from aiohttp import web  # <--- ДОБАВЬ ЭТОТ ИМПОРТ

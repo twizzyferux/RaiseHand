@@ -77,12 +77,17 @@ CREATE TABLE IF NOT EXISTS contacts (
 );
 
 CREATE TABLE IF NOT EXISTS messages (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    sender_id   INTEGER NOT NULL,
-    receiver_id INTEGER NOT NULL,
-    body        TEXT    NOT NULL,
-    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-    is_read     INTEGER NOT NULL DEFAULT 0,
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id        INTEGER NOT NULL,
+    receiver_id      INTEGER NOT NULL,
+    body             TEXT    NOT NULL DEFAULT '',
+    attachment_path  TEXT,
+    attachment_type  TEXT,
+    reply_to_id      INTEGER,
+    edited_at        TEXT,
+    is_deleted       INTEGER NOT NULL DEFAULT 0,
+    created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+    is_read          INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (sender_id)   REFERENCES users (id) ON DELETE CASCADE,
     FOREIGN KEY (receiver_id) REFERENCES users (id) ON DELETE CASCADE
 );
@@ -128,17 +133,68 @@ def init_db() -> None:
         "ALTER TABLE users ADD COLUMN city TEXT DEFAULT ''",
         "ALTER TABLE users ADD COLUMN class_name TEXT DEFAULT ''",
         "ALTER TABLE users ADD COLUMN school_name TEXT DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN role_id INTEGER",
+        "ALTER TABLE users ADD COLUMN school_id INTEGER",
+        "ALTER TABLE classes ADD COLUMN teacher_id INTEGER",
+        "ALTER TABLE messages ADD COLUMN attachment_path TEXT",
+        "ALTER TABLE messages ADD COLUMN attachment_type TEXT",
+        "ALTER TABLE messages ADD COLUMN reply_to_id INTEGER",
+        "ALTER TABLE messages ADD COLUMN edited_at TEXT",
+        "ALTER TABLE messages ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN is_banned INTEGER NOT NULL DEFAULT 0",
+        """
+        CREATE TABLE IF NOT EXISTS reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reporter_id INTEGER,
+            target_public_id TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            details TEXT DEFAULT '',
+            chat_id TEXT DEFAULT '',
+            msg_id TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS schools (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            country_code TEXT NOT NULL,
+            region TEXT NOT NULL DEFAULT '',
+            city TEXT NOT NULL,
+            name TEXT NOT NULL,
+            external_id TEXT,
+            source TEXT NOT NULL DEFAULT 'seed',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE (country_code, city, name)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_schools_country ON schools (country_code)",
+        "CREATE INDEX IF NOT EXISTS ix_schools_city ON schools (city)",
     ):
         try:
             conn.execute(statement)
         except sqlite3.OperationalError:
-            pass  # колонка уже есть
+            pass  # колонка / объект уже есть
 
     # Учебный код приглашения из макета: A12-3B4 -> 5А / Школа №67
     conn.execute(
         """INSERT OR IGNORE INTO classes (invite_code, class_name, school_name)
            VALUES ('A12-3B4', '5А', 'Школа №67')""")
     conn.commit()
+
+    # ORM-слой: роли + create_all для SQLAlchemy-моделей.
+    try:
+        from core.orm import init_orm
+        init_orm()
+    except Exception as exc:
+        import sys
+        sys.stderr.write(f"database: ORM init skipped: {exc}\n")
 
 
 def query_all(sql: str, params: tuple = ()) -> list:

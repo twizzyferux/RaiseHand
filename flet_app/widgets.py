@@ -80,45 +80,38 @@ def pill_button(
     border: Optional[ft.Border] = None,
     font_size: float = 17,
 ) -> ft.Control:
-    """Primary pill-кнопка. Иконка слева от текста, как в макете."""
-    content: list[ft.Control] = []
+    """Primary pill — фиолетовый liquid glass (иконка слева, если есть)."""
+    from flet_app import liquid_glass as lg
+
+    content: Optional[ft.Control] = None
     if icon_name:
         ic = _img(icon_name, icon_size)
         if ic is not None:
-            content.append(ic)
-            content.append(ft.Container(width=10))
-    content.append(
-        ft.Text(
-            text,
-            color=text_color,
-            size=font_size,
-            weight=ft.FontWeight.W_600,
-            text_align=ft.TextAlign.CENTER,
-            font_family=_font(),
-        )
-    )
-
-    return ft.Container(
-        content=ft.Row(
-            alignment=ft.MainAxisAlignment.CENTER,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            tight=True,
-            controls=content,
-        ),
-        width=width,
+            content = ft.Row(
+                alignment=ft.MainAxisAlignment.CENTER,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                tight=True,
+                controls=[
+                    ic,
+                    ft.Container(width=10),
+                    ft.Text(
+                        text,
+                        color=text_color,
+                        size=font_size,
+                        weight=ft.FontWeight.W_600,
+                        text_align=ft.TextAlign.CENTER,
+                        font_family=_font(),
+                    ),
+                ],
+            )
+    return lg.purple_glass_button(
+        text,
+        on_click,
+        width=None if expand else width,
         height=height,
-        bgcolor=bg,
-        border_radius=height / 2,
-        border=border,
-        alignment=ft.Alignment.CENTER,
         expand=expand,
-        on_click=on_click,
-        ink=True,
-        animate_scale=ft.Animation(120, ft.AnimationCurve.EASE_OUT),
-        scale=1,
-        on_hover=_press_scale,
-        shadow=_button_shadow() if border is None else None,
-        clip_behavior=ft.ClipBehavior.HARD_EDGE,
+        font_size=font_size,
+        content=content,
     )
 
 
@@ -132,18 +125,15 @@ def pill_outline_button(
     height: float = BUTTON_HEIGHT,
     expand: bool = False,
 ) -> ft.Control:
-    """Вторичная pill-кнопка: белая, с фиолетовой обводкой."""
-    return pill_button(
+    """Вторичная pill — белый liquid glass."""
+    from flet_app import liquid_glass as lg
+
+    return lg.white_glass_button(
         text,
         on_click,
-        icon_name=icon_name,
-        icon_size=icon_size,
-        width=width,
+        width=None if expand else width,
         height=height,
         expand=expand,
-        text_color=theme.PRIMARY,
-        bg="#FFFFFF",
-        border=ft.Border.all(2.5, theme.PRIMARY),
     )
 
 
@@ -226,12 +216,12 @@ def pill_field(
         hint_text=hint,
         password=password,
         can_reveal_password=False,
-        border_radius=FIELD_HEIGHT / 2,
         filled=True,
         fill_color=theme.FIELD_BG,
         bgcolor=theme.FIELD_BG,
-        border=ft.NoInputBorder(),
-        focused_border_color=theme.PRIMARY,
+        border=theme.field_border(
+            FIELD_HEIGHT / 2, color="transparent", focused_color=theme.PRIMARY
+        ),
         cursor_color=theme.PRIMARY,
         text_size=16,
         color=theme.INK,
@@ -290,12 +280,12 @@ def pill_password_field(
         hint_text=hint,
         password=True,
         can_reveal_password=False,
-        border_radius=FIELD_HEIGHT / 2,
         filled=True,
         fill_color=theme.FIELD_BG,
         bgcolor=theme.FIELD_BG,
-        border=ft.NoInputBorder(),
-        focused_border_color=theme.PRIMARY,
+        border=theme.field_border(
+            FIELD_HEIGHT / 2, color="transparent", focused_color=theme.PRIMARY
+        ),
         cursor_color=theme.PRIMARY,
         text_size=16,
         color=theme.INK,
@@ -410,7 +400,7 @@ def avatar(
                 height=bs,
                 border_radius=bs / 2,
                 bgcolor=BADGE_PINK,
-                border=ft.Border.all(2, "#FFFFFF"),
+                border=ft.Border.all(2, theme.BG),
                 alignment=ft.Alignment.CENTER,
                 right=-2,
                 top=size - bs * 0.7,

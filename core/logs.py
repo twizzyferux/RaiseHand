@@ -56,14 +56,6 @@ def setup() -> logging.Logger:
             # просто пишем в консоль.
             logger.addHandler(logging.StreamHandler(sys.stderr))
 
-    # Ошибки Kivy (traceback из .kv и виджетов) — в тот же файл
-    kivy_logger = logging.getLogger("kivy")
-    kivy_logger.setLevel(logging.WARNING)
-    if not kivy_logger.handlers:
-        kivy_logger.addHandler(logging.StreamHandler(sys.stdout))
-    for handler in list(logger.handlers):
-        kivy_logger.addHandler(handler)
-
     _to_app = logger
     return logger
 

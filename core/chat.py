@@ -1,19 +1,23 @@
 """Контакты и сообщения.
 
-Важно: сейчас переписка хранится в локальной базе data/messenger.db, то есть
-общаться могут аккаунты на одном устройстве (этого достаточно для школьного
-проекта и для демонстрации). Чтобы сделать настоящий обмен по сети, нужно
-вынести эти же функции на сервер (например, FastAPI + WebSocket) — структура
-таблиц при этом не меняется.
+Переписка в data/messenger.db. Для мгновенной доставки UI использует
+page.pubsub; этот модуль — слой хранения + пагинация.
 """
+
+from __future__ import annotations
 
 from typing import List, Optional
 
 from core import auth, database as db
+from core import rate_limit
+from core.uploads import UploadError, is_image, save_upload
 
 
 class ChatError(Exception):
     """Ошибка, текст которой можно показать пользователю."""
+
+
+PAGE_SIZE = 30
 
 
 def add_contact(owner_id: int, public_id: str) -> auth.User:
@@ -40,54 +44,148 @@ def list_contacts(owner_id: int) -> List[auth.User]:
     return [auth.row_to_user(row) for row in rows]
 
 
-def send_message(sender_id: int, receiver_id: int, body: str) -> None:
-    body = body.strip()
-    if not body:
+def send_message(
+    sender_id: int,
+    receiver_id: int,
+    body: str = "",
+    *,
+    attachment_path: str = "",
+    reply_to_id: Optional[int] = None,
+    rate_key: Optional[str] = None,
+) -> dict:
+    body = (body or "").strip()
+    attachment_path = (attachment_path or "").strip()
+    if not body and not attachment_path:
         raise ChatError("Сообщение пустое")
-    db.execute("INSERT INTO messages (sender_id, receiver_id, body) VALUES (?, ?, ?)",
-               (sender_id, receiver_id, body))
+
+    try:
+        rate_limit.check(
+            rate_key or f"msg:{sender_id}",
+            limit=30,
+            window_sec=60,
+            block_sec=30,
+            action="отправка сообщений",
+        )
+    except rate_limit.RateLimitError as exc:
+        raise ChatError(str(exc)) from exc
+
+    att_type = ""
+    stored_att = ""
+    if attachment_path:
+        try:
+            stored_att = save_upload(attachment_path, subdir="chat")
+        except UploadError as exc:
+            raise ChatError(str(exc)) from exc
+        att_type = "image" if is_image(stored_att) else "file"
+
+    msg_id = db.execute(
+        """INSERT INTO messages
+           (sender_id, receiver_id, body, attachment_path, attachment_type, reply_to_id)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (sender_id, receiver_id, body, stored_att or None, att_type or None, reply_to_id),
+    )
+    row = db.query_one("SELECT * FROM messages WHERE id = ?", (msg_id,))
+    return dict(row) if row else {"id": msg_id}
 
 
-def get_dialog(user_a: int, user_b: int, limit: int = 200) -> List[dict]:
+def get_dialog(
+    user_a: int,
+    user_b: int,
+    *,
+    limit: int = PAGE_SIZE,
+    offset: int = 0,
+) -> List[dict]:
+    """Страница сообщений: сначала свежие (ORDER BY id DESC), наружу — по возрастанию."""
     rows = db.query_all(
         """SELECT * FROM messages
-           WHERE (sender_id = ? AND receiver_id = ?)
-              OR (sender_id = ? AND receiver_id = ?)
-           ORDER BY id DESC LIMIT ?""",
-        (user_a, user_b, user_b, user_a, limit),
+           WHERE is_deleted = 0
+             AND ((sender_id = ? AND receiver_id = ?)
+               OR (sender_id = ? AND receiver_id = ?))
+           ORDER BY id DESC
+           LIMIT ? OFFSET ?""",
+        (user_a, user_b, user_b, user_a, limit, offset),
     )
     return [dict(row) for row in reversed(rows)]
 
 
+def count_dialog(user_a: int, user_b: int) -> int:
+    row = db.query_one(
+        """SELECT COUNT(*) AS n FROM messages
+           WHERE is_deleted = 0
+             AND ((sender_id = ? AND receiver_id = ?)
+               OR (sender_id = ? AND receiver_id = ?))""",
+        (user_a, user_b, user_b, user_a),
+    )
+    return int(row["n"]) if row else 0
+
+
+def get_message(message_id: int) -> Optional[dict]:
+    row = db.query_one("SELECT * FROM messages WHERE id = ?", (message_id,))
+    return dict(row) if row else None
+
+
+def edit_message(message_id: int, editor_id: int, new_body: str) -> dict:
+    new_body = (new_body or "").strip()
+    if not new_body:
+        raise ChatError("Текст пустой")
+    row = get_message(message_id)
+    if row is None or row.get("is_deleted"):
+        raise ChatError("Сообщение не найдено")
+    if int(row["sender_id"]) != int(editor_id):
+        raise ChatError("Можно редактировать только свои сообщения")
+    db.execute(
+        """UPDATE messages
+           SET body = ?, edited_at = datetime('now')
+           WHERE id = ?""",
+        (new_body, message_id),
+    )
+    return get_message(message_id) or {}
+
+
+def delete_message(message_id: int, actor_id: int) -> None:
+    row = get_message(message_id)
+    if row is None:
+        raise ChatError("Сообщение не найдено")
+    if int(row["sender_id"]) != int(actor_id) and int(row["receiver_id"]) != int(actor_id):
+        raise ChatError("Нет доступа к сообщению")
+    db.execute(
+        "UPDATE messages SET is_deleted = 1, body = '', attachment_path = NULL WHERE id = ?",
+        (message_id,),
+    )
+
+
 def mark_read(reader_id: int, partner_id: int) -> None:
-    db.execute("UPDATE messages SET is_read = 1 WHERE receiver_id = ? AND sender_id = ?",
-               (reader_id, partner_id))
+    db.execute(
+        "UPDATE messages SET is_read = 1 WHERE receiver_id = ? AND sender_id = ?",
+        (reader_id, partner_id),
+    )
 
 
 def unread_count(user_id: int, partner_id: Optional[int] = None) -> int:
     if partner_id is None:
-        row = db.query_one("SELECT COUNT(*) AS n FROM messages WHERE receiver_id = ? AND is_read = 0",
-                           (user_id,))
+        row = db.query_one(
+            "SELECT COUNT(*) AS n FROM messages WHERE receiver_id = ? AND is_read = 0 AND is_deleted = 0",
+            (user_id,),
+        )
     else:
         row = db.query_one(
-            "SELECT COUNT(*) AS n FROM messages WHERE receiver_id = ? AND sender_id = ? AND is_read = 0",
-            (user_id, partner_id))
+            """SELECT COUNT(*) AS n FROM messages
+               WHERE receiver_id = ? AND sender_id = ? AND is_read = 0 AND is_deleted = 0""",
+            (user_id, partner_id),
+        )
     return row["n"]
 
 
 def last_message(user_a: int, user_b: int) -> Optional[dict]:
     row = db.query_one(
         """SELECT * FROM messages
-           WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)
+           WHERE is_deleted = 0
+             AND ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?))
            ORDER BY id DESC LIMIT 1""",
         (user_a, user_b, user_b, user_a),
     )
     return dict(row) if row else None
 
-
-# --------------------------------------------------------------------------- #
-#  Список чатов (как в макете «основной экран чаты»)
-# --------------------------------------------------------------------------- #
 
 def is_pinned(owner_id: int, peer_id: int) -> bool:
     row = db.query_one(
@@ -98,41 +196,32 @@ def is_pinned(owner_id: int, peer_id: int) -> bool:
 
 
 def set_pinned(owner_id: int, peer_id: int, pinned: bool) -> None:
-    """Закрепить или открепить чат."""
     db.execute(
         """INSERT INTO chats (owner_id, peer_id, pinned) VALUES (?, ?, ?)
            ON CONFLICT(owner_id, peer_id)
            DO UPDATE SET pinned = excluded.pinned""",
-        (owner_id, peer_id, 1 if pinned else 0))
+        (owner_id, peer_id, 1 if pinned else 0),
+    )
 
 
 def _short_time(created_at: str) -> str:
-    """Время сообщения в виде «19:36»."""
     text = (created_at or "").strip()
-    if " " in text:                       # SQLite отдаёт «2026-10-08 19:36:12»
+    if " " in text:
         text = text.split(" ", 1)[1]
     return text[:5]
 
 
 def chat_list(owner_id: int) -> List[dict]:
-    """Чаты для главного экрана: закреплённые сверху, остальные по свежести.
-
-    В каждом словаре — всё, что нужно ряду в списке: человек, последнее
-    сообщение, время, прочитано ли моё сообщение и сколько новых.
-    """
     peers: dict = {}
-
-    # с кем есть переписка: берём последнее сообщение по каждому собеседнику
     for row in db.query_all(
             """SELECT CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END AS peer,
                       MAX(id) AS last_id
                FROM messages
-               WHERE sender_id = ? OR receiver_id = ?
+               WHERE (sender_id = ? OR receiver_id = ?) AND is_deleted = 0
                GROUP BY peer""",
             (owner_id, owner_id, owner_id)):
         peers[row["peer"]] = row["last_id"]
 
-    # контакты без сообщений тоже показываем — пустой чат
     for row in db.query_all(
             "SELECT contact_id AS peer FROM contacts WHERE owner_id = ?",
             (owner_id,)):
@@ -143,12 +232,19 @@ def chat_list(owner_id: int) -> List[dict]:
         person = auth.get_user_by_id(peer_id)
         if person is None or person.id == owner_id:
             continue
-        last = db.query_one("SELECT * FROM messages WHERE id = ?", (last_id,)) \
-            if last_id else None
+        last = db.query_one("SELECT * FROM messages WHERE id = ?", (last_id,)) if last_id else None
         unread = unread_count(owner_id, peer_id)
+        preview = ""
+        if last:
+            if last.get("is_deleted"):
+                preview = ""
+            elif last.get("attachment_path") and not last.get("body"):
+                preview = "Фото" if last.get("attachment_type") == "image" else "Файл"
+            else:
+                preview = last.get("body") or ""
         items.append({
             "user": person,
-            "preview": (last["body"] if last else ""),
+            "preview": preview,
             "time": _short_time(last["created_at"] if last else ""),
             "mine": bool(last and last["sender_id"] == owner_id),
             "read": bool(last and last["sender_id"] == owner_id and last["is_read"]),
@@ -161,20 +257,14 @@ def chat_list(owner_id: int) -> List[dict]:
     return items
 
 
-# --------------------------------------------------------------------------- #
-#  Классы (вкладка «Группы»)
-# --------------------------------------------------------------------------- #
-
 def list_classes() -> List[dict]:
-    """Все учебные классы: название, школа и код для входа."""
     rows = db.query_all(
         "SELECT class_name, school_name, invite_code FROM classes ORDER BY class_name")
     return [dict(row) for row in rows]
 
 
 def join_class(user_id: int, invite_code: str) -> str:
-    """Присоединиться к классу по коду. Возвращает название класса."""
-    row = auth.find_class(invite_code)        # код проверяется там же
+    row = auth.find_class(invite_code)
     db.execute(
         "UPDATE users SET class_name = ?, school_name = ? WHERE id = ?",
         (row["class_name"], row["school_name"], user_id))

@@ -1,3 +1,8 @@
 discord.py==2.3.2
 python-dotenv
 audioop-lts; python_version >= '3.13'
+SQLAlchemy>=2.0
+bcrypt>=4.0
+passlib>=1.7.4
+PyJWT>=2.8
+pygame>=2.5

@@ -1,0 +1,118 @@
+{
+  "app_name": "RaiseHand",
+  "dev_mode": true,
+  "texts": {
+    "welcome_title": "Регистрация",
+    "welcome_student": "Я ученик",
+    "welcome_teacher": "Я учитель",
+    "welcome_login_hint": "Уже зарегистрировали аккаунт? Войти",
+    "remember_me": "Запомнить меня",
+    "log_in": "Вход выполнен",
+    "my_account": "Мой аккаунт",
+    "my_account_hint": "Логин и пароль для входа на этом устройстве",
+    "copy": "Скопировать",
+    "copied": "Скопировано",
+    "logs": "Логи приложения",
+    "logs_empty": "Лог пока пуст",
+    "logs_hint": "Последние записи из data/app.log"
+  },
+  "welcome_slide_seconds": 5.0,
+  "welcome_slides": [
+    {
+      "title": "Не бойся\nподнять руку",
+      "subtitle": "Отправляйте вопросы учителю\nв чате. Получайте ответы\nбыстро и без стеснения."
+    },
+    {
+      "title": "Задавай\nвопросы смело",
+      "subtitle": "Учитель ответит в чате\nкласса — быстро, понятно\nи без стеснения."
+    },
+    {
+      "title": "Помогай\nодноклассникам",
+      "subtitle": "Делись знаниями\nи поддерживай тех,\nкому сейчас трудно."
+    }
+  ],
+  "sprites": {
+    "logo": "assets/images/photo_2026-09-30_00-09-10.jpg",
+    "rh_logo": "assets/images/raisehand/logo.png",
+    "rh_wordmark": "assets/images/raisehand/wordmark.png",
+    "rh_check": "assets/images/raisehand/check.png",
+    "rh_eye": "assets/images/raisehand/eye.png",
+    "rh_eye_off": "assets/images/raisehand/eye-off.png",
+    "choice_primary": "assets/images/buttons/choice_primary.png",
+    "choice_primary_down": "assets/images/buttons/choice_primary_down.png",
+    "choice_secondary": "assets/images/buttons/choice_secondary.png",
+    "choice_secondary_down": "assets/images/buttons/choice_secondary_down.png",
+    "default_avatar": "",
+    "nav_search": "",
+    "nav_search_black": "assets/images/chats/nav_search_black.png",
+    "nav_search_violet": "assets/images/chats/nav_search_violet.png",
+    "nav_chats_violet": "assets/images/chats/nav_chats_violet.png",
+    "nav_chats_black": "assets/images/chats/nav_chats_black.png",
+    "nav_groups_violet": "assets/images/chats/nav_groups_violet.png",
+    "nav_groups_black": "assets/images/chats/nav_groups_black.png",
+    "nav_settings_violet": "assets/images/chats/nav_settings_violet.png",
+    "nav_settings_black": "assets/images/chats/nav_settings_black.png",
+    "status_pin": "assets/images/chats/status_pin.png",
+    "status_sent": "assets/images/chats/status_sent.png",
+    "status_read": "assets/images/chats/status_read.png"
+  },
+  "font": {
+    "name": "SFPro",
+    "file": "SF-Pro-Text-Regular.otf",
+    "bold_file": "SF-Pro-Text-Semibold.otf",
+    "size": 0
+  },
+  "remember_login": "ivan@e.x",
+  "teacher_platforms": [
+    "МЭШ",
+    "Российская электронная школа",
+    "Дневник.ру",
+    "Моя школа",
+    "Инфоурок",
+    "nsportal.ru",
+    "УРОК.РФ",
+    "Учи.ру",
+    "Электронная школа"
+  ],
+  "rules": {
+    "min_password_length": 6,
+    "nickname_min_length": 3,
+    "code_length": 6,
+    "code_lifetime_minutes": 10,
+    "student_id_digits": 7,
+    "teacher_id_prefix": "U",
+    "admin_id_prefix": "A"
+  },
+  "jwt": {
+    "secret": "raisehand-dev-jwt-secret-change-me",
+    "ttl_hours": 720
+  },
+  "privacy_policy_path": "docs/PRIVACY_POLICY.md",
+  "email": {
+    "enabled": false,
+    "provider": "smtp",
+    "smtp_host": "smtp.yandex.ru",
+    "smtp_port": 465,
+    "use_ssl": true,
+    "login": "",
+    "password": "",
+    "from_address": "",
+    "sendgrid_api_key": ""
+  },
+  "sms": {
+    "enabled": false,
+    "provider": "smsru",
+    "api_key": ""
+  },
+  "ai": {
+    "gemini_api_key": "",
+    "note": "Бесплатный ключ: https://aistudio.google.com/apikey — или env GEMINI_API_KEY"
+  },
+  "layout_mode": "fill_width",
+  "discord": {
+    "webhook_url": "",
+    "bot_token": "",
+    "channel_id": "1560020135849361468",
+    "reports_channel_id": "1571586506064400414"
+  }
+}

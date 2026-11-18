@@ -1,21 +1,15 @@
-FROM python:3.11-slim
-
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
+# RaiseHand — веб-деплой (Flet web)
+FROM python:3.12-slim
 
 WORKDIR /app
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt || pip install --no-cache-dir flet httpx requests pygame discord.py
 
-# ВОТ ЗДЕСЬ МЕНЯЕМ ПУТЬ (убираем discord_bot/):
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
 
-RUN pip uninstall -y discord discord.py py-cord || true
-RUN pip install --no-cache-dir --force-reinstall discord.py==2.3.2
+ENV RH_WEB=1
+EXPOSE 8550
 
-COPY core /app/core
-COPY discord_bot /app
-COPY config /app/config
-
-EXPOSE 8080
-
-CMD ["python", "bot.py"]
+# Веб-режим Flet. Для APK/EXE локально: flet build apk / flet build windows
+# Веб: flet run --web. Для APK/EXE локально: flet build apk / flet build windows
+CMD ["python", "-c", "import flet as ft; from flet_app.main import main; ft.run(main, view=ft.AppView.WEB_BROWSER, port=8550)"]

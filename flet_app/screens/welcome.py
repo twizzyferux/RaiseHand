@@ -7,6 +7,8 @@ import flet as ft
 from flet_app.app_state import STATE
 from flet_app import theme
 
+# палитра welcome совпадает с брендом RaiseHand (theme.PRIMARY)
+
 PHI = 1.6180339887
 BASE = 8.0
 
@@ -176,7 +178,12 @@ def build_welcome(page: ft.Page) -> ft.Control:
             ),
         )
 
-    if theme._image_exists(theme.SPRITE_WORDMARK):
+    wm = (
+        theme.asset("assets", "images", "mono", "white" if theme.is_dark() else "black", "wordmark.png")
+    )
+    if theme._image_exists(wm):
+        wordmark = ft.Image(src=wm, height=WORDMARK_H, fit=ft.BoxFit.CONTAIN)
+    elif theme._image_exists(theme.SPRITE_WORDMARK):
         wordmark = ft.Image(
             src=theme.SPRITE_WORDMARK, height=WORDMARK_H, fit=ft.BoxFit.CONTAIN
         )
@@ -317,32 +324,14 @@ def build_welcome(page: ft.Page) -> ft.Control:
     def go_login(_):
         STATE.go("/login")
 
-    # «Я Ученик» — спрайт с тенью. «Я Учитель» — та же ширина, без иконки/свечения
-    content_w_btn = float(theme.PHONE_WIDTH - theme.PAGE_PADDING * 2)
-    btn_w = min(content_w_btn * 0.82, 300.0)
-    btn_h = 52.0  # как у «Я Ученик»
-
-    btn_student = theme.student_image_button("Я Ученик", go_student)
-    btn_teacher = ft.Container(
-        width=content_w_btn,
+    # «Я Ученик» / «Я Учитель» — purple / white liquid glass
+    btn_student = ft.Container(
         alignment=ft.Alignment.CENTER,
-        content=ft.Container(
-            width=btn_w,
-            height=btn_h,
-            border_radius=btn_h / 2,
-            bgcolor=theme.BG,
-            border=ft.Border.all(1.5, theme.PRIMARY),
-            alignment=ft.Alignment.CENTER,
-            on_click=go_teacher,
-            content=ft.Text(
-                "Я Учитель",
-                size=16,
-                weight=ft.FontWeight.W_600,
-                color=theme.PRIMARY,
-                font_family=theme.FONT_FAMILY,
-                text_align=ft.TextAlign.CENTER,
-            ),
-        ),
+        content=theme.student_image_button("Я Ученик", go_student),
+    )
+    btn_teacher = ft.Container(
+        alignment=ft.Alignment.CENTER,
+        content=theme.secondary_image_button("Я Учитель", go_teacher),
     )
 
     login_line = ft.Text(
@@ -436,7 +425,6 @@ def build_welcome(page: ft.Page) -> ft.Control:
         padding=ft.Padding.only(top=0, bottom=0, left=0, right=0),
         bgcolor=theme.BG,
         expand=True,
-        width=theme.PHONE_WIDTH,
     )
 
     async def intro():

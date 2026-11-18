@@ -1,0 +1,202 @@
+{
+ "themes": {
+  "violet": {
+   "label": "Фиолетовая (фирменная)",
+   "light": {
+    "icon": "#5B3FF0",
+    "accent": "#FF5C93",
+    "fill": "#5B3FF0",
+    "idle": "#1C1B2E",
+    "gray": "#9B99B3",
+    "bubble_in": "#EBE8FD",
+    "text_in": "#14121F",
+    "badge": "#FF4885",
+    "badge_muted": "#C4C2D6",
+    "soft": "#F4F2FE",
+    "fail": "#F2494E",
+    "surf": "#FFFFFF",
+    "onfill": "#FFFFFF"
+   },
+   "dark": {
+    "icon": "#907CF5",
+    "accent": "#FF85AE",
+    "fill": "#4F31EF",
+    "idle": "#E9E7F5",
+    "gray": "#8C8AA3",
+    "bubble_in": "#353055",
+    "text_in": "#F2F1FA",
+    "badge": "#FF528C",
+    "badge_muted": "#4A4958",
+    "soft": "#242037",
+    "fail": "#FF6B6B",
+    "surf": "#1C1C1E",
+    "onfill": "#FFFFFF"
+   }
+  },
+  "pink": {
+   "label": "Розовая",
+   "light": {
+    "icon": "#E63A80",
+    "accent": "#6A4DF5",
+    "fill": "#E63A80",
+    "idle": "#1C1B2E",
+    "gray": "#9B99B3",
+    "bubble_in": "#FCE7F0",
+    "text_in": "#14121F",
+    "badge": "#5A3AF4",
+    "badge_muted": "#C4C2D6",
+    "soft": "#FDF1F6",
+    "fail": "#F2494E",
+    "surf": "#FFFFFF",
+    "onfill": "#FFFFFF"
+   },
+   "dark": {
+    "icon": "#ED75A6",
+    "accent": "#8A74F7",
+    "fill": "#E42C77",
+    "idle": "#E9E7F5",
+    "gray": "#8C8AA3",
+    "bubble_in": "#512F3E",
+    "text_in": "#F2F1FA",
+    "badge": "#6243F4",
+    "badge_muted": "#4A4958",
+    "soft": "#34202A",
+    "fail": "#FF6B6B",
+    "surf": "#1C1C1E",
+    "onfill": "#FFFFFF"
+   }
+  },
+  "blue": {
+   "label": "Голубая",
+   "light": {
+    "icon": "#1F7BF0",
+    "accent": "#FF5C93",
+    "fill": "#1F7BF0",
+    "idle": "#1C1B2E",
+    "gray": "#9B99B3",
+    "bubble_in": "#E4EFFD",
+    "text_in": "#14121F",
+    "badge": "#FF4885",
+    "badge_muted": "#C4C2D6",
+    "soft": "#EFF6FE",
+    "fail": "#F2494E",
+    "surf": "#FFFFFF",
+    "onfill": "#FFFFFF"
+   },
+   "dark": {
+    "icon": "#5DA0F4",
+    "accent": "#FF85AE",
+    "fill": "#1173EF",
+    "idle": "#E9E7F5",
+    "gray": "#8C8AA3",
+    "bubble_in": "#293C55",
+    "text_in": "#F2F1FA",
+    "badge": "#FF528C",
+    "badge_muted": "#4A4958",
+    "soft": "#1C2737",
+    "fail": "#FF6B6B",
+    "surf": "#1C1C1E",
+    "onfill": "#FFFFFF"
+   }
+  },
+  "coral": {
+   "label": "Коралловая",
+   "light": {
+    "icon": "#EA4B3C",
+    "accent": "#6A4DF5",
+    "fill": "#EA4B3C",
+    "idle": "#1C1B2E",
+    "gray": "#9B99B3",
+    "bubble_in": "#FCE9E8",
+    "text_in": "#14121F",
+    "badge": "#5A3AF4",
+    "badge_muted": "#C4C2D6",
+    "soft": "#FEF2F1",
+    "fail": "#F2494E",
+    "surf": "#FFFFFF",
+    "onfill": "#FFFFFF"
+   },
+   "dark": {
+    "icon": "#F08278",
+    "accent": "#8A74F7",
+    "fill": "#E93E2E",
+    "idle": "#E9E7F5",
+    "gray": "#8C8AA3",
+    "bubble_in": "#523231",
+    "text_in": "#F2F1FA",
+    "badge": "#6243F4",
+    "badge_muted": "#4A4958",
+    "soft": "#352222",
+    "fail": "#FF6B6B",
+    "surf": "#1C1C1E",
+    "onfill": "#FFFFFF"
+   }
+  },
+  "green": {
+   "label": "Зелёная",
+   "light": {
+    "icon": "#0B9858",
+    "accent": "#FF5C93",
+    "fill": "#0B9858",
+    "idle": "#1C1B2E",
+    "gray": "#9B99B3",
+    "bubble_in": "#E2F3EB",
+    "text_in": "#14121F",
+    "badge": "#FF4885",
+    "badge_muted": "#C4C2D6",
+    "soft": "#EEF8F3",
+    "fail": "#F2494E",
+    "surf": "#FFFFFF",
+    "onfill": "#FFFFFF"
+   },
+   "dark": {
+    "icon": "#0FD67C",
+    "accent": "#FF85AE",
+    "fill": "#0A8A50",
+    "idle": "#E9E7F5",
+    "gray": "#8C8AA3",
+    "bubble_in": "#254236",
+    "text_in": "#F2F1FA",
+    "badge": "#FF528C",
+    "badge_muted": "#4A4958",
+    "soft": "#1A2B25",
+    "fail": "#FF6B6B",
+    "surf": "#1C1C1E",
+    "onfill": "#FFFFFF"
+   }
+  },
+  "orange": {
+   "label": "Оранжевая",
+   "light": {
+    "icon": "#E0600A",
+    "accent": "#6A4DF5",
+    "fill": "#E0600A",
+    "idle": "#1C1B2E",
+    "gray": "#9B99B3",
+    "bubble_in": "#FBECE2",
+    "text_in": "#14121F",
+    "badge": "#5A3AF4",
+    "badge_muted": "#C4C2D6",
+    "soft": "#FDF4EE",
+    "fail": "#F2494E",
+    "surf": "#FFFFFF",
+    "onfill": "#FFFFFF"
+   },
+   "dark": {
+    "icon": "#F68336",
+    "accent": "#8A74F7",
+    "fill": "#D15A09",
+    "idle": "#E9E7F5",
+    "gray": "#8C8AA3",
+    "bubble_in": "#503627",
+    "text_in": "#F2F1FA",
+    "badge": "#6243F4",
+    "badge_muted": "#4A4958",
+    "soft": "#34241C",
+    "fail": "#FF6B6B",
+    "surf": "#1C1C1E",
+    "onfill": "#FFFFFF"
+   }
+  }
+ }
+}

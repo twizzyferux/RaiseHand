@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 RaiseHand на Flet 1.x.
-
-В Flet 1.1 у Page больше нет .views и .go.
-Навигация: page.controls + page.navigate (если есть).
 """
 from __future__ import annotations
 
 import os
 import sys
 import traceback
+import threading
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -17,23 +15,38 @@ if ROOT not in sys.path:
 
 import flet as ft
 
-from core import database, logs
+from core import database, logs, prefs, push
+from core.config import get_app_platform
+
 from flet_app.app_state import STATE
 from flet_app import theme
-from flet_app.screens import welcome, login, register, home, chat
+from flet_app.screens import (
+    welcome,
+    login,
+    register,
+    home,
+    chat,
+    questions,
+    settings_pages,
+    contact_profile,
+    report,
+)
 
 
 def main(page: ft.Page):
     page.title = "RaiseHand"
-    page.bgcolor = theme.BG
     page.padding = 0
     # Только мобильный UI: фиксированное окно телефона, без ресайза
     theme.lock_phone_window(page)
     theme.setup_fonts(page)
     try:
-        page.theme_mode = ft.ThemeMode.LIGHT
+        theme.apply_mode(page, prefs.theme_mode())
     except Exception:
-        pass
+        try:
+            page.theme_mode = ft.ThemeMode.LIGHT
+            page.bgcolor = theme.BG
+        except Exception:
+            pass
     try:
         page.theme = theme.page_theme()
     except Exception:
@@ -44,6 +57,10 @@ def main(page: ft.Page):
         logs.setup()
         logs.info("Flet RaiseHand start")
     except Exception as exc:
+        try:
+            logs.error("DB init failed: %s", exc)
+        except Exception:
+            pass
         page.controls.append(ft.Text(f"DB init: {exc}"))
         page.update()
 
@@ -57,7 +74,6 @@ def main(page: ft.Page):
         except Exception:
             pass
         try:
-            # запасной путь для старых клиентов
             if hasattr(page, "overlay"):
                 page.overlay.append(ctrl)
             setattr(ctrl, "open", True)
@@ -114,28 +130,42 @@ def main(page: ft.Page):
             "/reg/done": register.build_reg_done,
             "/home": home.build_home,
             "/chat": chat.build_chat,
+            "/questions": questions.build_questions,
             "/verify": home.build_home,
             "/teacher_proof": home.build_home,
         }
-        build = builders.get(route, welcome.build_welcome)
+        builders.update(settings_pages.register_routes())
+        builders.update(contact_profile.register_routes())
+        builders.update(report.register_routes())
+        build = builders.get(route)
+        if build is None and route.startswith("/contact/"):
+            cid = route[len("/contact/") :].strip()
+            build = lambda page, _cid=cid: contact_profile.build_contact_profile(page, _cid)
+        if build is None:
+            build = welcome.build_welcome
         body = build(page)
 
-        # Всегда «телефон»: контент ровно PHONE_WIDTH
+        # на всю ширину окна — без «полос» по бокам
         return ft.Container(
             content=body,
-            width=theme.PHONE_WIDTH,
             bgcolor=theme.BG,
             expand=True,
             alignment=ft.Alignment.TOP_CENTER,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
         )
 
     def show_route(route: str, *, animate: bool = True):
         route = route or "/welcome"
+        prev = current.get("route") or ""
         current["route"] = route
         try:
             page.route = route
         except Exception:
             pass
+
+        # смена цвета/темы в оформлении — без повторного slide
+        # (shell тоже читает флаг и снимает его)
+        quiet_settings = bool(STATE.draft.get("_settings_no_anim"))
 
         try:
             content = body_for(route)
@@ -151,16 +181,79 @@ def main(page: ft.Page):
                 expand=True,
             )
 
-        # Только fade: затухание → появление, без slide
-        if animate:
-            wrap = ft.Container(
+        to_sheet = (
+            route.startswith("/contact")
+            or route.startswith("/settings/")
+            or route == "/report"
+        )
+        from_sheet = (
+            (
+                (prev or "").startswith("/contact")
+                or (prev or "").startswith("/settings/")
+                or prev == "/report"
+            )
+            and not to_sheet
+        )
+        # вход в личный/групповой чат (и вопросы класса)
+        to_chat = route in ("/chat", "/questions")
+        from_chat = (prev in ("/chat", "/questions")) and not to_chat and not to_sheet
+
+        def _anim_wrap(**kwargs) -> ft.Container:
+            return ft.Container(
                 content=content,
                 expand=True,
+                bgcolor=theme.BG,
+                clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                **kwargs,
+            )
+
+        if animate and to_chat:
+            # чат / группа: справа + fade
+            wrap = _anim_wrap(
+                opacity=0,
+                offset=ft.Offset(0.10, 0),
+                animate_opacity=ft.Animation(280, ft.AnimationCurve.EASE_OUT_CUBIC),
+                animate_offset=ft.Animation(340, ft.AnimationCurve.EASE_OUT_CUBIC),
+            )
+        elif animate and from_chat:
+            wrap = _anim_wrap(
+                opacity=0,
+                offset=ft.Offset(-0.06, 0),
+                animate_opacity=ft.Animation(240, ft.AnimationCurve.EASE_OUT),
+                animate_offset=ft.Animation(300, ft.AnimationCurve.EASE_OUT_CUBIC),
+            )
+        elif animate and to_sheet and quiet_settings:
+            wrap = _anim_wrap(opacity=1)
+        elif animate and to_sheet:
+            # настройки / профиль / жалоба: лёгкий подъём + fade
+            wrap = _anim_wrap(
+                opacity=0,
+                offset=ft.Offset(0, 0.04),
+                animate_opacity=ft.Animation(260, ft.AnimationCurve.EASE_OUT),
+                animate_offset=ft.Animation(280, ft.AnimationCurve.EASE_OUT),
+            )
+        elif animate and from_sheet:
+            wrap = _anim_wrap(
+                opacity=0,
+                offset=ft.Offset(-0.03, 0),
+                animate_opacity=ft.Animation(220, ft.AnimationCurve.EASE_OUT),
+                animate_offset=ft.Animation(240, ft.AnimationCurve.EASE_OUT),
+            )
+        elif animate:
+            wrap = _anim_wrap(
                 opacity=0,
                 animate_opacity=ft.Animation(220, ft.AnimationCurve.EASE_OUT),
             )
         else:
-            wrap = content
+            wrap = content if isinstance(content, ft.Container) else _anim_wrap()
+
+        try:
+            page.bgcolor = theme.BG
+            win = getattr(page, "window", None)
+            if win is not None:
+                win.bgcolor = theme.BG
+        except Exception:
+            pass
 
         page.controls.clear()
         page.controls.append(wrap)
@@ -169,28 +262,36 @@ def main(page: ft.Page):
         if animate:
             async def _play():
                 import asyncio
-                await asyncio.sleep(0.03)
+                await asyncio.sleep(0.02)
                 wrap.opacity = 1
+                if hasattr(wrap, "offset"):
+                    wrap.offset = ft.Offset(0, 0)
+                if hasattr(wrap, "scale"):
+                    wrap.scale = 1
                 try:
                     wrap.update()
                 except Exception:
                     pass
+
             try:
                 page.run_task(_play)
             except Exception:
                 wrap.opacity = 1
                 try:
+                    if hasattr(wrap, "offset"):
+                        wrap.offset = ft.Offset(0, 0)
+                    if hasattr(wrap, "scale"):
+                        wrap.scale = 1
                     page.update()
                 except Exception:
                     pass
 
     def go(route: str):
         route = route or "/welcome"
-        # Не вызываем page.navigate: в Flet 1.x он сбрасывает неизвестные
-        # маршруты (/reg/school и т.п.) на welcome.
         show_route(route, animate=True)
 
     STATE.bind(go, snack, dialog)
+    push.bind_snack(snack)
 
     def on_route_change(e=None):
         route = getattr(page, "route", None) or current["route"]
@@ -202,12 +303,51 @@ def main(page: ft.Page):
     except Exception:
         pass
 
+    def _net(online: bool):
+        try:
+            page.pubsub.send_all({"type": "net_status", "online": online})
+        except Exception:
+            pass
+
+    try:
+        page.on_disconnect = lambda e: _net(False)
+    except Exception:
+        pass
+    try:
+        page.on_connect = lambda e: _net(True)
+    except Exception:
+        pass
+
     start = STATE.restore_session()
     go(start)
 
 
+def start_discord_bot():
+    """Только desktop: на iOS/Android discord.py не собираем и не запускаем."""
+    try:
+        from discord_bot.bot import bot
+        from core.config import get_token
+    except Exception as exc:
+        print(f"Discord bot import skipped: {exc}")
+        return
+
+    token = get_token()
+    if not token:
+        print("Discord bot: токен не найден — пропуск")
+        return
+
+    print("=== ЗАПУСК DISCORD БОТА ===")
+    try:
+        bot.run(token)
+    except Exception as e:
+        print(f"Ошибка при запуске бота: {e}")
+
+
 if __name__ == "__main__":
-    # Flet 1.x: ft.run; старые сборки — ft.app
+    platform = get_app_platform()
+    if platform not in ("ios", "android"):
+        threading.Thread(target=start_discord_bot, daemon=True).start()
+
     if hasattr(ft, "run"):
         ft.run(main)
     elif hasattr(ft, "app"):

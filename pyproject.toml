@@ -1,18 +1,41 @@
 [project]
-name = "school-messenger-plain"
+name = "raisehand"
 version = "0.1.0"
-description = "School messenger app"
-requires-python = ">=3.9"
+description = "RaiseHand school messenger"
+requires-python = ">=3.12,<3.13"
 dependencies = [
-    "flet",
-    # ... другие зависимости
+    "flet>=0.80.0",
+    "SQLAlchemy>=2.0",
+    "bcrypt>=4.0",
+    "passlib>=1.7.4",
+    "PyJWT>=2.8",
 ]
 
 [tool.flet]
-org = "com.yourcompany"
-product = "School Messenger"
-company = "Your Company"
+org = "com.raisehand.app"
+product = "RaiseHand"
+company = "RaiseHand"
+bundle_id = "com.raisehand.app"
 
 [tool.flet.app]
-module = "flet_app.main"  # Указываем полный путь к модулю
+module = "flet_app.main"
+# Не тащим в IPA десктопный мусор / бота / админку
+exclude = [
+    "discord_bot",
+    "admin_panel",
+    "scripts",
+    "tools",
+    "docs",
+    "build",
+    ".venv",
+    ".venv312",
+    ".idea",
+    ".github",
+    "проект",
+    "school_messenger_plain.rar",
+    "notification_sound.mp3",
+]
 
+[tool.flet.ios]
+# pygame/discord не нужны на телефоне
+dependencies = []

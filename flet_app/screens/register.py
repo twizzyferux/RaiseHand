@@ -66,11 +66,9 @@ def _pill_field(
         hint_text=hint,
         password=password,
         can_reveal_password=password,
-        border_radius=28,
         filled=True,
-        bgcolor="#F0F0F5",
-        border_color="#F0F0F5",
-        focused_border_color=theme.PRIMARY,
+        bgcolor=theme.FIELD_BG,
+        border=theme.field_border(28, color=theme.FIELD_BG, focused_color=theme.PRIMARY),
         cursor_color=theme.PRIMARY,
         text_size=16,
         color=theme.INK,
@@ -270,13 +268,18 @@ def _chrome(
             )
         )
         footer.append(ft.Container(height=10))
-    footer.append(theme.primary_image_button(next_label, on_next))  # спрайт btn_next с тенью
+    footer.append(
+        ft.Container(
+            width=content_w,
+            alignment=ft.Alignment.CENTER,
+            content=theme.primary_image_button(next_label, on_next),
+        )
+    )
     footer.append(ft.Container(height=8))
 
     return ft.Container(
         bgcolor=theme.BG,
         expand=True,
-        width=theme.PHONE_WIDTH,
         padding=ft.Padding.symmetric(horizontal=theme.PAGE_PADDING, vertical=14),
         content=ft.Column(
             expand=True,
@@ -286,7 +289,7 @@ def _chrome(
                 *header_block,
                 *title_block,
                 middle,   # у middle свой CENTER
-                *footer,  # кнопка/consent сами центрируются
+                *footer,  # «Далее» по центру
             ],
         ),
     )
@@ -559,7 +562,7 @@ def build_reg_contact(page: ft.Page) -> ft.Control:
         _save_remember(bool(STATE.draft.get("remember")), STATE.draft.get("contact_value") or "")
         if STATE.draft.get("remember"):
             try:
-                session.save(user.id, user.public_id)
+                session.save(user.id, user.public_id, role=user.role, public_id=user.public_id)
             except Exception:
                 pass
         STATE.go("/reg/done")

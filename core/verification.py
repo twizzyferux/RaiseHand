@@ -20,6 +20,7 @@ from email.message import EmailMessage
 from typing import Optional
 
 from core import database as db
+from core import rate_limit
 from core.config import OUTBOX_PATH, SETTINGS, rule
 
 CHANNEL_EMAIL = "email"
@@ -52,6 +53,24 @@ def _generate_code() -> str:
 def create_code(user_id: int, channel: str, target: str) -> str:
     """Создаёт код и отправляет его. Возвращает код (в dev-режиме он показывается)."""
     target = validate_target(channel, target)
+    try:
+        rate_limit.check(
+            f"verify:{channel}:{target.lower()}",
+            limit=5,
+            window_sec=600,
+            block_sec=300,
+            action="отправка кода",
+        )
+        rate_limit.check(
+            f"verify:user:{user_id}",
+            limit=8,
+            window_sec=600,
+            block_sec=300,
+            action="отправка кода",
+        )
+    except rate_limit.RateLimitError as exc:
+        raise VerificationError(str(exc)) from exc
+
     code = _generate_code()
     expires_at = datetime.now() + timedelta(minutes=rule("code_lifetime_minutes"))
 
@@ -73,6 +92,17 @@ def send_registration_code(channel: str, target: str) -> str:
     Для регистрации до создания пользователя.
     """
     target = validate_target(channel, target)
+    try:
+        rate_limit.check(
+            f"verify:{channel}:{target.lower()}",
+            limit=5,
+            window_sec=600,
+            block_sec=300,
+            action="отправка кода",
+        )
+    except rate_limit.RateLimitError as exc:
+        raise VerificationError(str(exc)) from exc
+
     code = _generate_code()
     _deliver(channel, target, code)
     return code
@@ -80,9 +110,15 @@ def send_registration_code(channel: str, target: str) -> str:
 
 def _deliver(channel: str, target: str, code: str) -> None:
     text = f"Код подтверждения RaiseHand: {code}"
-    if channel == CHANNEL_EMAIL and SETTINGS.get("email", {}).get("enabled"):
-        _send_email(target, text)
-        _write_outbox(channel, target, text + "  [отправлено по SMTP]")
+    email_cfg = SETTINGS.get("email") or {}
+    if channel == CHANNEL_EMAIL and email_cfg.get("enabled"):
+        provider = (email_cfg.get("provider") or "smtp").lower()
+        if provider == "sendgrid":
+            _send_email_sendgrid(target, text)
+            _write_outbox(channel, target, text + "  [отправлено через SendGrid]")
+        else:
+            _send_email(target, text)
+            _write_outbox(channel, target, text + "  [отправлено по SMTP]")
     elif channel == CHANNEL_PHONE and SETTINGS.get("sms", {}).get("enabled"):
         _send_sms(target, text)
         _write_outbox(channel, target, text + "  [отправлено по SMS]")
@@ -114,6 +150,45 @@ def _send_email(target: str, text: str) -> None:
             server.send_message(message)
     except Exception as exc:  # noqa: BLE001 — показываем пользователю понятную ошибку
         raise VerificationError(f"Не удалось отправить письмо: {exc}") from exc
+
+
+def _send_email_sendgrid(target: str, text: str) -> None:
+    """Альтернатива SMTP: SendGrid Web API v3."""
+    cfg = SETTINGS.get("email") or {}
+    api_key = cfg.get("sendgrid_api_key") or cfg.get("api_key") or ""
+    if not api_key:
+        raise VerificationError("SendGrid: укажите email.sendgrid_api_key в settings.json")
+    from_addr = cfg.get("from_address") or cfg.get("login") or ""
+    if not from_addr:
+        raise VerificationError("SendGrid: укажите email.from_address")
+    import json
+    import urllib.error
+    import urllib.request
+
+    payload = {
+        "personalizations": [{"to": [{"email": target}]}],
+        "from": {"email": from_addr},
+        "subject": "Подтверждение аккаунта",
+        "content": [{"type": "text/plain", "value": text}],
+    }
+    req = urllib.request.Request(
+        "https://api.sendgrid.com/v3/mail/send",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            if resp.status not in (200, 202):
+                raise VerificationError(f"SendGrid HTTP {resp.status}")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        raise VerificationError(f"SendGrid: {exc.code} {body}") from exc
+    except Exception as exc:
+        raise VerificationError(f"Не удалось отправить через SendGrid: {exc}") from exc
 
 
 def _send_sms(target: str, text: str) -> None:
