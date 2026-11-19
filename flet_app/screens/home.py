@@ -1220,7 +1220,7 @@ def _search_view(on_open, on_scroll=None) -> ft.Control:
             ),
             results,
             empty_hint,
-            ft.Container(height=118),
+            ft.Container(height=132),
         ],
     )
 
@@ -1239,7 +1239,8 @@ def _home_tab_body(
     on_chats_changed=None,
 ) -> ft.Control:
     """Контент вкладки home без нижней панели (панель живёт отдельно)."""
-    list_bottom_pad = 118
+    # место под увеличенную nav-капсулу + home indicator
+    list_bottom_pad = 132
     fab_size = 48.0
     # место под welcome + «Чаты» + fab; список стартует ниже и «наезжает» на заголовок
     header_h = 100.0

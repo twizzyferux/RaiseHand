@@ -27,13 +27,15 @@ GLASS_PILL_GLOW = _a(theme.PRIMARY, 0.12)
 GLASS_CLEAR = _a("#000000", 0.0)
 GLASS_BLUR = 28
 # Full capsule: radius ≈ half bar height; pad_h clears the end caps so tabs don't clip.
-NAV_PAD_V = 5
-TAB_H = 48
-NAV_RADIUS = (TAB_H + NAV_PAD_V * 2) / 2 + 1  # ~30 — сильное скругление
-NAV_PAD_H = 22
-ICON = 24
+# Чуть выше/крупнее — ближе к TG floating tab bar
+NAV_PAD_V = 8
+TAB_H = 56
+NAV_RADIUS = (TAB_H + NAV_PAD_V * 2) / 2 + 1  # ~37
+NAV_PAD_H = 18
+ICON = 26
+LABEL_SIZE = 11
 # чуть шире визуально, но без вылезания из слота — иначе края съезжают
-PILL_INSET = -3.0
+PILL_INSET = -2.0
 # border left+right is painted inside Container.width
 _BORDER_X = 2.0
 PILL_SLIDE_MS = 250
@@ -449,7 +451,7 @@ class SlidingLiquidNav:
             self._icons[key] = icon
             label = ft.Text(
                 self.labels[key],
-                size=10,
+                size=LABEL_SIZE,
                 color=mono_icons.nav_label_color(is_on),
                 weight=ft.FontWeight.W_700 if is_on else ft.FontWeight.W_500,
                 font_family=theme.FONT_FAMILY,

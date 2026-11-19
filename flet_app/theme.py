@@ -82,8 +82,8 @@ MAX_CONTENT_WIDTH = PHONE_WIDTH
 # Минимальные отступы поверх системных (когда SafeArea даёт 0 — на десктопе)
 SAFE_MIN_TOP = 8
 # Низ НЕ через SafeArea — иначе видна «полоска»; кнопки/nav сами поднимаются
-HOME_INDICATOR_PAD = 22
-NAV_BOTTOM_GAP = 22
+HOME_INDICATOR_PAD = 28
+NAV_BOTTOM_GAP = 28
 
 FONT_FAMILY = "SFPro"
 
