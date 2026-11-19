@@ -186,6 +186,22 @@ def main(page: ft.Page):
                 expand=True,
             )
 
+        def _is_auth(r: str) -> bool:
+            r = r or ""
+            return r.startswith("/reg/") or r in ("/login", "/welcome")
+
+        _AUTH_ORDER = {
+            "/welcome": 0,
+            "/login": 1,
+            "/reg/name": 2,
+            "/reg/password": 3,
+            "/reg/school": 4,
+            "/reg/contact": 5,
+            "/reg/done": 6,
+            "/reg/work": 2,
+            "/reg/proof": 3,
+        }
+
         to_sheet = (
             route.startswith("/contact")
             or route.startswith("/settings/")
@@ -202,6 +218,14 @@ def main(page: ft.Page):
         # вход в личный/групповой чат (и вопросы класса)
         to_chat = route in ("/chat", "/questions")
         from_chat = (prev in ("/chat", "/questions")) and not to_chat and not to_sheet
+        to_auth = _is_auth(route) and (
+            route.startswith("/reg/") or route == "/login" or (prev or "") in ("/welcome", "/login")
+            or (prev or "").startswith("/reg/")
+        )
+        # регистрация / логин: вперёд справа, назад слева
+        auth_forward = True
+        if to_auth and _is_auth(prev or ""):
+            auth_forward = _AUTH_ORDER.get(route, 0) >= _AUTH_ORDER.get(prev or "", 0)
 
         def _anim_wrap(**kwargs) -> ft.Container:
             return ft.Container(
@@ -226,6 +250,15 @@ def main(page: ft.Page):
                 offset=ft.Offset(-0.06, 0),
                 animate_opacity=ft.Animation(240, ft.AnimationCurve.EASE_OUT),
                 animate_offset=ft.Animation(300, ft.AnimationCurve.EASE_OUT_CUBIC),
+            )
+        elif animate and to_auth and (route.startswith("/reg/") or route == "/login"):
+            # шаги регистрации / вход
+            dx = 0.09 if auth_forward else -0.07
+            wrap = _anim_wrap(
+                opacity=0,
+                offset=ft.Offset(dx, 0.01),
+                animate_opacity=ft.Animation(260, ft.AnimationCurve.EASE_OUT),
+                animate_offset=ft.Animation(320, ft.AnimationCurve.EASE_OUT_CUBIC),
             )
         elif animate and to_sheet and quiet_settings:
             wrap = _anim_wrap(opacity=1)

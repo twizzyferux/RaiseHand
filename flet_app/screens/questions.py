@@ -532,7 +532,12 @@ def build_questions(page: ft.Page) -> ft.Control:
                 ft.Container(height=4),
                 list_host,
                 ft.Container(
-                    padding=ft.Padding.only(left=16, right=16, top=8, bottom=12),
+                    padding=ft.Padding.only(
+                        left=16,
+                        right=16,
+                        top=8,
+                        bottom=float(theme.bottom_inset()),
+                    ),
                     alignment=ft.Alignment.CENTER,
                     content=add_btn,
                 ),

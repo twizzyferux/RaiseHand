@@ -81,8 +81,9 @@ PHONE_HEIGHT = 844
 MAX_CONTENT_WIDTH = PHONE_WIDTH
 # Минимальные отступы поверх системных (когда SafeArea даёт 0 — на десктопе)
 SAFE_MIN_TOP = 8
-SAFE_MIN_BOTTOM = 8
-NAV_BOTTOM_GAP = 18
+# Низ НЕ через SafeArea — иначе видна «полоска»; кнопки/nav сами поднимаются
+HOME_INDICATOR_PAD = 22
+NAV_BOTTOM_GAP = 22
 
 FONT_FAMILY = "SFPro"
 
@@ -134,12 +135,12 @@ def safe_shell(
     content: ft.Control,
     *,
     top: bool = True,
-    bottom: bool = True,
+    bottom: bool = False,
     left: bool = True,
     right: bool = True,
-    maintain_bottom: bool = True,
+    maintain_bottom: bool = False,
 ) -> ft.Control:
-    """Обертка SafeArea: Dynamic Island / статус-бар / home indicator."""
+    """SafeArea только сверху (Dynamic Island). Низ без inset — без нижней полоски."""
     try:
         return ft.SafeArea(
             content=content,
@@ -151,23 +152,23 @@ def safe_shell(
             maintain_bottom_view_padding=maintain_bottom,
             minimum_padding=ft.Padding.only(
                 top=SAFE_MIN_TOP if top else 0,
-                bottom=SAFE_MIN_BOTTOM if bottom else 0,
+                bottom=0,
                 left=0,
                 right=0,
             ),
         )
     except Exception:
-        # Старый Flet / отсутствие SafeArea — ручной запасной отступ
         pad_top = 47 if (is_mobile_runtime() and top) else SAFE_MIN_TOP
-        pad_bottom = 28 if (is_mobile_runtime() and bottom) else SAFE_MIN_BOTTOM
         return ft.Container(
             content=content,
             expand=True,
-            padding=ft.Padding.only(
-                top=pad_top if top else 0,
-                bottom=pad_bottom if bottom else 0,
-            ),
+            padding=ft.Padding.only(top=pad_top if top else 0, bottom=0),
         )
+
+
+def bottom_inset() -> float:
+    """Запас над home indicator для кнопок / nav / composer."""
+    return float(HOME_INDICATOR_PAD if is_mobile_runtime() else 10)
 
 
 def _hex_rgb(value: str) -> tuple[int, int, int]:

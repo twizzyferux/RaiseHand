@@ -91,7 +91,7 @@ def build_login(page: ft.Page) -> ft.Control:
             left=theme.PAGE_PADDING,
             right=theme.PAGE_PADDING,
             top=8,
-            bottom=12,
+            bottom=float(theme.bottom_inset()),
         ),
         content=ft.Column(
             expand=True,

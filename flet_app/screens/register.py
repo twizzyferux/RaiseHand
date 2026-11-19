@@ -282,7 +282,7 @@ def _chrome(
             content=theme.primary_image_button(next_label, on_next),
         )
     )
-    footer.append(ft.Container(height=8))
+    footer.append(ft.Container(height=float(theme.bottom_inset())))
 
     return ft.Container(
         bgcolor=theme.BG,
@@ -291,7 +291,7 @@ def _chrome(
             left=theme.PAGE_PADDING,
             right=theme.PAGE_PADDING,
             top=6,
-            bottom=10,
+            bottom=0,
         ),
         content=ft.Column(
             expand=True,

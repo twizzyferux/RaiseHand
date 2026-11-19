@@ -1619,11 +1619,11 @@ def build_home(page: ft.Page) -> ft.Control:
     )
     nav_holder["nav"] = nav
 
-    # Панель по центру снизу; SafeArea уже учёл home indicator
+    # Панель над home indicator (SafeArea снизу отключён — без полоски)
     nav_bar = ft.Container(
         left=0,
         right=0,
-        bottom=float(theme.NAV_BOTTOM_GAP),
+        bottom=float(theme.bottom_inset()),
         alignment=ft.Alignment.CENTER,
         content=nav_ctrl,
     )

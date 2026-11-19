@@ -1798,8 +1798,12 @@ def _composer(on_send, on_attach, field_ref: dict) -> ft.Control:
         field_ref["send_body"] = send_body
 
     return ft.Container(
-        # SafeArea снизу уже есть; небольшой запас над home indicator
-        padding=ft.Padding.only(left=12, right=12, top=6, bottom=10),
+        padding=ft.Padding.only(
+            left=12,
+            right=12,
+            top=6,
+            bottom=float(theme.bottom_inset()),
+        ),
         content=ft.Row(
             spacing=8,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
