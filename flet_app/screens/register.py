@@ -45,8 +45,9 @@ def _save_remember(remember: bool, login_value: str) -> None:
 
 
 def _form_width() -> float:
-    content_w = float(theme.PHONE_WIDTH - theme.PAGE_PADDING * 2)
-    return min(content_w * 0.82, 300.0)
+    content_w = float(theme.content_width())
+    ratio = 0.94 if theme.is_mobile_runtime() else 0.82
+    return min(content_w * ratio, 340.0)
 
 
 def _pill_field(
@@ -60,7 +61,7 @@ def _pill_field(
 ) -> tuple[ft.Control, ft.TextField]:
     """Поле фиксированной ширины, блок по центру экрана."""
     fw = _form_width()
-    content_w = float(theme.PHONE_WIDTH - theme.PAGE_PADDING * 2)
+    content_w = float(theme.content_width())
     tf = ft.TextField(
         value=value,
         hint_text=hint,
@@ -104,25 +105,30 @@ def _pill_field(
 
 
 def _back_row(header: str, back_route: str) -> ft.Control:
-    """Назад слева, заголовок по центру экрана (как на макете)."""
+    """Назад слева, заголовок по центру — touch-target ≥44pt под iOS."""
     back_icon = theme.asset("assets", "images", "raisehand", "back.png")
     if theme._image_exists(back_icon):
         back_ctrl = ft.GestureDetector(
             on_tap=lambda _: STATE.go(back_route),
-            content=ft.Row(
-                spacing=4,
-                tight=True,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[
-                    ft.Image(src=back_icon, width=18, height=18, fit=ft.BoxFit.CONTAIN),
-                    ft.Text(
-                        "Назад",
-                        size=15,
-                        color=theme.PRIMARY,
-                        weight=ft.FontWeight.W_600,
-                        font_family=theme.FONT_FAMILY,
-                    ),
-                ],
+            content=ft.Container(
+                height=44,
+                padding=ft.Padding.symmetric(horizontal=4),
+                alignment=ft.Alignment.CENTER_LEFT,
+                content=ft.Row(
+                    spacing=4,
+                    tight=True,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Image(src=back_icon, width=18, height=18, fit=ft.BoxFit.CONTAIN),
+                        ft.Text(
+                            "Назад",
+                            size=15,
+                            color=theme.PRIMARY,
+                            weight=ft.FontWeight.W_600,
+                            font_family=theme.FONT_FAMILY,
+                        ),
+                    ],
+                ),
             ),
         )
     else:
@@ -134,7 +140,7 @@ def _back_row(header: str, back_route: str) -> ft.Control:
 
     # back_ctrl поверх заголовка — иначе клик не доходит
     return ft.Stack(
-        height=36,
+        height=44,
         controls=[
             ft.Container(
                 content=ft.Text(
@@ -156,7 +162,7 @@ def _back_row(header: str, back_route: str) -> ft.Control:
                 left=0,
                 top=0,
                 bottom=0,
-                width=120,
+                width=130,
                 alignment=ft.Alignment.CENTER_LEFT,
             ),
         ],
@@ -201,11 +207,12 @@ def _chrome(
             )
         )
 
-    content_w = float(theme.PHONE_WIDTH - theme.PAGE_PADDING * 2)
-    form_w = min(content_w * 0.82, 300.0)
+    content_w = float(theme.content_width())
+    # на телефоне поля шире — меньше «пустых полей» по бокам
+    form_w = min(content_w * (0.94 if theme.is_mobile_runtime() else 0.82), 340.0)
 
     title_block: list = [
-        ft.Container(height=14),
+        ft.Container(height=8),
     ]
     if title:
         title_block.append(
@@ -280,7 +287,12 @@ def _chrome(
     return ft.Container(
         bgcolor=theme.BG,
         expand=True,
-        padding=ft.Padding.symmetric(horizontal=theme.PAGE_PADDING, vertical=14),
+        padding=ft.Padding.only(
+            left=theme.PAGE_PADDING,
+            right=theme.PAGE_PADDING,
+            top=6,
+            bottom=10,
+        ),
         content=ft.Column(
             expand=True,
             spacing=0,
@@ -394,7 +406,13 @@ def build_reg_school(page: ft.Page) -> ft.Control:
         value=STATE.draft.get("invite_code", ""),
         helper="Код можно узнать у учителя\nили в чате класса",
     )
-    suggestions = ft.Column(spacing=4, controls=[])
+    sug_w = _form_width()
+    suggestions = ft.Column(spacing=4, controls=[], width=sug_w)
+    suggestions_wrap = ft.Container(
+        width=float(theme.content_width()),
+        alignment=ft.Alignment.CENTER,
+        content=suggestions,
+    )
 
     def pick_city(name: str):
         city.value = name
@@ -412,9 +430,10 @@ def build_reg_school(page: ft.Page) -> ft.Control:
         for name in found:
             suggestions.controls.append(
                 ft.Container(
+                    width=sug_w,
                     content=ft.Text(name, size=15, color=theme.INK, font_family=theme.FONT_FAMILY),
                     padding=ft.Padding.symmetric(horizontal=14, vertical=10),
-                    bgcolor="#F0F0F5",
+                    bgcolor=theme.CARD,
                     border_radius=14,
                     on_click=lambda e, n=name: pick_city(n),
                     ink=True,
@@ -470,7 +489,7 @@ def build_reg_school(page: ft.Page) -> ft.Control:
         0.6,
         [
             city_col,
-            suggestions,
+            suggestions_wrap,
             ft.Container(height=12),
             invite_col,
         ],

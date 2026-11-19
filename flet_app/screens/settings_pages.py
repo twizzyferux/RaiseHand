@@ -151,7 +151,7 @@ def _shell(page: ft.Page, key: str, body: ft.Control) -> ft.Control:
             expand=True,
             spacing=0,
             controls=[
-                ft.Container(height=36, bgcolor=theme.BG),
+                # SafeArea в main уже отодвигает от Dynamic Island
                 header_wrap,
                 scroller,
             ],

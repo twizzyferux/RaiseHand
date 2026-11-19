@@ -422,7 +422,8 @@ def build_welcome(page: ft.Page) -> ft.Control:
 
     root = ft.Container(
         content=body,
-        padding=ft.Padding.only(top=0, bottom=0, left=0, right=0),
+        # SafeArea снаружи; горизонталь уже в content_w (PAGE_PADDING)
+        padding=ft.Padding.only(top=4, bottom=0, left=0, right=0),
         bgcolor=theme.BG,
         expand=True,
     )

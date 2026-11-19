@@ -1467,7 +1467,7 @@ def _home_tab_body(
         expand=True,
         spacing=0,
         controls=[
-            ft.Container(height=36),
+            # SafeArea в main уже учитывает Dynamic Island
             ft.Stack(
                 expand=True,
                 controls=[
@@ -1549,9 +1549,9 @@ def build_home(page: ft.Page) -> ft.Control:
         ),
     )
 
-    # прежняя ширина панели; только left/width (без right — иначе клипает торец)
+    # ширина панели от реального viewport (на iPhone не 390)
     NAV_INSET = 24
-    bar_width = float(theme.PHONE_WIDTH - NAV_INSET * 2)
+    bar_width = max(260.0, float(theme.PHONE_WIDTH) - NAV_INSET * 2)
 
     nav_holder: dict = {"nav": None}
 
@@ -1619,11 +1619,11 @@ def build_home(page: ft.Page) -> ft.Control:
     )
     nav_holder["nav"] = nav
 
-    # Панель по центру снизу (left+right + alignment, width задан у самой капсулы)
+    # Панель по центру снизу; SafeArea уже учёл home indicator
     nav_bar = ft.Container(
         left=0,
         right=0,
-        bottom=22,
+        bottom=float(theme.NAV_BOTTOM_GAP),
         alignment=ft.Alignment.CENTER,
         content=nav_ctrl,
     )

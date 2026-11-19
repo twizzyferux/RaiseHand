@@ -87,12 +87,21 @@ def build_login(page: ft.Page) -> ft.Control:
     return ft.Container(
         bgcolor=theme.BG,
         expand=True,
-        padding=ft.Padding.symmetric(horizontal=theme.PAGE_PADDING, vertical=16),
+        padding=ft.Padding.only(
+            left=theme.PAGE_PADDING,
+            right=theme.PAGE_PADDING,
+            top=8,
+            bottom=12,
+        ),
         content=ft.Column(
             expand=True,
             controls=[
-                ft.Container(content=back, alignment=ft.Alignment.CENTER_LEFT),
-                ft.Container(height=12),
+                ft.Container(
+                    content=back,
+                    alignment=ft.Alignment.CENTER_LEFT,
+                    height=44,
+                ),
+                ft.Container(height=8),
                 ft.Text("Вход", size=34, weight=ft.FontWeight.BOLD, color=theme.INK, font_family=theme.FONT_FAMILY),
                 ft.Container(height=24),
                 login_tf,
@@ -105,7 +114,7 @@ def build_login(page: ft.Page) -> ft.Control:
                     alignment=ft.Alignment.CENTER,
                     content=theme.primary_image_button("Войти", do_login),
                 ),
-                ft.Container(height=12),
+                ft.Container(height=8),
             ],
         ),
     )

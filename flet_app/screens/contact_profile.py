@@ -589,7 +589,6 @@ def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
             spacing=0,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             controls=[
-                ft.Container(height=36, bgcolor=theme.BG),
                 header_wrap,
                 scroller,
             ],

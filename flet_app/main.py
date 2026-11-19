@@ -36,8 +36,9 @@ from flet_app.screens import (
 def main(page: ft.Page):
     page.title = "RaiseHand"
     page.padding = 0
-    # Только мобильный UI: фиксированное окно телефона, без ресайза
+    # Десктоп: окно-телефон; iOS/Android: полный экран + SafeArea
     theme.lock_phone_window(page)
+    theme.sync_viewport(page)
     theme.setup_fonts(page)
     try:
         theme.apply_mode(page, prefs.theme_mode())
@@ -145,13 +146,15 @@ def main(page: ft.Page):
             build = welcome.build_welcome
         body = build(page)
 
-        # на всю ширину окна — без «полос» по бокам
-        return ft.Container(
-            content=body,
-            bgcolor=theme.BG,
-            expand=True,
-            alignment=ft.Alignment.TOP_CENTER,
-            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+        # SafeArea: Dynamic Island / статус-бар / home indicator
+        return theme.safe_shell(
+            ft.Container(
+                content=body,
+                bgcolor=theme.BG,
+                expand=True,
+                alignment=ft.Alignment.TOP_CENTER,
+                clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            )
         )
 
     def show_route(route: str, *, animate: bool = True):
@@ -162,6 +165,8 @@ def main(page: ft.Page):
             page.route = route
         except Exception:
             pass
+
+        theme.sync_viewport(page)
 
         # смена цвета/темы в оформлении — без повторного slide
         # (shell тоже читает флаг и снимает его)
@@ -300,6 +305,14 @@ def main(page: ft.Page):
 
     try:
         page.on_route_change = on_route_change
+    except Exception:
+        pass
+
+    def on_resize(_e=None):
+        theme.sync_viewport(page)
+
+    try:
+        page.on_resize = on_resize
     except Exception:
         pass
 

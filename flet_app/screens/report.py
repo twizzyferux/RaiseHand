@@ -306,7 +306,6 @@ def build_report(page: ft.Page) -> ft.Control:
             spacing=0,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             controls=[
-                ft.Container(height=36, bgcolor=theme.BG),
                 header,
                 scroller,
             ],

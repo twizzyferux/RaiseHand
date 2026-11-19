@@ -6,6 +6,7 @@ import os
 from typing import Callable, Optional
 
 import flet as ft
+import sys
 
 PRIMARY = "#6A5AC8"
 PRIMARY_TEXT = "#FFFBFF"
@@ -78,6 +79,10 @@ PAGE_PADDING = 24
 PHONE_WIDTH = 390
 PHONE_HEIGHT = 844
 MAX_CONTENT_WIDTH = PHONE_WIDTH
+# Минимальные отступы поверх системных (когда SafeArea даёт 0 — на десктопе)
+SAFE_MIN_TOP = 8
+SAFE_MIN_BOTTOM = 8
+NAV_BOTTOM_GAP = 18
 
 FONT_FAMILY = "SFPro"
 
@@ -86,6 +91,83 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def is_dark() -> bool:
     return _MODE == "dark"
+
+
+def is_mobile_runtime() -> bool:
+    """Реальный телефон (iOS/Android), не десктоп-симулятор окна."""
+    env = (os.environ.get("FLET_PLATFORM") or "").lower()
+    if env in ("ios", "android"):
+        return True
+    plat = (sys.platform or "").lower()
+    if "iphone" in plat or "ios" in plat or "android" in plat:
+        return True
+    try:
+        from core.config import get_app_platform
+
+        return get_app_platform() in ("ios", "android")
+    except Exception:
+        return False
+
+
+def sync_viewport(page: Optional[ft.Page] = None) -> None:
+    """Подтянуть PHONE_WIDTH/HEIGHT под реальный экран (особенно iPhone)."""
+    global PHONE_WIDTH, PHONE_HEIGHT, MAX_CONTENT_WIDTH
+    if page is None:
+        return
+    try:
+        w = float(getattr(page, "width", 0) or 0)
+        h = float(getattr(page, "height", 0) or 0)
+    except Exception:
+        return
+    if w >= 280:
+        PHONE_WIDTH = w
+        MAX_CONTENT_WIDTH = w
+    if h >= 480:
+        PHONE_HEIGHT = h
+
+
+def content_width() -> float:
+    return max(240.0, float(PHONE_WIDTH) - float(PAGE_PADDING) * 2)
+
+
+def safe_shell(
+    content: ft.Control,
+    *,
+    top: bool = True,
+    bottom: bool = True,
+    left: bool = True,
+    right: bool = True,
+    maintain_bottom: bool = True,
+) -> ft.Control:
+    """Обертка SafeArea: Dynamic Island / статус-бар / home indicator."""
+    try:
+        return ft.SafeArea(
+            content=content,
+            expand=True,
+            avoid_intrusions_top=top,
+            avoid_intrusions_bottom=bottom,
+            avoid_intrusions_left=left,
+            avoid_intrusions_right=right,
+            maintain_bottom_view_padding=maintain_bottom,
+            minimum_padding=ft.Padding.only(
+                top=SAFE_MIN_TOP if top else 0,
+                bottom=SAFE_MIN_BOTTOM if bottom else 0,
+                left=0,
+                right=0,
+            ),
+        )
+    except Exception:
+        # Старый Flet / отсутствие SafeArea — ручной запасной отступ
+        pad_top = 47 if (is_mobile_runtime() and top) else SAFE_MIN_TOP
+        pad_bottom = 28 if (is_mobile_runtime() and bottom) else SAFE_MIN_BOTTOM
+        return ft.Container(
+            content=content,
+            expand=True,
+            padding=ft.Padding.only(
+                top=pad_top if top else 0,
+                bottom=pad_bottom if bottom else 0,
+            ),
+        )
 
 
 def _hex_rgb(value: str) -> tuple[int, int, int]:
@@ -323,13 +405,24 @@ def page_theme() -> ft.Theme:
 
 
 def lock_phone_window(page: ft.Page) -> None:
-    """Окно ровно под телефон, без ресайза; фон на весь клиент — без полос по бокам."""
-    w, h = PHONE_WIDTH, PHONE_HEIGHT
+    """Десктоп: фиксированное «телефонное» окно. iOS/Android: на весь экран + SafeArea."""
     page.bgcolor = BG
     page.padding = 0
-    # START/STRETCH — без центрирования «карточки» на чужом фоне
     page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
     page.vertical_alignment = ft.MainAxisAlignment.START
+    sync_viewport(page)
+
+    if is_mobile_runtime():
+        # На телефоне не фиксируем 390×844 — иначе ломаются отступы и масштаб
+        win = getattr(page, "window", None)
+        if win is not None:
+            try:
+                win.bgcolor = BG
+            except Exception:
+                pass
+        return
+
+    w, h = PHONE_WIDTH, PHONE_HEIGHT
     win = getattr(page, "window", None)
     if win is not None:
         for name, val in (
@@ -347,7 +440,6 @@ def lock_phone_window(page: ft.Page) -> None:
                 setattr(win, name, val)
             except Exception:
                 pass
-        # прозрачный title-bar фон на Windows часто даёт чёрные/белые кромки
         for name, val in (
             ("title_bar_hidden", False),
             ("frameless", False),
