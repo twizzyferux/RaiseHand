@@ -83,6 +83,70 @@ def build_login(page: ft.Page) -> ft.Control:
         on_click=lambda _: STATE.go("/welcome"),
         style=ft.ButtonStyle(color=theme.PRIMARY),
     )
+    content_w = float(theme.content_width())
+    head = theme.fade_box(
+        ft.Column(
+            spacing=0,
+            tight=True,
+            controls=[
+                ft.Container(content=back, alignment=ft.Alignment.CENTER_LEFT, height=44),
+                ft.Container(height=8),
+                ft.Text(
+                    "Вход",
+                    size=34,
+                    weight=ft.FontWeight.BOLD,
+                    color=theme.INK,
+                    font_family=theme.FONT_FAMILY,
+                ),
+            ],
+        ),
+        delay_ms=0,
+        width=content_w,
+    )
+    form = theme.fade_box(
+        ft.Column(
+            spacing=0,
+            tight=True,
+            controls=[
+                ft.Container(height=24),
+                login_tf,
+                ft.Container(height=12),
+                pass_tf,
+                ft.Container(height=8),
+                remember,
+            ],
+        ),
+        delay_ms=50,
+        width=content_w,
+    )
+    foot = theme.fade_box(
+        ft.Column(
+            spacing=0,
+            tight=True,
+            controls=[
+                ft.Container(
+                    alignment=ft.Alignment.CENTER,
+                    content=theme.primary_image_button("Войти", do_login),
+                ),
+                ft.Container(height=8),
+            ],
+        ),
+        delay_ms=110,
+        width=content_w,
+    )
+
+    async def _play_in():
+        await theme.play_fade_in([head, form, foot], page, step_ms=45)
+
+    try:
+        page.run_task(_play_in)
+    except Exception:
+        for box in (head, form, foot):
+            try:
+                box.opacity = 1
+                box.offset = ft.Offset(0, 0)
+            except Exception:
+                pass
 
     return ft.Container(
         bgcolor=theme.BG,
@@ -95,26 +159,6 @@ def build_login(page: ft.Page) -> ft.Control:
         ),
         content=ft.Column(
             expand=True,
-            controls=[
-                ft.Container(
-                    content=back,
-                    alignment=ft.Alignment.CENTER_LEFT,
-                    height=44,
-                ),
-                ft.Container(height=8),
-                ft.Text("Вход", size=34, weight=ft.FontWeight.BOLD, color=theme.INK, font_family=theme.FONT_FAMILY),
-                ft.Container(height=24),
-                login_tf,
-                ft.Container(height=12),
-                pass_tf,
-                ft.Container(height=8),
-                remember,
-                ft.Container(expand=True),
-                ft.Container(
-                    alignment=ft.Alignment.CENTER,
-                    content=theme.primary_image_button("Войти", do_login),
-                ),
-                ft.Container(height=8),
-            ],
+            controls=[head, form, ft.Container(expand=True), foot],
         ),
     )

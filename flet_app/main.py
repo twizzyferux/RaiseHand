@@ -146,7 +146,7 @@ def main(page: ft.Page):
             build = welcome.build_welcome
         body = build(page)
 
-        # SafeArea: Dynamic Island / статус-бар / home indicator
+        # SafeArea: Dynamic Island / статус-бар
         return theme.safe_shell(
             ft.Container(
                 content=body,
@@ -169,7 +169,6 @@ def main(page: ft.Page):
         theme.sync_viewport(page)
 
         # смена цвета/темы в оформлении — без повторного slide
-        # (shell тоже читает флаг и снимает его)
         quiet_settings = bool(STATE.draft.get("_settings_no_anim"))
 
         try:
@@ -199,10 +198,12 @@ def main(page: ft.Page):
             )
             and not to_sheet
         )
-        # вход в личный/групповой чат (и вопросы класса)
         to_chat = route in ("/chat", "/questions")
         from_chat = (prev in ("/chat", "/questions")) and not to_chat and not to_sheet
         to_auth = route.startswith("/reg/") or route == "/login"
+        from_auth = (prev or "").startswith("/reg/") or prev in ("/login", "/welcome")
+        # один BG у шагов регистрации — нужен Stack-crossfade, иначе fade «пустой»
+        use_crossfade = bool(animate and to_auth and from_auth and page.controls)
 
         def _anim_wrap(**kwargs) -> ft.Container:
             return ft.Container(
@@ -213,8 +214,9 @@ def main(page: ft.Page):
                 **kwargs,
             )
 
+        old = page.controls[0] if page.controls else None
+
         if animate and to_chat:
-            # чат / группа: справа + fade
             wrap = _anim_wrap(
                 opacity=0,
                 offset=ft.Offset(0.10, 0),
@@ -228,16 +230,17 @@ def main(page: ft.Page):
                 animate_opacity=ft.Animation(240, ft.AnimationCurve.EASE_OUT),
                 animate_offset=ft.Animation(300, ft.AnimationCurve.EASE_OUT_CUBIC),
             )
-        elif animate and to_auth and (route.startswith("/reg/") or route == "/login"):
-            # регистрация / вход — только fade
+        elif animate and to_auth:
+            # регистрация / вход — fade (+ лёгкий подъём, иначе на одном BG не видно)
             wrap = _anim_wrap(
                 opacity=0,
-                animate_opacity=ft.Animation(280, ft.AnimationCurve.EASE_OUT),
+                offset=ft.Offset(0, 0.03),
+                animate_opacity=ft.Animation(360, ft.AnimationCurve.EASE_OUT),
+                animate_offset=ft.Animation(360, ft.AnimationCurve.EASE_OUT),
             )
         elif animate and to_sheet and quiet_settings:
             wrap = _anim_wrap(opacity=1)
         elif animate and to_sheet:
-            # настройки / профиль / жалоба: лёгкий подъём + fade
             wrap = _anim_wrap(
                 opacity=0,
                 offset=ft.Offset(0, 0.04),
@@ -267,6 +270,69 @@ def main(page: ft.Page):
         except Exception:
             pass
 
+        def _reveal(ctrl: ft.Control) -> None:
+            try:
+                ctrl.opacity = 1
+            except Exception:
+                pass
+            try:
+                if hasattr(ctrl, "offset"):
+                    ctrl.offset = ft.Offset(0, 0)
+            except Exception:
+                pass
+            try:
+                if hasattr(ctrl, "scale"):
+                    ctrl.scale = 1
+            except Exception:
+                pass
+
+        if use_crossfade and old is not None:
+            try:
+                old.animate_opacity = ft.Animation(300, ft.AnimationCurve.EASE_OUT)
+                old.opacity = 1
+            except Exception:
+                pass
+            # новый сверху, старый снизу — оба с opacity-анимацией
+            stage = ft.Stack(expand=True, controls=[old, wrap])
+            page.controls.clear()
+            page.controls.append(stage)
+            page.update()
+
+            async def _crossfade():
+                import asyncio
+
+                await asyncio.sleep(0.04)
+                try:
+                    old.opacity = 0
+                except Exception:
+                    pass
+                _reveal(wrap)
+                try:
+                    page.update()
+                except Exception:
+                    try:
+                        wrap.update()
+                    except Exception:
+                        pass
+                await asyncio.sleep(0.38)
+                try:
+                    if current.get("route") != route:
+                        return
+                    page.controls.clear()
+                    page.controls.append(wrap)
+                    page.update()
+                except Exception:
+                    pass
+
+            try:
+                page.run_task(_crossfade)
+            except Exception:
+                _reveal(wrap)
+                page.controls.clear()
+                page.controls.append(wrap)
+                page.update()
+            return
+
         page.controls.clear()
         page.controls.append(wrap)
         page.update()
@@ -274,26 +340,22 @@ def main(page: ft.Page):
         if animate:
             async def _play():
                 import asyncio
-                await asyncio.sleep(0.02)
-                wrap.opacity = 1
-                if hasattr(wrap, "offset"):
-                    wrap.offset = ft.Offset(0, 0)
-                if hasattr(wrap, "scale"):
-                    wrap.scale = 1
+
+                await asyncio.sleep(0.04)
+                _reveal(wrap)
                 try:
-                    wrap.update()
+                    page.update()
                 except Exception:
-                    pass
+                    try:
+                        wrap.update()
+                    except Exception:
+                        pass
 
             try:
                 page.run_task(_play)
             except Exception:
-                wrap.opacity = 1
+                _reveal(wrap)
                 try:
-                    if hasattr(wrap, "offset"):
-                        wrap.offset = ft.Offset(0, 0)
-                    if hasattr(wrap, "scale"):
-                        wrap.scale = 1
                     page.update()
                 except Exception:
                     pass

@@ -171,6 +171,120 @@ def bottom_inset() -> float:
     return float(HOME_INDICATOR_PAD if is_mobile_runtime() else 10)
 
 
+def edge_swipe_back(
+    content: ft.Control,
+    *,
+    on_back: Callable,
+    edge_px: float = 22.0,
+    commit_dx: float = 72.0,
+) -> ft.Control:
+    """Свайп с левого края (как iOS back) → on_back.
+
+    Жест ловит только узкая полоска у края — не мешает скроллу чата.
+    """
+    drag = {"active": False, "dx": 0.0}
+
+    def _delta_x(e) -> float:
+        delta = getattr(e, "primary_delta", None)
+        if delta is not None:
+            try:
+                return float(delta)
+            except Exception:
+                pass
+        gd = getattr(e, "global_delta", None) or getattr(e, "local_delta", None)
+        if gd is None:
+            return 0.0
+        try:
+            return float(getattr(gd, "x", 0) or 0)
+        except Exception:
+            return 0.0
+
+    def _set_offset(frac: float) -> None:
+        try:
+            shell.offset = ft.Offset(max(0.0, min(float(frac), 0.42)), 0)
+            shell.update()
+        except Exception:
+            try:
+                shell.page.update()
+            except Exception:
+                pass
+
+    def _on_start(_e=None):
+        drag["active"] = True
+        drag["dx"] = 0.0
+        _set_offset(0)
+
+    def _on_update(e):
+        if not drag["active"]:
+            return
+        drag["dx"] = max(0.0, float(drag["dx"]) + _delta_x(e))
+        w = max(float(PHONE_WIDTH), 1.0)
+        _set_offset(drag["dx"] / w)
+
+    def _snap_back():
+        drag["active"] = False
+        drag["dx"] = 0.0
+        _set_offset(0)
+
+    def _on_end(e):
+        if not drag["active"]:
+            return
+        vel = getattr(e, "primary_velocity", None)
+        try:
+            vel = float(vel) if vel is not None else 0.0
+        except Exception:
+            vel = 0.0
+        dx = float(drag["dx"])
+        go = dx >= float(commit_dx) or vel > 650
+        drag["active"] = False
+        drag["dx"] = 0.0
+        if go:
+            try:
+                on_back()
+            except Exception:
+                _snap_back()
+        else:
+            _snap_back()
+
+    def _on_cancel(_e=None):
+        if drag["active"]:
+            _snap_back()
+
+    shell = ft.Container(
+        content=content,
+        expand=True,
+        bgcolor=BG,
+        offset=ft.Offset(0, 0),
+        animate_offset=ft.Animation(200, ft.AnimationCurve.EASE_OUT),
+    )
+    # Узкая hit-зона слева — как системный edge-swipe на iPhone
+    edge = ft.GestureDetector(
+        content=ft.Container(
+            width=float(edge_px),
+            expand=True,
+            bgcolor=ft.Colors.TRANSPARENT,
+        ),
+        drag_interval=4,
+        on_horizontal_drag_start=_on_start,
+        on_horizontal_drag_update=_on_update,
+        on_horizontal_drag_end=_on_end,
+        on_horizontal_drag_cancel=_on_cancel,
+    )
+    return ft.Stack(
+        expand=True,
+        controls=[
+            shell,
+            ft.Container(
+                content=edge,
+                left=0,
+                top=0,
+                bottom=0,
+                width=float(edge_px),
+            ),
+        ],
+    )
+
+
 def _hex_rgb(value: str) -> tuple[int, int, int]:
     s = (value or "").strip().lstrip("#")
     if len(s) == 8:

@@ -512,7 +512,7 @@ def build_questions(page: ft.Page) -> ft.Control:
 
     refresh()
 
-    return ft.Container(
+    root = ft.Container(
         bgcolor=theme.BG,
         expand=True,
         content=ft.Column(
@@ -544,3 +544,4 @@ def build_questions(page: ft.Page) -> ft.Control:
             ],
         ),
     )
+    return theme.edge_swipe_back(root, on_back=go_back)

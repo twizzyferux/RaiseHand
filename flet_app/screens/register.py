@@ -284,6 +284,41 @@ def _chrome(
     )
     footer.append(ft.Container(height=float(theme.bottom_inset())))
 
+    # поэлементный fade внутри шага — видно даже при одном BG у route-перехода
+    head_box = theme.fade_box(
+        ft.Column(spacing=0, tight=True, controls=list(header_block)),
+        delay_ms=0,
+        width=content_w,
+    )
+    title_box = theme.fade_box(
+        ft.Column(spacing=0, tight=True, controls=list(title_block)),
+        delay_ms=40,
+        width=content_w,
+    )
+    mid_box = theme.fade_box(middle, delay_ms=90, width=content_w)
+    try:
+        mid_box.expand = True
+    except Exception:
+        pass
+    foot_box = theme.fade_box(
+        ft.Column(spacing=0, tight=True, controls=list(footer)),
+        delay_ms=140,
+        width=content_w,
+    )
+
+    async def _play_in():
+        await theme.play_fade_in([head_box, title_box, mid_box, foot_box], page, step_ms=40)
+
+    try:
+        page.run_task(_play_in)
+    except Exception:
+        for box in (head_box, title_box, mid_box, foot_box):
+            try:
+                box.opacity = 1
+                box.offset = ft.Offset(0, 0)
+            except Exception:
+                pass
+
     return ft.Container(
         bgcolor=theme.BG,
         expand=True,
@@ -297,12 +332,7 @@ def _chrome(
             expand=True,
             spacing=0,
             horizontal_alignment=ft.CrossAxisAlignment.START,
-            controls=[
-                *header_block,
-                *title_block,
-                middle,   # у middle свой CENTER
-                *footer,  # «Далее» по центру
-            ],
+            controls=[head_box, title_box, mid_box, foot_box],
         ),
     )
 

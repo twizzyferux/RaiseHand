@@ -125,7 +125,7 @@ def _bubble_ticks(msg: chat_data.Message) -> Optional[ft.Control]:
     if msg.pending:
         img = mono_icons.status_image("sending", size=13, on_bubble=True)
         return img or ft.Icon(ft.Icons.SCHEDULE, size=13, color="#FFFFFF99")
-    kind = "read" if msg.read else "sent"
+        kind = "read" if msg.read else "sent"
     img = mono_icons.status_image(kind, size=14, on_bubble=True)
     if img is not None:
         return img
@@ -208,8 +208,8 @@ def _text_bubble(msg: chat_data.Message, bg: str, fg: str, time_color: str, br) 
         column_controls.append(quote)
     if long:
         column_controls.extend([
-            text_ctrl,
-            ft.Container(alignment=ft.Alignment.CENTER_RIGHT, content=meta),
+                text_ctrl,
+                ft.Container(alignment=ft.Alignment.CENTER_RIGHT, content=meta),
         ])
         inner = ft.Column(spacing=2, tight=True, controls=column_controls)
     else:
@@ -240,18 +240,18 @@ def _image_bubble(msg: chat_data.Message, bg: str, time_color: str, br) -> ft.Co
         controls.append(ft.Text("Сообщение удалено", size=14, italic=True, color=time_color))
     else:
         controls.append(
-            ft.Container(
-                width=img_w - 8,
-                height=160,
-                border_radius=10,
-                clip_behavior=ft.ClipBehavior.HARD_EDGE,
-                content=ft.Image(
-                    src=msg.image,
+                ft.Container(
                     width=img_w - 8,
                     height=160,
-                    fit=ft.BoxFit.COVER,
                     border_radius=10,
-                ),
+                    clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                    content=ft.Image(
+                        src=msg.image,
+                        width=img_w - 8,
+                        height=160,
+                        fit=ft.BoxFit.COVER,
+                        border_radius=10,
+                    ),
             )
         )
         if msg.text:
@@ -262,10 +262,10 @@ def _image_bubble(msg: chat_data.Message, bg: str, time_color: str, br) -> ft.Co
                 font_family=theme.FONT_FAMILY,
             ))
     controls.append(
-        ft.Container(
-            alignment=ft.Alignment.CENTER_RIGHT,
+                ft.Container(
+                    alignment=ft.Alignment.CENTER_RIGHT,
             padding=ft.Padding.only(right=4, bottom=2),
-            content=_meta(msg, time_color),
+                    content=_meta(msg, time_color),
         )
     )
     return ft.Container(
@@ -576,28 +576,28 @@ def _header(
 
     short = title if full_title else (title.split()[0] if title else (first or "?"))
     pill_inner = ft.Row(
-        spacing=10,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        controls=[
+            spacing=10,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
             _avatar_circle(seed, first or short[:1], last, size=40),
-            ft.Column(
-                spacing=0,
-                tight=True,
+                ft.Column(
+                    spacing=0,
+                    tight=True,
                 expand=True,
-                controls=[
-                    ft.Text(
-                        short,
-                        size=16,
-                        weight=ft.FontWeight.W_600,
-                        color=theme.INK,
-                        font_family=theme.FONT_FAMILY,
+                    controls=[
+                        ft.Text(
+                            short,
+                            size=16,
+                            weight=ft.FontWeight.W_600,
+                            color=theme.INK,
+                            font_family=theme.FONT_FAMILY,
                         max_lines=1,
                         overflow=ft.TextOverflow.ELLIPSIS,
                     ),
                     online_label,
-                ],
-            ),
-        ],
+                    ],
+                ),
+            ],
     )
     pill = liquid_glass.glass_capsule(
         pill_inner,
@@ -853,7 +853,7 @@ def build_chat(page: ft.Page) -> ft.Control:
         _clear_composer_modes()
 
     banner_bar.content = ft.Row(
-        spacing=8,
+            spacing=8,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         controls=[
             banner_text,
@@ -1325,11 +1325,11 @@ def build_chat(page: ft.Page) -> ft.Control:
                 "msg_id": edit_id,
                 "text": text,
             })
-            tf.value = ""
-            try:
-                tf.update()
-            except Exception:
-                pass
+        tf.value = ""
+        try:
+            tf.update()
+        except Exception:
+            pass
             _clear_composer_modes()
             _refresh_list()
             return
@@ -1643,7 +1643,7 @@ def build_chat(page: ft.Page) -> ft.Control:
     except Exception:
         pass
 
-    return ft.Container(
+    root = ft.Container(
         expand=True,
         bgcolor=theme.BG,
         content=ft.Stack(
@@ -1651,6 +1651,7 @@ def build_chat(page: ft.Page) -> ft.Control:
             controls=[chat_body, menu_host],
         ),
     )
+    return theme.edge_swipe_back(root, on_back=go_back)
 
 
 def _questions_plaque(*, count: int = 0, on_open=None) -> ft.Control:
@@ -1670,7 +1671,7 @@ def _questions_plaque(*, count: int = 0, on_open=None) -> ft.Control:
     row = ft.Row(
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        controls=[
+            controls=[
             ft.Row(
                 spacing=8,
                 tight=True,
