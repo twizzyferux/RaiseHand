@@ -176,16 +176,40 @@ def init_db() -> None:
         """,
         "CREATE INDEX IF NOT EXISTS ix_schools_country ON schools (country_code)",
         "CREATE INDEX IF NOT EXISTS ix_schools_city ON schools (city)",
+        """
+        CREATE TABLE IF NOT EXISTS registration_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel TEXT NOT NULL,
+            target TEXT NOT NULL,
+            code TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_reg_codes_target ON registration_codes (channel, target)",
     ):
         try:
             conn.execute(statement)
         except sqlite3.OperationalError:
             pass  # колонка / объект уже есть
 
-    # Учебный код приглашения из макета: A12-3B4 -> 5А / Школа №67
+    # Демо-класс: 6 символов латиница+цифры (не prod-секрет)
     conn.execute(
         """INSERT OR IGNORE INTO classes (invite_code, class_name, school_name)
-           VALUES ('A12-3B4', '5А', 'Школа №67')""")
+           VALUES ('A12B34', '5А', 'Школа №67')"""
+    )
+    # миграция старых демо-кодов → A12B34
+    try:
+        conn.execute(
+            """UPDATE classes SET invite_code = 'A12B34'
+               WHERE invite_code IN ('A12-3B4', '123456')
+                 AND NOT EXISTS (
+                   SELECT 1 FROM classes c2 WHERE c2.invite_code = 'A12B34'
+                 )"""
+        )
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
 
     # ORM-слой: роли + create_all для SQLAlchemy-моделей.

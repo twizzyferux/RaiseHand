@@ -23,16 +23,24 @@ _TRANSLIT = {
 
 
 def role_id_prefix(role: str) -> str:
+    """Префикс public_id по роли.
+
+    ученик  — без префикса (только цифры)
+    учитель — U
+    админ   — как в конфиге (сейчас A); позже смогут задавать свой в админке
+    """
     role = (role or "").lower()
     if role == RoleCode.TEACHER.value:
-        return str(rule("teacher_id_prefix") or "U")
+        return str(rule("teacher_id_prefix") or "U").strip().upper()[:1] or "U"
     if role == RoleCode.ADMIN.value:
-        return str(rule("admin_id_prefix") or "A")
+        # не трогаем схему админов — кастомные ID будут в админ-панели
+        return str(rule("admin_id_prefix") or "A").strip().upper()[:1] or "A"
     return ""
 
 
 def id_digits() -> int:
-    return int(rule("student_id_digits") or 7)
+    n = int(rule("student_id_digits") or 7)
+    return max(5, min(12, n))
 
 
 def generate_public_id(
@@ -41,12 +49,22 @@ def generate_public_id(
     exists: Callable[[str], bool],
     max_attempts: int = 64,
 ) -> str:
-    """Уникальный ID: ученик 7 цифр, учитель U+цифры, админ A+цифры."""
+    """Уникальный ID: ученик — только цифры; учитель — U+цифры; админ — A+цифры."""
+    role = (role or "").lower()
     digits = id_digits()
     prefix = role_id_prefix(role)
     for _ in range(max_attempts):
         number = "".join(str(random.randint(0, 9)) for _ in range(digits))
-        candidate = f"{prefix}{number}"
+        # ученик: строго цифры; учитель/админ: префикс + цифры
+        candidate = f"{prefix}{number}" if prefix else number
+        if role == RoleCode.STUDENT.value and (
+            not candidate.isdigit() or len(candidate) != digits
+        ):
+            continue
+        if role == RoleCode.TEACHER.value and not (
+            candidate.startswith("U") and candidate[1:].isdigit()
+        ):
+            continue
         if not exists(candidate):
             return candidate
     raise RuntimeError("Не удалось сгенерировать уникальный ID")

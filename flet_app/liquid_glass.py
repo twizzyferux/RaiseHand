@@ -18,14 +18,14 @@ def _a(color: str, opacity: float) -> str:
     return ft.Colors.with_opacity(opacity, color)
 
 
-GLASS_TINT = _a("#F4F4F8", 0.66)
-GLASS_BORDER = _a("#FFFFFF", 0.80)
-GLASS_EDGE = _a("#FFFFFF", 0.90)
-GLASS_SHADOW = _a("#1A1A2E", 0.20)
-GLASS_PILL_ACTIVE = _a("#FFFFFF", 0.88)
-GLASS_PILL_GLOW = _a(theme.PRIMARY, 0.12)
+GLASS_TINT = _a("#F3F1ED", 0.72)
+GLASS_BORDER = _a("#FFFFFF", 0.70)
+GLASS_EDGE = _a("#FFFFFF", 0.78)
+GLASS_SHADOW = _a("#2A2830", 0.10)
+GLASS_PILL_ACTIVE = _a("#FFFFFF", 0.92)
+GLASS_PILL_GLOW = _a("#2A2830", 0.06)
 GLASS_CLEAR = _a("#000000", 0.0)
-GLASS_BLUR = 28
+GLASS_BLUR = 18
 # Full capsule: radius ≈ half bar height; pad_h clears the end caps so tabs don't clip.
 # Чуть выше/крупнее — ближе к TG floating tab bar
 NAV_PAD_V = 8
@@ -47,16 +47,15 @@ def _blur(sigma: float = GLASS_BLUR) -> ft.Blur:
 
 
 # --- Buttons: purple / white liquid glass (same recipe as nav capsule) ---
-PURPLE_GLASS_TINT = _a(theme.PRIMARY, 0.78)
-PURPLE_GLASS_BORDER = _a("#C8B8FF", 0.85)
-PURPLE_GLASS_EDGE = _a("#FFFFFF", 0.55)
-PURPLE_GLASS_SHADOW = _a(theme.PRIMARY, 0.32)
-WHITE_GLASS_TINT = _a("#FFFFFF", 0.82)
-# мягкая равномерная обводка — без фиолетовых «полос» по бокам
-WHITE_GLASS_BORDER = _a("#E4E0F5", 0.95)
-WHITE_GLASS_EDGE = _a("#FFFFFF", 0.98)
-WHITE_GLASS_SHADOW = _a("#1A1A2E", 0.14)
-BTN_BLUR = 22
+PURPLE_GLASS_TINT = _a(theme.PRIMARY, 0.90)
+PURPLE_GLASS_BORDER = _a("#FFFFFF", 0.32)
+PURPLE_GLASS_EDGE = _a("#FFFFFF", 0.40)
+PURPLE_GLASS_SHADOW = _a(theme.PRIMARY, 0.22)
+WHITE_GLASS_TINT = _a("#FFFFFF", 0.88)
+WHITE_GLASS_BORDER = _a("#C8C2E0", 0.85)
+WHITE_GLASS_EDGE = _a("#FFFFFF", 0.96)
+WHITE_GLASS_SHADOW = _a("#2A2438", 0.12)
+BTN_BLUR = 12
 
 
 def glass_surface_tint() -> str:
@@ -75,19 +74,19 @@ def glass_surface_border() -> str:
 
 def glass_surface_edge() -> str:
     if theme.is_dark():
-        return _a(theme.PRIMARY, 0.22)
+        return _a("#FFFFFF", 0.08)
     return GLASS_EDGE
 
 
 def glass_surface_shadow() -> str:
     if theme.is_dark():
-        return _a("#000000", 0.55)
+        return _a("#000000", 0.40)
     return GLASS_SHADOW
 
 
 def glass_pill_active() -> str:
     if theme.is_dark():
-        return _a(theme.PRIMARY, 0.38)
+        return _a(theme.PRIMARY, 0.28)
     return GLASS_PILL_ACTIVE
 
 
@@ -106,28 +105,28 @@ def white_glass_border() -> str:
 
 def white_glass_edge() -> str:
     if theme.is_dark():
-        return _a(theme.PRIMARY, 0.18)
+        return _a("#FFFFFF", 0.08)
     return WHITE_GLASS_EDGE
 
 
 def accent_glass_tint() -> str:
-    """Кнопки акцента (плюс, «Далее», отправка) — текущий цвет темы, мягче."""
-    return _a(theme.PRIMARY, 0.62 if theme.is_dark() else 0.78)
+    """Кнопки акцента (плюс, «Далее», отправка) — плотный цвет, без неона."""
+    return _a(theme.PRIMARY, 0.88 if theme.is_dark() else 0.94)
 
 
 def accent_glass_border() -> str:
     if theme.is_dark():
-        return _a(theme.PRIMARY, 0.42)
-    return _a("#FFFFFF", 0.55)
+        return _a("#FFFFFF", 0.12)
+    return _a("#FFFFFF", 0.28)
 
 
 def accent_glass_shadow() -> str:
-    return _a(theme.PRIMARY, 0.18 if theme.is_dark() else 0.22)
+    return _a("#2A2830", 0.22 if theme.is_dark() else 0.14)
 
 
 def white_glass_shadow() -> str:
     if theme.is_dark():
-        return _a("#000000", 0.40)
+        return _a("#000000", 0.35)
     return WHITE_GLASS_SHADOW
 
 
@@ -218,10 +217,10 @@ def glass_button(
         clip_behavior=ft.ClipBehavior.NONE,
         alignment=ft.Alignment.CENTER,
         shadow=ft.BoxShadow(
-            blur_radius=28,
+            blur_radius=12,
             spread_radius=0,
             color=shadow_c,
-            offset=ft.Offset(0, 10),
+            offset=ft.Offset(0, 3),
         ),
     )
 
@@ -273,12 +272,41 @@ def glass_circle_button(
         border=ft.Border.all(1.0, border_c),
         alignment=ft.Alignment.CENTER,
         clip_behavior=ft.ClipBehavior.HARD_EDGE,
-        on_click=on_click,
         ink=False,
-        animate_scale=ft.Animation(120, ft.AnimationCurve.EASE_OUT),
+        animate_scale=ft.Animation(100, ft.AnimationCurve.EASE_OUT),
         scale=1,
-        on_hover=theme._press_scale,
         content=content,
+    )
+
+    def _down(_e=None):
+        try:
+            body.scale = 0.90
+            body.update()
+        except Exception:
+            pass
+
+    def _up(_e=None):
+        try:
+            body.scale = 1
+            body.update()
+        except Exception:
+            pass
+
+    def _tap(e=None):
+        _up(e)
+        if on_click is None:
+            return
+        try:
+            on_click(e)
+        except TypeError:
+            on_click()
+
+    pressed = ft.GestureDetector(
+        content=body,
+        on_tap_down=_down,
+        on_tap_up=_up,
+        on_tap_cancel=_up,
+        on_tap=_tap,
     )
     return ft.Container(
         width=size,
@@ -287,12 +315,12 @@ def glass_circle_button(
         clip_behavior=ft.ClipBehavior.NONE,
         alignment=ft.Alignment.CENTER,
         shadow=ft.BoxShadow(
-            blur_radius=22,
+            blur_radius=10,
             spread_radius=0,
             color=shadow_c,
-            offset=ft.Offset(0, 8),
+            offset=ft.Offset(0, 2),
         ),
-        content=body,
+        content=pressed,
     )
 
 
@@ -359,10 +387,10 @@ def glass_capsule(
         border_radius=radius,
         clip_behavior=ft.ClipBehavior.NONE,
         shadow=ft.BoxShadow(
-            blur_radius=36 if not theme.is_dark() else 28,
+            blur_radius=16 if not theme.is_dark() else 14,
             spread_radius=0,
             color=glass_surface_shadow(),
-            offset=ft.Offset(0, 12 if not theme.is_dark() else 10),
+            offset=ft.Offset(0, 4 if not theme.is_dark() else 3),
         ),
     )
 
@@ -436,10 +464,10 @@ class SlidingLiquidNav:
                 PILL_SLIDE_MS, ft.AnimationCurve.EASE_IN_OUT_CUBIC
             ),
             shadow=ft.BoxShadow(
-                blur_radius=14,
+                blur_radius=8,
                 spread_radius=0,
-                color=_a(theme.PRIMARY, 0.22),
-                offset=ft.Offset(0, 4),
+                color=_a("#2A2830", 0.10),
+                offset=ft.Offset(0, 2),
             ),
         )
 

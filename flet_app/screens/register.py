@@ -8,6 +8,7 @@ import re
 import flet as ft
 
 from core import auth, verification, formatters, session
+from core.i18n import t
 from core.config import OUTBOX_PATH, SETTINGS, rule, save_settings
 from flet_app.app_state import STATE
 from flet_app import theme
@@ -180,13 +181,15 @@ def _chrome(
     on_next,
     back_route: str,
     *,
-    next_label: str = "Далее",
+    next_label: str = "",
     show_consent: bool = True,
     header: str = "",
     show_back: bool = True,
     subtitle: str = "",
 ) -> ft.Control:
     """Шапка + поля (scroll) + «Далее» всегда внизу."""
+    if not next_label:
+        next_label = t("auth.next")
     if not header:
         header = _reg_header()
     header_block: list = []
@@ -381,7 +384,7 @@ def build_reg_name(page: ft.Page) -> ft.Control:
 def build_reg_password(page: ft.Page) -> ft.Control:
     min_len = int(rule("min_password_length") or 6)
     pwd_col, pwd = _pill_field(
-        "Пароль", password=True, helper=f"Минимум {min_len} символов"
+        t("auth.password"), password=True, helper=f"Минимум {min_len} символов"
     )
     pwd2_col, pwd2 = _pill_field("Подтверждение пароля", password=True)
     remember = ft.Checkbox(
@@ -432,7 +435,7 @@ def build_reg_school(page: ft.Page) -> ft.Control:
     )
     invite_col, invite = _pill_field(
         "Код приглашения",
-        "A12-3B4",
+        "A12-B34",
         value=STATE.draft.get("invite_code", ""),
         helper="Код можно узнать у учителя\nили в чате класса",
     )
@@ -492,21 +495,10 @@ def build_reg_school(page: ft.Page) -> ft.Control:
         if not code:
             STATE.error("Введите код приглашения от учителя")
             return
-        row = None
         try:
             row = auth.find_class(code)
-        except auth.AuthError:
-            row = None
-        # dev_mode: пока нет реальных кодов — принимаем учебный A12-3B4
-        if row is None and SETTINGS.get("dev_mode"):
-            demo = "A12-3B4"
-            if code.replace("-", "").upper() == demo.replace("-", ""):
-                row = {"class_name": "5А", "school_name": "Школа №67"}
-            else:
-                STATE.error("Код не найден. В учебном режиме используйте A12-3B4")
-                return
-        if row is None:
-            STATE.error("Код приглашения не найден. Попросите у учителя новый код")
+        except auth.AuthError as exc:
+            STATE.error(str(exc) or "Код приглашения не найден. Попросите у учителя новый код")
             return
         STATE.draft["city"] = city_val
         STATE.draft["invite_code"] = code
@@ -526,7 +518,7 @@ def build_reg_school(page: ft.Page) -> ft.Control:
         next_,
         "/reg/password",
         show_consent=True,
-        subtitle="Введите город и код от учителя,\nчтобы присоединиться к классу",
+        subtitle="Введите город и код от учителя,\nчтобы присоединиться к классу.\nДля демо можно: A12B34",
     )
 
 
@@ -553,7 +545,8 @@ def build_reg_contact(page: ft.Page) -> ft.Control:
             STATE.error("Введите почту (ivan@example.com) или номер (+79001234567)")
             return
         try:
-            code = verification.send_registration_code(kind, value)
+            # код только на сервере / в письме — в draft не кладём
+            verification.send_registration_code(kind, value)
         except verification.VerificationError as exc:
             STATE.error(str(exc))
             return
@@ -562,18 +555,10 @@ def build_reg_contact(page: ft.Page) -> ft.Control:
             return
         STATE.draft["contact_type"] = kind
         STATE.draft["contact_value"] = value
-        STATE.draft["code"] = code
-        if SETTINGS.get("dev_mode") and not (
-            (kind == "email" and SETTINGS.get("email", {}).get("enabled"))
-            or (kind == "phone" and SETTINGS.get("sms", {}).get("enabled"))
-        ):
-            STATE.info(
-                f"Учебный режим: код {code}\n(data/outbox.log)",
-                "Код отправлен",
-            )
-        else:
-            where = "почту" if kind == "email" else "телефон"
-            STATE.info(f"Код отправлен на {where}.", "Отправлено")
+        STATE.draft.pop("code", None)
+        STATE.draft["code_sent"] = True
+        where = "почту" if kind == "email" else "телефон"
+        STATE.info(f"Код отправлен на {where}.", "Отправлено")
 
     send_btn = theme.primary_image_button("Получить код", send_code)
 
@@ -581,15 +566,21 @@ def build_reg_contact(page: ft.Page) -> ft.Control:
         if STATE.draft.get("user") is not None:
             STATE.go("/reg/done")
             return
-        if not STATE.draft.get("contact_value"):
+        if not STATE.draft.get("contact_value") or not STATE.draft.get("contact_type"):
             STATE.error("Сначала укажите почту/телефон и запросите код")
             return
-        if STATE.draft.get("code") is None:
+        if not STATE.draft.get("code_sent"):
             STATE.error("Сначала запросите код")
             return
         entered = formatters.code_format(code_field.value or "")
-        if entered != str(STATE.draft["code"]):
-            STATE.error("Код не совпадает. Проверьте и попробуйте ещё раз")
+        try:
+            verification.check_registration_code(
+                STATE.draft["contact_type"],
+                STATE.draft["contact_value"],
+                entered,
+            )
+        except verification.VerificationError as exc:
+            STATE.error(str(exc))
             return
         try:
             user = auth.register_student(
@@ -606,6 +597,16 @@ def build_reg_contact(page: ft.Page) -> ft.Control:
         except Exception as exp:
             STATE.error(str(exp))
             return
+        try:
+            from core import database as db
+
+            db.execute(
+                "UPDATE users SET contact_verified = 1 WHERE id = ?",
+                (user.id,),
+            )
+            user.contact_verified = True
+        except Exception:
+            pass
         STATE.draft["user"] = user
         STATE.user = user
         _save_remember(bool(STATE.draft.get("remember")), STATE.draft.get("contact_value") or "")
@@ -680,13 +681,13 @@ def build_reg_done(page: ft.Page) -> ft.Control:
             color="#FFFFFF",
             font_family=theme.FONT_FAMILY,
         ),
-        shadow=ft.BoxShadow(blur_radius=16, color="#4B2FE033", offset=ft.Offset(0, 6)),
+        shadow=ft.BoxShadow(blur_radius=8, color="#2A283022", offset=ft.Offset(0, 3)),
     )
 
     def info_card(label: str, value: str) -> ft.Control:
         """Карточка: слева метка, справа значение — чище, чем две колонки текста."""
         return ft.Container(
-            bgcolor="#F0F0F5",
+            bgcolor=theme.FIELD_BG,
             border_radius=28,
             padding=ft.Padding.symmetric(horizontal=22, vertical=16),
             content=ft.Row(
@@ -774,7 +775,7 @@ def build_reg_work(page: ft.Page) -> ft.Control:
         return ft.Container(
             content=ft.Text(text, size=15, color=theme.INK, font_family=theme.FONT_FAMILY),
             padding=ft.Padding.symmetric(horizontal=14, vertical=10),
-            bgcolor="#F0F0F5",
+            bgcolor=theme.FIELD_BG,
             border_radius=14,
             on_click=on_pick,
             ink=True,
@@ -914,8 +915,6 @@ def build_reg_proof(page: ft.Page) -> ft.Control:
             f"Анкета #{app_id} отправлена в Discord.\nПосле одобрения нажмите «Проверить».",
             "Отправлено",
         )
-        if SETTINGS.get("dev_mode") and not (SETTINGS.get("discord") or {}).get("webhook_url"):
-            STATE.draft["teacher_approved"] = True
 
     body = [
         ft.Text(
@@ -956,6 +955,5 @@ def build_reg_proof(page: ft.Page) -> ft.Control:
         body,
         lambda _: STATE.go("/reg/contact") if STATE.draft.get("teacher_approved") else STATE.error("Дождитесь одобрения"),
         "/reg/work",
-        next_label="Далее",
         show_consent=False,
     )

@@ -4,16 +4,15 @@
 Старые PBKDF2-записи продолжают приниматься и при входе переписываются в bcrypt.
 
 ID пользователя:
-    ученик  -> 7 цифр, например 4820193
-    учитель -> буква U + 7 цифр, например U4820193
-    админ   -> буква A + 7 цифр, например A4820193
+    ученик  -> только цифры, например 4820193
+    учитель -> U + цифры, например U4820193
+    админ   -> A + цифры (позже смогут задать свой ID в админке)
 """
 
 from __future__ import annotations
 
 import re
 import secrets
-import string
 from dataclasses import dataclass
 from typing import Optional
 
@@ -305,18 +304,26 @@ def _create_user(role: str, first_name: str, last_name: str,
     return get_user_by_id(user_id)
 
 
+def _normalize_invite_code(raw: str) -> str:
+    """6 символов: A–Z и цифры (тире/пробелы убираем, регистр → upper)."""
+    return "".join(
+        ch for ch in (raw or "").upper() if ("A" <= ch <= "Z") or ch.isdigit()
+    )
+
+
 def create_class_invite(teacher_id: int, class_name: str, school_name: str = "") -> str:
-    """Учитель создаёт класс — генерируется уникальный код приглашения."""
+    """Учитель создаёт класс — уникальный 6-символьный код (латиница + цифры)."""
     class_name = (class_name or "").strip()
     school_name = (school_name or "").strip()
     if len(class_name) < 1:
         raise AuthError("Укажите название класса")
-    alphabet = string.ascii_uppercase + string.digits
-    for _ in range(20):
-        raw = "".join(secrets.choice(alphabet) for _ in range(7))
-        code = f"{raw[:3]}-{raw[3:]}"
+    # без O/0 и I/1 — меньше путаницы при ручном вводе
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    for _ in range(40):
+        code = "".join(secrets.choice(alphabet) for _ in range(6))
         exists = db.query_one(
-            "SELECT id FROM classes WHERE py_upper(invite_code) = py_upper(?)",
+            """SELECT id FROM classes
+               WHERE upper(replace(replace(invite_code, '-', ''), ' ', '')) = ?""",
             (code,),
         )
         if exists:
@@ -339,12 +346,16 @@ def list_teacher_classes(teacher_id: int) -> list:
 
 def find_class(invite_code: str):
     """Код приглашения -> строка таблицы classes (class_name, school_name)."""
-    invite_code = invite_code.strip()
-    if not invite_code:
+    code = _normalize_invite_code(invite_code)
+    if not code:
         raise AuthError("Введите код приглашения")
+    if len(code) != 6:
+        raise AuthError("Код класса — 6 символов (латиница и цифры)")
     row = db.query_one(
-        "SELECT * FROM classes WHERE py_upper(invite_code) = py_upper(?)",
-        (invite_code,))
+        """SELECT * FROM classes
+           WHERE upper(replace(replace(invite_code, '-', ''), ' ', '')) = ?""",
+        (code,),
+    )
     if row is None:
         raise AuthError("Код не найден — узнайте его у учителя или в чате класса")
     return row

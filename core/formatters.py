@@ -4,8 +4,8 @@
 Правила простые и сделаны так, чтобы человеку не приходилось ничего
 набирать руками:
 
-  * код приглашения — в том регистре, в котором набирают, но тире
-    между 3-м и 4-м символом ставится само (А12-3Б4);
+  * код приглашения класса — 6 символов (A–Z + цифры), тире само
+    (A12-B34);
   * код подтверждения — только заглавными буквами, без разделителей
     (123ABC);
   * имя и фамилия — только буквы, пробел, дефис и апостроф: цифры
@@ -24,17 +24,16 @@ from core import cities
 _NAME_JUNK = re.compile(r"[^A-Za-zА-Яа-яЁё\s\-']")
 
 
-def _with_dash(text: str) -> str:
-    """Тире между 3-м и 4-м символом. Регистр не трогаем."""
-    joined = "".join(part for part in (text or "").split("-") if part)
-    if len(joined) > 3:
-        return joined[:3] + "-" + joined[3:]
-    return joined
-
-
 def invite_format(text: str) -> str:
-    """Код приглашения: как набирают + автоматическое тире."""
-    return _with_dash(text)
+    """Код класса: латиница + цифры, макс. 6, тире A12-B34."""
+    chars = "".join(
+        ch
+        for ch in (text or "").upper()
+        if ("A" <= ch <= "Z") or ch.isdigit()
+    )[:6]
+    if len(chars) > 3:
+        return chars[:3] + "-" + chars[3:]
+    return chars
 
 
 def code_format(text: str) -> str:

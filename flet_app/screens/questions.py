@@ -29,7 +29,7 @@ def _answer_palette() -> dict[str, str]:
     """Цвета блока ответа с нормальным контрастом в light/dark."""
     if theme.is_dark():
         return {
-            "bg": theme.PRIMARY_SOFT or "#242037",
+            "bg": theme.PRIMARY_SOFT or "#2A2832",
             "border": theme.STROKE,
             "title": theme.PRIMARY,
             "body": theme.INK,
@@ -234,6 +234,7 @@ def _question_row(
                             expand=True,
                             spacing=4,
                             tight=True,
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                             controls=[
                                 ft.Text(
                                     q.text,
@@ -241,8 +242,14 @@ def _question_row(
                                     weight=ft.FontWeight.W_500,
                                     color=theme.INK,
                                     font_family=theme.FONT_FAMILY,
+                                    text_align=ft.TextAlign.CENTER,
                                 ),
-                                ft.Row(spacing=10, tight=True, controls=meta)
+                                ft.Row(
+                                    spacing=10,
+                                    tight=True,
+                                    alignment=ft.MainAxisAlignment.CENTER,
+                                    controls=meta,
+                                )
                                 if meta
                                 else ft.Container(height=0),
                                 _answer_block(q),
@@ -317,6 +324,10 @@ def build_questions(page: ft.Page) -> ft.Control:
         refresh()
 
     def go_back(_=None):
+        try:
+            theme.dismiss_keyboard(page)
+        except Exception:
+            pass
         STATE.draft["_open_chat_id"] = gid
         STATE.draft["_open_is_group"] = True
         STATE.go("/chat")

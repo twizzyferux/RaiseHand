@@ -8,6 +8,7 @@ from typing import Callable, Optional
 import flet as ft
 import sys
 
+# Фирменный фиолетовый RaiseHand (kit / прежняя палитра)
 PRIMARY = "#6A5AC8"
 PRIMARY_TEXT = "#FFFBFF"
 LINK = "#6A5AC8"
@@ -15,7 +16,6 @@ DOT_ON = "#6A5AC8"
 DOT_OFF = "#C4BED8"
 BADGE = "#C46B8A"
 
-# Светлая / тёмная — мягче, без «вырвиглаз»
 _LIGHT = {
     "BG": "#F4F2EE",
     "SURFACE": "#EBE8E3",
@@ -35,7 +35,6 @@ _LIGHT = {
     "NAV_IDLE": "#6E6878",
     "PRIMARY_SOFT": "#E8E4F4",
 }
-# Тёмная: тёплый уголь, приглушённый текст, не неоновый акцент
 _DARK = {
     "BG": "#141318",
     "SURFACE": "#1C1B22",
@@ -76,14 +75,20 @@ PRIMARY_SOFT = _LIGHT["PRIMARY_SOFT"]
 _MODE = "light"
 
 PAGE_PADDING = 24
-PHONE_WIDTH = 390
-PHONE_HEIGHT = 844
+# Десктоп (PyCharm / Windows): логический viewport iPhone 15 Pro (393×852 pt).
+# На реальном iOS/Android — подтягиваем фактический экран через sync_viewport.
+DESKTOP_PHONE_WIDTH = 393
+DESKTOP_PHONE_HEIGHT = 852
+PHONE_WIDTH = DESKTOP_PHONE_WIDTH
+PHONE_HEIGHT = DESKTOP_PHONE_HEIGHT
 MAX_CONTENT_WIDTH = PHONE_WIDTH
 # Минимальные отступы поверх системных (когда SafeArea даёт 0 — на десктопе)
-SAFE_MIN_TOP = 8
+# Dynamic Island / status на 15 Pro ≈ 59pt; на десктопе имитируем мягче
+SAFE_MIN_TOP = 47
 # Низ НЕ через SafeArea — иначе видна «полоска»; кнопки/nav сами поднимаются
-HOME_INDICATOR_PAD = 28
-NAV_BOTTOM_GAP = 28
+# home indicator zone на 15 Pro ≈ 34pt
+HOME_INDICATOR_PAD = 34
+NAV_BOTTOM_GAP = 34
 
 FONT_FAMILY = "SFPro"
 
@@ -111,8 +116,16 @@ def is_mobile_runtime() -> bool:
 
 
 def sync_viewport(page: Optional[ft.Page] = None) -> None:
-    """Подтянуть PHONE_WIDTH/HEIGHT под реальный экран (особенно iPhone)."""
+    """Масштаб макета: на телефоне — реальный экран; на десктопе — iPhone 15 Pro (393×852).
+
+    Раньше на Windows/PyCharm page.width подменял PHONE_WIDTH → «слетало» масштабирование.
+    """
     global PHONE_WIDTH, PHONE_HEIGHT, MAX_CONTENT_WIDTH
+    if not is_mobile_runtime():
+        PHONE_WIDTH = float(DESKTOP_PHONE_WIDTH)
+        PHONE_HEIGHT = float(DESKTOP_PHONE_HEIGHT)
+        MAX_CONTENT_WIDTH = float(DESKTOP_PHONE_WIDTH)
+        return
     if page is None:
         return
     try:
@@ -140,7 +153,15 @@ def safe_shell(
     right: bool = True,
     maintain_bottom: bool = False,
 ) -> ft.Control:
-    """SafeArea только сверху (Dynamic Island). Низ без inset — без нижней полоски."""
+    """SafeArea сверху (Dynamic Island / status).
+
+    На телефоне НЕ задаём minimum top=47 — иначе к системному inset
+    добавляется лишняя «полоска» между статус-баром и шапкой.
+    На десктопе имитируем статус через SAFE_MIN_TOP.
+    """
+    mobile = is_mobile_runtime()
+    # телефон: только системный inset; десктоп: минимум под фейковый status
+    min_top = 0 if mobile else (SAFE_MIN_TOP if top else 0)
     try:
         return ft.SafeArea(
             content=content,
@@ -151,18 +172,18 @@ def safe_shell(
             avoid_intrusions_right=right,
             maintain_bottom_view_padding=maintain_bottom,
             minimum_padding=ft.Padding.only(
-                top=SAFE_MIN_TOP if top else 0,
+                top=min_top,
                 bottom=0,
                 left=0,
                 right=0,
             ),
         )
     except Exception:
-        pad_top = 47 if (is_mobile_runtime() and top) else SAFE_MIN_TOP
+        pad_top = (0 if mobile else SAFE_MIN_TOP) if top else 0
         return ft.Container(
             content=content,
             expand=True,
-            padding=ft.Padding.only(top=pad_top if top else 0, bottom=0),
+            padding=ft.Padding.only(top=pad_top, bottom=0),
         )
 
 
@@ -175,33 +196,55 @@ def edge_swipe_back(
     content: ft.Control,
     *,
     on_back: Callable,
-    edge_px: float = 22.0,
-    commit_dx: float = 72.0,
+    edge_px: float = 28.0,
+    commit_dx: float = 88.0,
 ) -> ft.Control:
     """Свайп с левого края (как iOS back) → on_back.
 
-    Жест ловит только узкая полоска у края — не мешает скроллу чата.
+    Важно: offset никогда не оставляем «залипшим» — либо выход, либо snap назад.
     """
     drag = {"active": False, "dx": 0.0}
 
-    def _delta_x(e) -> float:
-        delta = getattr(e, "primary_delta", None)
-        if delta is not None:
-            try:
-                return float(delta)
-            except Exception:
-                pass
-        gd = getattr(e, "global_delta", None) or getattr(e, "local_delta", None)
-        if gd is None:
-            return 0.0
+    def _num(v, default: float = 0.0) -> float:
         try:
-            return float(getattr(gd, "x", 0) or 0)
+            if v is None:
+                return default
+            if hasattr(v, "x"):
+                return float(getattr(v, "x") or 0)
+            return float(v)
         except Exception:
-            return 0.0
+            return default
 
-    def _set_offset(frac: float) -> None:
+    def _delta_x(e) -> float:
+        for attr in ("primary_delta", "local_delta", "global_delta", "delta"):
+            raw = getattr(e, attr, None)
+            if raw is None:
+                continue
+            try:
+                if hasattr(raw, "x"):
+                    return float(getattr(raw, "x") or 0)
+                return float(raw)
+            except Exception:
+                continue
+        return 0.0
+
+    def _velocity_x(e) -> float:
+        for attr in ("primary_velocity", "velocity"):
+            raw = getattr(e, attr, None)
+            if raw is None:
+                continue
+            return _num(raw, 0.0)
+        return 0.0
+
+    def _apply_offset(frac: float, *, animate: bool) -> None:
+        frac = max(0.0, min(float(frac), 0.45))
         try:
-            shell.offset = ft.Offset(max(0.0, min(float(frac), 0.42)), 0)
+            shell.animate_offset = (
+                ft.Animation(180, ft.AnimationCurve.EASE_OUT)
+                if animate
+                else ft.Animation(0, ft.AnimationCurve.LINEAR)
+            )
+            shell.offset = ft.Offset(frac, 0)
             shell.update()
         except Exception:
             try:
@@ -209,40 +252,40 @@ def edge_swipe_back(
             except Exception:
                 pass
 
+    def _snap_back() -> None:
+        drag["active"] = False
+        drag["dx"] = 0.0
+        _apply_offset(0, animate=True)
+
+    def _commit_back() -> None:
+        """Сначала вернуть экран в 0 — иначе при сбое навигации остаётся сдвиг."""
+        drag["active"] = False
+        drag["dx"] = 0.0
+        _apply_offset(0, animate=False)
+        try:
+            on_back()
+        except Exception:
+            _snap_back()
+
     def _on_start(_e=None):
         drag["active"] = True
         drag["dx"] = 0.0
-        _set_offset(0)
+        _apply_offset(0, animate=False)
 
     def _on_update(e):
         if not drag["active"]:
             return
         drag["dx"] = max(0.0, float(drag["dx"]) + _delta_x(e))
         w = max(float(PHONE_WIDTH), 1.0)
-        _set_offset(drag["dx"] / w)
-
-    def _snap_back():
-        drag["active"] = False
-        drag["dx"] = 0.0
-        _set_offset(0)
+        _apply_offset(drag["dx"] / w, animate=False)
 
     def _on_end(e):
         if not drag["active"]:
             return
-        vel = getattr(e, "primary_velocity", None)
-        try:
-            vel = float(vel) if vel is not None else 0.0
-        except Exception:
-            vel = 0.0
         dx = float(drag["dx"])
-        go = dx >= float(commit_dx) or vel > 650
-        drag["active"] = False
-        drag["dx"] = 0.0
-        if go:
-            try:
-                on_back()
-            except Exception:
-                _snap_back()
+        vel = _velocity_x(e)
+        if dx >= float(commit_dx) or vel > 600:
+            _commit_back()
         else:
             _snap_back()
 
@@ -255,23 +298,29 @@ def edge_swipe_back(
         expand=True,
         bgcolor=BG,
         offset=ft.Offset(0, 0),
-        animate_offset=ft.Animation(200, ft.AnimationCurve.EASE_OUT),
+        animate_offset=ft.Animation(0, ft.AnimationCurve.LINEAR),
+        clip_behavior=ft.ClipBehavior.HARD_EDGE,
     )
-    # Узкая hit-зона слева — как системный edge-swipe на iPhone
+    # Hit-зона слева + pan (на iOS horizontal_drag end иногда не приходит)
     edge = ft.GestureDetector(
         content=ft.Container(
             width=float(edge_px),
             expand=True,
             bgcolor=ft.Colors.TRANSPARENT,
         ),
-        drag_interval=4,
+        drag_interval=1,
         on_horizontal_drag_start=_on_start,
         on_horizontal_drag_update=_on_update,
         on_horizontal_drag_end=_on_end,
         on_horizontal_drag_cancel=_on_cancel,
+        on_pan_start=_on_start,
+        on_pan_update=_on_update,
+        on_pan_end=_on_end,
+        on_pan_cancel=_on_cancel,
     )
     return ft.Stack(
         expand=True,
+        clip_behavior=ft.ClipBehavior.HARD_EDGE,
         controls=[
             shell,
             ft.Container(
@@ -350,21 +399,19 @@ def apply_mode(page: Optional[ft.Page] = None, mode: Optional[str] = None) -> st
         tok = branding.theme_tokens(accent_key, mode)
         bub = branding.theme_tokens(bubble_key, mode)
         if tok.get("fill"):
-            soft_fill = soften(tok["fill"])
-            PRIMARY = soft_fill
-            LINK = soft_fill
-            DOT_ON = soft_fill
+            PRIMARY = tok["fill"]
+            LINK = tok["fill"]
+            DOT_ON = tok["fill"]
         if tok.get("soft"):
             PRIMARY_SOFT = tok["soft"]
         if tok.get("bubble_in"):
             BUBBLE_IN = tok["bubble_in"]
-        # исходящие — приглушённый fill выбранной bubble-темы
         if bub.get("fill"):
-            BUBBLE_OUT = soften(bub["fill"], 0.22 if mode == "light" else 0.18)
+            BUBBLE_OUT = bub["fill"]
         if tok.get("badge"):
-            BADGE = soften(tok["badge"], 0.3)
+            BADGE = tok["badge"]
         if tok.get("onfill"):
-            PRIMARY_TEXT = "#FFFBFF"
+            PRIMARY_TEXT = tok.get("onfill") or "#FFFBFF"
     except Exception:
         pass
     if page is not None:
@@ -525,10 +572,10 @@ def lock_phone_window(page: ft.Page) -> None:
     page.padding = 0
     page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
     page.vertical_alignment = ft.MainAxisAlignment.START
-    sync_viewport(page)
 
     if is_mobile_runtime():
-        # На телефоне не фиксируем 390×844 — иначе ломаются отступы и масштаб
+        # На телефоне не фиксируем 393×852 — иначе ломаются отступы и масштаб
+        sync_viewport(page)
         win = getattr(page, "window", None)
         if win is not None:
             try:
@@ -537,7 +584,9 @@ def lock_phone_window(page: ft.Page) -> None:
                 pass
         return
 
-    w, h = PHONE_WIDTH, PHONE_HEIGHT
+    # Desktop / PyCharm: жёстко iPhone 15 Pro (393×852 pt)
+    sync_viewport(page)
+    w, h = float(DESKTOP_PHONE_WIDTH), float(DESKTOP_PHONE_HEIGHT)
     win = getattr(page, "window", None)
     if win is not None:
         for name, val in (
@@ -579,6 +628,80 @@ def lock_phone_window(page: ft.Page) -> None:
                 pass
 
 
+def dismiss_keyboard(
+    page: Optional[ft.Page] = None,
+    control: Optional[ft.Control] = None,
+) -> None:
+    """Закрыть экранную клавиатуру (iOS часто держит её после ухода с чата)."""
+    ctrl = control
+    if ctrl is not None:
+        try:
+            if hasattr(ctrl, "can_request_focus"):
+                ctrl.can_request_focus = False
+        except Exception:
+            pass
+        try:
+            ctrl.disabled = True
+        except Exception:
+            pass
+        try:
+            ctrl.update()
+        except Exception:
+            pass
+
+        async def _unfocus():
+            try:
+                await ctrl._invoke_method("unfocus")  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+        if page is not None:
+            try:
+                page.run_task(_unfocus)
+            except Exception:
+                pass
+        return
+
+    # без конкретного поля — снять фокус через «пустой» фокусный якорь на странице
+    if page is None:
+        return
+    try:
+        anchor = ft.TextField(
+            width=1,
+            height=1,
+            opacity=0,
+            autofocus=True,
+            can_request_focus=True,
+        )
+        page.overlay.append(anchor)
+        page.update()
+
+        async def _steal():
+            import asyncio
+
+            try:
+                await anchor.focus()
+            except Exception:
+                pass
+            await asyncio.sleep(0.02)
+            try:
+                anchor.can_request_focus = False
+                anchor.disabled = True
+                anchor.update()
+            except Exception:
+                pass
+            try:
+                if anchor in page.overlay:
+                    page.overlay.remove(anchor)
+                page.update()
+            except Exception:
+                pass
+
+        page.run_task(_steal)
+    except Exception:
+        pass
+
+
 def sync_window_bg(page: Optional[ft.Page] = None) -> None:
     """Подтянуть page/window bgcolor под текущую тему (без полос)."""
     if page is None:
@@ -601,6 +724,54 @@ def _press_scale(e):
         e.control.update()
     except Exception:
         pass
+
+
+def pressable(
+    content: ft.Control,
+    on_tap=None,
+    *,
+    scale_to: float = 0.92,
+    expand: bool = False,
+) -> ft.Control:
+    """Лёгкий scale при нажатии (touch + mouse), без квадратного ink."""
+    box = ft.Container(
+        content=content,
+        scale=1,
+        animate_scale=ft.Animation(100, ft.AnimationCurve.EASE_OUT),
+        expand=expand if expand else None,
+    )
+
+    def _down(_e=None):
+        try:
+            box.scale = float(scale_to)
+            box.update()
+        except Exception:
+            pass
+
+    def _up(_e=None):
+        try:
+            box.scale = 1
+            box.update()
+        except Exception:
+            pass
+
+    def _tap(e=None):
+        _up(e)
+        if on_tap is None:
+            return
+        try:
+            on_tap(e)
+        except TypeError:
+            on_tap()
+
+    return ft.GestureDetector(
+        content=box,
+        expand=expand if expand else None,
+        on_tap_down=_down,
+        on_tap_up=_up,
+        on_tap_cancel=_up,
+        on_tap=_tap,
+    )
 
 
 def _btn_width() -> float:

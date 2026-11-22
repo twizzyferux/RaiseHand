@@ -1,16 +1,16 @@
 """Подтверждение аккаунта через почту или телефон.
 
 Как это работает:
- 1. create_code(...) — генерирует 6-значный код, кладёт его в таблицу verification
-    и «отправляет».
+ 1. create_code / send_registration_code — генерирует код, сохраняет в БД и отправляет.
  2. Отправка:
-      * если в config/settings.json включён блок "email" — код реально уходит
-        письмом по SMTP;
-      * иначе (режим "dev_mode": true) код просто пишется в data/outbox.log
-        и возвращается в приложение, чтобы его было видно на экране.
-        Это удобно для защиты проекта: интернет и SMS-шлюз не нужны.
- 3. check_code(...) — проверяет код, отмечает аккаунт подтверждённым.
+      * email.enabled + SMTP/SendGrid (креды из settings или env RH_SMTP_*);
+      * sms.enabled + SMS.ru;
+      * иначе при dev_mode — только data/outbox.log;
+      * иначе — ошибка «отправка не настроена».
+ 3. check_code / check_registration_code — серверная проверка (клиент код не хранит).
 """
+
+from __future__ import annotations
 
 import random
 import re
@@ -46,12 +46,37 @@ def validate_target(channel: str, target: str) -> str:
 
 
 def _generate_code() -> str:
-    length = rule("code_length")
+    length = int(rule("code_length") or 6)
     return "".join(str(random.randint(0, 9)) for _ in range(length))
 
 
-def create_code(user_id: int, channel: str, target: str) -> str:
-    """Создаёт код и отправляет его. Возвращает код (в dev-режиме он показывается)."""
+def _normalize_code(code: str) -> str:
+    return "".join(ch for ch in (code or "") if ch.isalnum()).upper()
+
+
+def _expires_at() -> str:
+    minutes = int(rule("code_lifetime_minutes") or 10)
+    return (datetime.now() + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def email_ready() -> bool:
+    """Есть рабочий email-провайдер с учётами."""
+    cfg = SETTINGS.get("email") or {}
+    if not cfg.get("enabled"):
+        return False
+    provider = (cfg.get("provider") or "smtp").lower()
+    if provider == "sendgrid":
+        return bool(cfg.get("sendgrid_api_key") and (cfg.get("from_address") or cfg.get("login")))
+    return bool(cfg.get("login") and cfg.get("password") and cfg.get("smtp_host"))
+
+
+def sms_ready() -> bool:
+    cfg = SETTINGS.get("sms") or {}
+    return bool(cfg.get("enabled") and cfg.get("api_key"))
+
+
+def create_code(user_id: int, channel: str, target: str) -> None:
+    """Создаёт код для существующего пользователя и отправляет. Код клиенту не отдаём."""
     target = validate_target(channel, target)
     try:
         rate_limit.check(
@@ -72,25 +97,20 @@ def create_code(user_id: int, channel: str, target: str) -> str:
         raise VerificationError(str(exc)) from exc
 
     code = _generate_code()
-    expires_at = datetime.now() + timedelta(minutes=rule("code_lifetime_minutes"))
-
     db.execute("UPDATE verification SET used = 1 WHERE user_id = ? AND used = 0", (user_id,))
     db.execute(
         "INSERT INTO verification (user_id, channel, target, code, expires_at) VALUES (?, ?, ?, ?, ?)",
-        (user_id, channel, target, code, expires_at.strftime("%Y-%m-%d %H:%M:%S")),
+        (user_id, channel, target, code, _expires_at()),
     )
-    db.execute("UPDATE users SET contact_type = ?, contact_value = ?, contact_verified = 0 WHERE id = ?",
-               (channel, target, user_id))
-
+    db.execute(
+        "UPDATE users SET contact_type = ?, contact_value = ?, contact_verified = 0 WHERE id = ?",
+        (channel, target, user_id),
+    )
     _deliver(channel, target, code)
-    return code
 
 
-def send_registration_code(channel: str, target: str) -> str:
-    """Генерирует и отправляет код на почту или телефон. Возвращает код.
-
-    Для регистрации до создания пользователя.
-    """
+def send_registration_code(channel: str, target: str) -> None:
+    """Код до создания пользователя: в registration_codes + доставка. Код клиенту не отдаём."""
     target = validate_target(channel, target)
     try:
         rate_limit.check(
@@ -104,14 +124,51 @@ def send_registration_code(channel: str, target: str) -> str:
         raise VerificationError(str(exc)) from exc
 
     code = _generate_code()
+    # погасить предыдущие неиспользованные коды на этот контакт
+    db.execute(
+        "UPDATE registration_codes SET used = 1 WHERE channel = ? AND lower(target) = lower(?) AND used = 0",
+        (channel, target),
+    )
+    db.execute(
+        "INSERT INTO registration_codes (channel, target, code, expires_at) VALUES (?, ?, ?, ?)",
+        (channel, target, code, _expires_at()),
+    )
     _deliver(channel, target, code)
-    return code
+
+
+def check_registration_code(channel: str, target: str, code: str) -> None:
+    """Серверная проверка кода регистрации. При успехе помечает код использованным."""
+    target = validate_target(channel, target)
+    entered = _normalize_code(code)
+    if not entered:
+        raise VerificationError("Введите код подтверждения")
+
+    row = db.query_one(
+        """SELECT * FROM registration_codes
+           WHERE channel = ? AND lower(target) = lower(?) AND used = 0
+           ORDER BY id DESC LIMIT 1""",
+        (channel, target),
+    )
+    if row is None:
+        raise VerificationError("Код не запрашивался. Нажмите «Получить код»")
+    if datetime.strptime(row["expires_at"], "%Y-%m-%d %H:%M:%S") < datetime.now():
+        raise VerificationError("Срок действия кода истёк, запросите новый")
+    if entered != str(row["code"]).strip().upper():
+        raise VerificationError("Неверный код")
+
+    db.execute("UPDATE registration_codes SET used = 1 WHERE id = ?", (row["id"],))
 
 
 def _deliver(channel: str, target: str, code: str) -> None:
     text = f"Код подтверждения RaiseHand: {code}"
     email_cfg = SETTINGS.get("email") or {}
     if channel == CHANNEL_EMAIL and email_cfg.get("enabled"):
+        if not email_ready():
+            raise VerificationError(
+                "Email включён, но не настроен. Для SendGrid нужен API-ключ "
+                "(email.sendgrid_api_key или RH_SENDGRID_API_KEY), "
+                "для SMTP — login/password."
+            )
         provider = (email_cfg.get("provider") or "smtp").lower()
         if provider == "sendgrid":
             _send_email_sendgrid(target, text)
@@ -119,11 +176,17 @@ def _deliver(channel: str, target: str, code: str) -> None:
         else:
             _send_email(target, text)
             _write_outbox(channel, target, text + "  [отправлено по SMTP]")
-    elif channel == CHANNEL_PHONE and SETTINGS.get("sms", {}).get("enabled"):
+    elif channel == CHANNEL_PHONE and (SETTINGS.get("sms") or {}).get("enabled"):
+        if not sms_ready():
+            raise VerificationError("SMS включён, но api_key не задан.")
         _send_sms(target, text)
         _write_outbox(channel, target, text + "  [отправлено по SMS]")
-    else:
+    elif SETTINGS.get("dev_mode"):
         _write_outbox(channel, target, text + "  [dev: провайдер выключен]")
+    else:
+        raise VerificationError(
+            "Отправка кода не настроена. Нужен email (SMTP/SendGrid) или SMS."
+        )
 
 
 def _write_outbox(channel: str, target: str, text: str) -> None:
@@ -135,20 +198,20 @@ def _write_outbox(channel: str, target: str, text: str) -> None:
 def _send_email(target: str, text: str) -> None:
     cfg = SETTINGS["email"]
     message = EmailMessage()
-    message["Subject"] = "Подтверждение аккаунта"
-    message["From"] = cfg["from_address"] or cfg["login"]
+    message["Subject"] = "Подтверждение аккаунта RaiseHand"
+    message["From"] = cfg.get("from_address") or cfg.get("login")
     message["To"] = target
     message.set_content(text)
     try:
         if cfg.get("use_ssl", True):
-            server = smtplib.SMTP_SSL(cfg["smtp_host"], cfg["smtp_port"], timeout=15)
+            server = smtplib.SMTP_SSL(cfg["smtp_host"], int(cfg.get("smtp_port") or 465), timeout=15)
         else:
-            server = smtplib.SMTP(cfg["smtp_host"], cfg["smtp_port"], timeout=15)
+            server = smtplib.SMTP(cfg["smtp_host"], int(cfg.get("smtp_port") or 587), timeout=15)
             server.starttls()
         with server:
             server.login(cfg["login"], cfg["password"])
             server.send_message(message)
-    except Exception as exc:  # noqa: BLE001 — показываем пользователю понятную ошибку
+    except Exception as exc:  # noqa: BLE001 — понятная ошибка пользователю
         raise VerificationError(f"Не удалось отправить письмо: {exc}") from exc
 
 
@@ -157,10 +220,10 @@ def _send_email_sendgrid(target: str, text: str) -> None:
     cfg = SETTINGS.get("email") or {}
     api_key = cfg.get("sendgrid_api_key") or cfg.get("api_key") or ""
     if not api_key:
-        raise VerificationError("SendGrid: укажите email.sendgrid_api_key в settings.json")
+        raise VerificationError("SendGrid: укажите email.sendgrid_api_key или RH_SENDGRID_API_KEY")
     from_addr = cfg.get("from_address") or cfg.get("login") or ""
     if not from_addr:
-        raise VerificationError("SendGrid: укажите email.from_address")
+        raise VerificationError("SendGrid: укажите email.from_address или RH_SMTP_FROM")
     import json
     import urllib.error
     import urllib.request
@@ -168,7 +231,7 @@ def _send_email_sendgrid(target: str, text: str) -> None:
     payload = {
         "personalizations": [{"to": [{"email": target}]}],
         "from": {"email": from_addr},
-        "subject": "Подтверждение аккаунта",
+        "subject": "Подтверждение аккаунта RaiseHand",
         "content": [{"type": "text/plain", "value": text}],
     }
     req = urllib.request.Request(
@@ -200,16 +263,19 @@ def _send_sms(target: str, text: str) -> None:
         raise VerificationError("SMS не настроен: укажите api_key в config/settings.json")
     phone = target.lstrip("+")
     try:
-        import urllib.request
-        import urllib.parse
         import json
+        import urllib.parse
+        import urllib.request
+
         if provider in ("smsru", "sms.ru"):
-            data = urllib.parse.urlencode({
-                "api_id": api_key,
-                "to": phone,
-                "msg": text,
-                "json": "1",
-            }).encode()
+            data = urllib.parse.urlencode(
+                {
+                    "api_id": api_key,
+                    "to": phone,
+                    "msg": text,
+                    "json": "1",
+                }
+            ).encode()
             req = urllib.request.Request("https://sms.ru/sms/send", data=data)
             with urllib.request.urlopen(req, timeout=15) as resp:
                 body = json.loads(resp.read().decode())
@@ -234,10 +300,8 @@ def check_code(user_id: int, code: str) -> None:
         raise VerificationError("Код не запрашивался. Нажмите «Отправить код»")
     if datetime.strptime(row["expires_at"], "%Y-%m-%d %H:%M:%S") < datetime.now():
         raise VerificationError("Срок действия кода истёк, запросите новый")
-    # разделители не важны: код могли вставить из буфера обмена
-    # как «123 456» или «123-456»
-    entered = "".join(ch for ch in code if ch.isalnum()).upper()
-    if entered != row["code"].strip().upper():
+    entered = _normalize_code(code)
+    if entered != str(row["code"]).strip().upper():
         raise VerificationError("Неверный код")
 
     db.execute("UPDATE verification SET used = 1 WHERE id = ?", (row["id"],))

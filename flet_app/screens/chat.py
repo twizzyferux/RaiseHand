@@ -8,6 +8,7 @@ from typing import Optional
 import flet as ft
 
 from core import gradients, logs, offline_outbox, push, rate_limit, sounds, uploads
+from core.i18n import t
 from flet_app import chat_data
 from flet_app import liquid_glass
 from flet_app import mono_icons
@@ -55,7 +56,7 @@ def _menu_bg() -> str:
 
 
 def _menu_item_bg() -> str:
-    return theme.PRIMARY_SOFT if theme.is_dark() else "#F5F3FF"
+    return theme.PRIMARY_SOFT if theme.is_dark() else "#EEEBE6"
 
 
 def _sprite(*parts: str) -> str:
@@ -119,18 +120,24 @@ def _date_chip(label: str) -> ft.Control:
 
 
 def _bubble_ticks(msg: chat_data.Message) -> Optional[ft.Control]:
-    """Галочки на своём сообщении — mono status (onviolet/white)."""
+    """Галочки на своём сообщении; офлайн/очередь — часы из kit (status-sending)."""
     if not msg.mine or msg.deleted:
         return None
-    if msg.pending:
+    try:
+        from core import net_status
+
+        offline = not net_status.is_online()
+    except Exception:
+        offline = False
+    if msg.pending or offline:
         img = mono_icons.status_image("sending", size=13, on_bubble=True)
         return img or ft.Icon(ft.Icons.SCHEDULE, size=13, color="#FFFFFF99")
-        kind = "read" if msg.read else "sent"
+    kind = "read" if msg.read else "sent"
     img = mono_icons.status_image(kind, size=14, on_bubble=True)
     if img is not None:
         return img
     if msg.read:
-        return ft.Icon(ft.Icons.DONE_ALL, size=14, color="#EDE7FF")
+        return ft.Icon(ft.Icons.DONE_ALL, size=14, color="#F2EFEA")
     return ft.Icon(ft.Icons.DONE, size=14, color="#FFFFFFB3")
 
 
@@ -297,12 +304,12 @@ def _bubble_body(msg: chat_data.Message, *, highlighted: bool = False) -> ft.Con
             content=body,
             border_radius=br,
             shadow=ft.BoxShadow(
-                blur_radius=22,
-                spread_radius=1,
-                color="#4018A05A" if not theme.is_dark() else "#66A7F3A0",
-                offset=ft.Offset(0, 4),
+                blur_radius=10,
+                spread_radius=0,
+                color="#2A283028" if not theme.is_dark() else "#00000055",
+                offset=ft.Offset(0, 2),
             ),
-            border=ft.Border.all(1.5, theme.PRIMARY),
+            border=ft.Border.all(1.2, theme.PRIMARY),
         )
     return body
 
@@ -575,30 +582,39 @@ def _header(
     )
 
     short = title if full_title else (title.split()[0] if title else (first or "?"))
-    pill_inner = ft.Row(
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[
-            _avatar_circle(seed, first or short[:1], last, size=40),
-                ft.Column(
-                    spacing=0,
-                    tight=True,
-                expand=True,
-                    controls=[
-                        ft.Text(
-                            short,
-                            size=16,
-                            weight=ft.FontWeight.W_600,
-                            color=theme.INK,
-                            font_family=theme.FONT_FAMILY,
-                        max_lines=1,
-                        overflow=ft.TextOverflow.ELLIPSIS,
-                    ),
-                    online_label,
-                    ],
-                ),
-            ],
+    # Каждый элемент шапки — отдельный hit-target + своя анимация нажатия
+    avatar: ft.Control = _avatar_circle(seed, first or short[:1], last, size=40)
+    if on_profile is not None:
+        avatar = theme.pressable(avatar, on_profile, scale_to=0.90)
+
+    title_block: ft.Control = ft.Column(
+        spacing=0,
+        tight=True,
+        expand=True,
+        controls=[
+            ft.Text(
+                short,
+                size=16,
+                weight=ft.FontWeight.W_600,
+                color=theme.INK,
+                font_family=theme.FONT_FAMILY,
+                max_lines=1,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            ),
+            online_label,
+        ],
     )
+    if on_profile is not None:
+        title_block = theme.pressable(
+            title_block, on_profile, scale_to=0.96, expand=True
+        )
+
+    pill_inner = ft.Row(
+        spacing=10,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        controls=[avatar, title_block],
+    )
+    # Капсула только фон — без on_click/ink на весь блок
     pill = liquid_glass.glass_capsule(
         pill_inner,
         radius=28,
@@ -609,22 +625,13 @@ def _header(
         shadow=True,
         highlight=True,
     )
-    # expand через обёртку — у capsule фиксированная тень/клип
-    # тап по профилю собеседника (не для групп)
-    pill_wrap = ft.Container(
-        expand=True,
-        content=pill,
-        ink=bool(on_profile) and not full_title,
-        on_click=on_profile if (on_profile and not full_title) else None,
-    )
+    pill_wrap = ft.Container(expand=True, content=pill)
 
     report_btn = None
-    if on_report is not None and not full_title:
-        report_btn = ft.IconButton(
-            icon=ft.Icons.FLAG_OUTLINED,
-            icon_color=theme.PRIMARY,
-            tooltip="Пожаловаться",
-            on_click=on_report,
+    if on_report is not None:
+        flag = ft.Icon(ft.Icons.FLAG_OUTLINED, size=20, color=theme.PRIMARY)
+        report_btn = liquid_glass.glass_circle_button(
+            on_report, content=flag, size=44, variant="white"
         )
 
     row_controls: list[ft.Control] = [back_btn, pill_wrap]
@@ -632,7 +639,8 @@ def _header(
         row_controls.append(report_btn)
 
     return ft.Container(
-        padding=ft.Padding.symmetric(horizontal=12, vertical=12),
+        # сверху меньше — без лишней «полки» под статус-баром; размеры кнопок те же
+        padding=ft.Padding.only(left=12, right=12, top=4, bottom=10),
         content=ft.Row(
             spacing=10,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -686,12 +694,19 @@ def build_chat(page: ft.Page) -> ft.Control:
     if theme._image_exists(photo):
         chat_data.attach_demo_photo(photo)
 
+    try:
+        from core import net_status as _net0
+
+        _online0 = _net0.is_online()
+    except Exception:
+        _online0 = True
+
     state = {
         "offset": 0,
         "loaded": 0,
         "reply_to": None,
         "edit_id": None,
-        "online": True,
+        "online": _online0,
         "alive": True,
         "menu_msg": None,
         "is_group": is_group,
@@ -701,7 +716,7 @@ def build_chat(page: ft.Page) -> ft.Control:
     }
 
     online_label = ft.Text(
-        peer_status,
+        peer_status if _online0 else t("common.offline_queue"),
         size=12,
         color=STATUS_MUTED,
         font_family=theme.FONT_FAMILY,
@@ -1123,6 +1138,11 @@ def build_chat(page: ft.Page) -> ft.Control:
     def go_back(_=None):
         close_menu()
         state["alive"] = False
+        # Снять фокус с композера ДО смены роута — иначе iOS оставляет клавиатуру на /home
+        try:
+            theme.dismiss_keyboard(page, field_ref.get("tf"))
+        except Exception:
+            pass
         STATE.draft["_open_is_group"] = False
         try:
             page.pubsub.unsubscribe(on_pubsub)
@@ -1523,9 +1543,14 @@ def build_chat(page: ft.Page) -> ft.Control:
             _refresh_list()
         elif mtype == "net_status":
             state["online"] = bool(message.get("online", True))
-            online_label.value = peer_status if state["online"] else "нет сети · очередь"
+            online_label.value = peer_status if state["online"] else t("common.offline_queue")
             try:
                 online_label.update()
+            except Exception:
+                pass
+            # Часы ↔ галочки на пузырях
+            try:
+                _refresh_list()
             except Exception:
                 pass
             if state["online"]:
@@ -1536,19 +1561,11 @@ def build_chat(page: ft.Page) -> ft.Control:
     except Exception:
         pass
 
-    # реконнект / первичная досылка
-    flush_outbox()
-
-    # демо: имитация потери сети кнопкой долгого жеста не нужна —
-    # публикуем online=True при входе
-    try:
-        page.pubsub.send_all({"type": "net_status", "online": True, "chat_id": cid})
-    except Exception:
-        pass
+    # реконнект / первичная досылка (только если сеть уже есть)
+    if state["online"]:
+        flush_outbox()
 
     composer = _composer(on_send, on_attach, field_ref)
-
-    header_host: dict = {"ctrl": None}
 
     def open_contact_profile(_=None):
         if is_group or contact is None or is_favorites:
@@ -1558,33 +1575,7 @@ def build_chat(page: ft.Page) -> ft.Control:
         STATE.draft["_profile_contact_id"] = contact.id
         STATE.draft["_open_chat_id"] = contact.id
         STATE.draft["_open_is_group"] = False
-        route = contact_route(contact.id)
-
-        hdr = header_host.get("ctrl")
-        if hdr is None:
-            STATE.go(route)
-            return
-
-        # лёгкий «пульс» шапки перед переходом
-        async def _pulse_then_go():
-            import asyncio
-
-            try:
-                hdr.animate_scale = ft.Animation(160, ft.AnimationCurve.EASE_OUT)
-                hdr.scale = 0.97
-                hdr.update()
-                await asyncio.sleep(0.12)
-                hdr.scale = 1.02
-                hdr.update()
-                await asyncio.sleep(0.1)
-            except Exception:
-                pass
-            STATE.go(route)
-
-        try:
-            page.run_task(_pulse_then_go)
-        except Exception:
-            STATE.go(route)
+        STATE.go(contact_route(contact.id))
 
     header_ctrl = _header(
         title=peer_title,
@@ -1597,15 +1588,9 @@ def build_chat(page: ft.Page) -> ft.Control:
         on_report=None if (is_group or is_favorites) else on_report_user,
         on_profile=None if (is_group or is_favorites) else open_contact_profile,
     )
-    header_anim = ft.Container(
-        content=header_ctrl,
-        scale=1,
-        animate_scale=ft.Animation(160, ft.AnimationCurve.EASE_OUT),
-    )
-    header_host["ctrl"] = header_anim
 
     body_controls: list = [
-        header_anim,
+        header_ctrl,
         ft.Container(padding=ft.Padding.symmetric(horizontal=12), content=load_older_btn),
         banner_bar,
         list_col,
@@ -1729,8 +1714,10 @@ def _questions_plaque(*, count: int = 0, on_open=None) -> ft.Control:
 
 
 def _composer(on_send, on_attach, field_ref: dict) -> ft.Control:
-    btn_size = 44.0
-    field_radius = btn_size / 2  # полный stadium, как торцы кругов 44→22
+    # Пропорции как в Telegram: круги ≈ поле по высоте, поле тянется по ширине
+    btn_size = 40.0
+    field_radius = btn_size / 2
+    gap = 6.0
 
     tf = ft.TextField(
         hint_text="Сообщение",
@@ -1740,12 +1727,13 @@ def _composer(on_send, on_attach, field_ref: dict) -> ft.Control:
             field_radius, color="transparent", focused_color="transparent"
         ),
         cursor_color=theme.PRIMARY,
-        text_size=15,
+        text_size=16,
         color=theme.INK,
-        # вертикальный padding под высоту 44 — текст вровень с иконками
-        content_padding=ft.Padding.symmetric(horizontal=18, vertical=8),
-        text_style=ft.TextStyle(font_family=theme.FONT_FAMILY, size=15, color=theme.INK),
-        hint_style=ft.TextStyle(color=theme.HINT, font_family=theme.FONT_FAMILY),
+        content_padding=ft.Padding.symmetric(horizontal=14, vertical=8),
+        text_style=ft.TextStyle(font_family=theme.FONT_FAMILY, size=16, color=theme.INK),
+        hint_style=ft.TextStyle(
+            color=theme.HINT, font_family=theme.FONT_FAMILY, size=16
+        ),
         expand=True,
         multiline=False,
         min_lines=1,
@@ -1764,8 +1752,8 @@ def _composer(on_send, on_attach, field_ref: dict) -> ft.Control:
         blur=liquid_glass._blur(liquid_glass.BTN_BLUR),
         border=ft.Border.all(1.0, liquid_glass.white_glass_border()),
         clip_behavior=ft.ClipBehavior.HARD_EDGE,
-        padding=ft.Padding.symmetric(horizontal=2, vertical=0),
-        alignment=ft.Alignment.CENTER,
+        padding=0,
+        alignment=ft.Alignment.CENTER_LEFT,
     )
     message_field = ft.Container(
         content=message_inner,
@@ -1775,16 +1763,15 @@ def _composer(on_send, on_attach, field_ref: dict) -> ft.Control:
         clip_behavior=ft.ClipBehavior.NONE,
         alignment=ft.Alignment.CENTER,
         shadow=ft.BoxShadow(
-            blur_radius=18,
+            blur_radius=10,
             spread_radius=0,
             color=liquid_glass.white_glass_shadow(),
-            offset=ft.Offset(0, 6),
+            offset=ft.Offset(0, 2),
         ),
     )
 
-    # спрайты из проект/raisehand-icon-kit (light/dark + акцент)
-    attach_icon = mono_icons.ui_icon("attach", size=22)
-    send_icon = mono_icons.ui_icon("send", size=20, variant="onaccent")
+    attach_icon = mono_icons.ui_icon("attach", size=20)
+    send_icon = mono_icons.ui_icon("send", size=18, variant="onaccent")
 
     attach = liquid_glass.glass_circle_button(
         on_attach, content=attach_icon, size=btn_size, variant="white"
@@ -1792,21 +1779,36 @@ def _composer(on_send, on_attach, field_ref: dict) -> ft.Control:
     send_btn = liquid_glass.glass_circle_button(
         on_send, content=send_icon, size=btn_size, variant="purple"
     )
-    # тело кнопки (с animate_scale) — для панча при отправке
-    send_body = getattr(send_btn, "content", None)
+    # легче тень у кругов — как компактная TG-панель, не «парящие» шары
+    for ctrl in (attach, send_btn):
+        try:
+            ctrl.shadow = ft.BoxShadow(
+                blur_radius=10,
+                spread_radius=0,
+                color=liquid_glass.white_glass_shadow()
+                if ctrl is attach
+                else liquid_glass.accent_glass_shadow(),
+                offset=ft.Offset(0, 2),
+            )
+        except Exception:
+            pass
+
+    # glass_circle_button: outer → GestureDetector → body (scale)
+    gd = getattr(send_btn, "content", None)
+    send_body = getattr(gd, "content", None) if gd is not None else None
     if send_body is not None:
         send_body.animate_scale = ft.Animation(160, ft.AnimationCurve.EASE_OUT_CUBIC)
         field_ref["send_body"] = send_body
 
     return ft.Container(
         padding=ft.Padding.only(
-            left=12,
-            right=12,
-            top=6,
+            left=8,
+            right=8,
+            top=4,
             bottom=float(theme.bottom_inset()),
         ),
         content=ft.Row(
-            spacing=8,
+            spacing=gap,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[attach, message_field, send_btn],
         ),

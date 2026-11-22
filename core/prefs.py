@@ -23,6 +23,7 @@ _DEFAULTS = {
     "accent_theme": "violet",  # violet|pink|blue|coral|green|orange
     "bubble_theme": "violet",  # цвет исходящих пузырей
     "app_icon": "violet",  # ключ иконки приложения
+    "language": "ru",  # ru|en|kk|be|uk|de|fr|es|zh|tr
     "privacy_by_user": {},  # public_id → настройки конфиденциальности
     "blacklist_by_owner": {},  # owner_public_id → { target_pid → meta }
 }
@@ -201,3 +202,16 @@ def app_icon_key() -> str:
 
 def set_app_icon_key(key: str) -> None:
     set_pref("app_icon", _theme_key(key))
+
+
+_VALID_LANGS = ("ru", "en", "kk", "be", "uk", "de", "fr", "es", "zh", "tr")
+
+
+def language() -> str:
+    raw = str(get("language", "ru") or "ru").strip().lower()
+    return raw if raw in _VALID_LANGS else "ru"
+
+
+def set_language(code: str) -> None:
+    key = str(code or "ru").strip().lower()
+    set_pref("language", key if key in _VALID_LANGS else "ru")

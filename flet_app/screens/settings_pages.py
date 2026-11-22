@@ -8,28 +8,40 @@ from typing import Callable
 import flet as ft
 
 from core import auth, branding, gradients, logs, prefs
+from core.i18n import t
 from flet_app import chat_data, liquid_glass, mono_icons, theme
+from flet_app.profile_ui import (
+    actions_row,
+    info_card,
+    media_tabs_block,
+    profile_avatar_from_seed,
+    profile_head_block,
+)
 from flet_app.app_state import STATE
 
-# ключ → заголовок экрана
-SETTINGS_PAGES: dict[str, str] = {
-    "profile": "Мой профиль",
-    "avatar": "Аватар",
-    "favorites": "Избранное",
-    "appearance": "Оформление",
-    "bubbles": "Пузыри сообщений",
-    "app_icon": "Иконка приложения",
-    "notifications": "Уведомления и звуки",
-    "privacy": "Конфиденциальность",
-    "blacklist": "Чёрный список",
-    "data": "Данные и память",
-    "language": "Язык",
-    "password": "Пароль",
-    "tips": "Возможности",
-    "help": "Помощь",
-    "faq": "Вопросы",
-    "logs": "Логи приложения",
-}
+SETTINGS_PAGE_KEYS: tuple[str, ...] = (
+    "profile",
+    "avatar",
+    "favorites",
+    "appearance",
+    "bubbles",
+    "app_icon",
+    "notifications",
+    "privacy",
+    "blacklist",
+    "data",
+    "language",
+    "password",
+    "tips",
+    "help",
+    "faq",
+    "logs",
+)
+
+
+def settings_page_title(key: str) -> str:
+    """Заголовок экрана настроек — строка вычисляется при отрисовке."""
+    return t(f"settings.{key}")
 
 # вложенные экраны → родитель (назад на один уровень, не сразу в хаб)
 SETTINGS_PARENT: dict[str, str] = {
@@ -69,31 +81,34 @@ def _sprite(key: str) -> str:
     return theme.asset("assets", "images", "settings", "light", f"{key}.png")
 
 
-def _header(title: str, *, on_back=None) -> ft.Control:
+def _header(title: str, *, on_back=None, trailing: ft.Control | None = None) -> ft.Control:
     back = liquid_glass.glass_circle_button(
         on_back or _back_to_settings,
         content=mono_icons.ui_icon("back", size=22),
         size=44,
         variant="white",
     )
+    row_controls: list[ft.Control] = [
+        back,
+        ft.Text(
+            title,
+            size=20,
+            weight=ft.FontWeight.W_700,
+            color=theme.INK,
+            font_family=theme.FONT_FAMILY,
+            expand=True,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        ),
+    ]
+    if trailing is not None:
+        row_controls.append(trailing)
     return ft.Container(
         padding=ft.Padding.symmetric(horizontal=12, vertical=8),
         content=ft.Row(
             spacing=10,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[
-                back,
-                ft.Text(
-                    title,
-                    size=20,
-                    weight=ft.FontWeight.W_700,
-                    color=theme.INK,
-                    font_family=theme.FONT_FAMILY,
-                    expand=True,
-                    max_lines=1,
-                    overflow=ft.TextOverflow.ELLIPSIS,
-                ),
-            ],
+            controls=row_controls,
         ),
     )
 
@@ -115,8 +130,18 @@ def _shell(page: ft.Page, key: str, body: ft.Control) -> ft.Control:
     # тихий refresh (смена цвета/темы) — без повторного «шоу»
     quiet = bool(STATE.draft.pop("_settings_no_anim", False))
 
-    title = SETTINGS_PAGES.get(key, key)
-    header = _header(title, on_back=_back_from(key))
+    title = settings_page_title(key) if key in SETTINGS_PAGE_KEYS else key
+    header_trailing: ft.Control | None = None
+    if key == "profile":
+        edit_cb = STATE.draft.pop("_profile_header_edit", None)
+        if edit_cb is not None:
+            header_trailing = liquid_glass.glass_circle_button(
+                edit_cb,
+                content=mono_icons.ui_icon("edit", size=22),
+                size=44,
+                variant="white",
+            )
+    header = _header(title, on_back=_back_from(key), trailing=header_trailing)
     header_wrap = ft.Container(
         content=header,
         opacity=1 if quiet else 0,
@@ -194,14 +219,14 @@ def _placeholder(key: str, hint: str = "") -> ft.Control:
     controls.extend(
         [
             ft.Text(
-                SETTINGS_PAGES.get(key, key),
+                settings_page_title(key) if key in SETTINGS_PAGE_KEYS else key,
                 size=18,
                 weight=ft.FontWeight.W_600,
                 color=theme.INK,
                 font_family=theme.FONT_FAMILY,
             ),
             ft.Text(
-                hint or "Здесь появятся настройки этого раздела.",
+                hint or t("settings.section_placeholder"),
                 size=14,
                 color=theme.MUTED,
                 font_family=theme.FONT_FAMILY,
@@ -213,20 +238,24 @@ def _placeholder(key: str, hint: str = "") -> ft.Control:
 
 def _card(content: ft.Control, *, padding: ft.Padding | None = None) -> ft.Control:
     # ширина = ListView (PHONE_WIDTH − padding 16+16), иначе короткие карточки «пилюлей»
+    # Плотная CARD без glass-blur — без серых полос между строками
     card_w = float(theme.PHONE_WIDTH - 32)
     return ft.Container(
         alignment=ft.Alignment.CENTER,
         width=card_w,
-        content=liquid_glass.glass_capsule(
-            content,
-            radius=22,
-            blur=liquid_glass.BTN_BLUR,
-            tint=liquid_glass.white_glass_tint(),
-            border_color=liquid_glass.white_glass_border(),
-            padding=padding or ft.Padding.all(16),
-            shadow=True,
-            highlight=True,
+        content=ft.Container(
+            content=content,
             width=card_w,
+            padding=padding or ft.Padding.all(16),
+            border_radius=22,
+            bgcolor=theme.CARD,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            shadow=ft.BoxShadow(
+                blur_radius=12,
+                spread_radius=0,
+                color=liquid_glass.white_glass_shadow(),
+                offset=ft.Offset(0, 3),
+            ),
         ),
     )
 
@@ -255,7 +284,8 @@ def _switch_row(label: str, sw: ft.Switch, *, hint: str = "") -> ft.Control:
 
 
 def _divider() -> ft.Control:
-    return ft.Container(height=1, bgcolor=theme.DIVIDER)
+    # Без серых линий в карточках — только небольшой зазор
+    return ft.Container(height=8)
 
 
 # --- экраны с уже рабочей логикой ---
@@ -447,32 +477,10 @@ def _settings_row_item(
 
 
 def _page_profile(page: ft.Page) -> ft.Control:
-    """Свой профиль — тот же вид, что у чужого: карточка + строки настроек."""
+    """Свой профиль — Telegram-style (тело для settings _shell)."""
     user = STATE.user
     if user is None:
         return _placeholder("profile", "Войдите, чтобы видеть профиль.")
-
-    name_text = ft.Text(
-        user.full_name or "Без имени",
-        size=22,
-        weight=ft.FontWeight.W_700,
-        color=theme.INK,
-        font_family=theme.FONT_FAMILY,
-        max_lines=2,
-        overflow=ft.TextOverflow.ELLIPSIS,
-    )
-    nick_line = ft.Text(
-        f"@{user.nickname}" if user.nickname else "без ника",
-        size=13,
-        color=theme.MUTED,
-        font_family=theme.FONT_FAMILY,
-    )
-    bio_body = ft.Text(
-        (user.status_text or "").strip() or "Добавьте описание профиля",
-        size=15,
-        color=theme.INK,
-        font_family=theme.FONT_FAMILY,
-    )
 
     def reload():
         STATE.draft["_settings_no_anim"] = True
@@ -500,6 +508,8 @@ def _page_profile(page: ft.Page) -> ft.Control:
             )
 
         _edit_dialog(page, title="Имя", fields=[first_tf, last_tf], on_save=_save)
+
+    STATE.draft["_profile_header_edit"] = edit_name
 
     def edit_nick(_e=None):
         u = STATE.user
@@ -550,111 +560,67 @@ def _page_profile(page: ft.Page) -> ft.Control:
 
         _edit_dialog(page, title="Описание", fields=[bio_tf], on_save=_save)
 
-    name_row = ft.Container(
-        ink=True,
-        on_click=edit_name,
-        padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-        border_radius=10,
-        content=ft.Row(
-            spacing=8,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[
-                name_text,
-                mono_icons.ui_icon("edit", size=18),
-            ],
+    def more_soon(_e=None):
+        STATE.snack("Дополнительные действия скоро")
+
+    seed = (user.public_id or user.display_name or "me").lower()
+    avatar = profile_avatar_from_seed(
+        seed,
+        user.first_name or "?",
+        user.last_name or "",
+        size=120,
+        image_path=getattr(user, "avatar_path", None),
+    )
+
+    status_line = "это вы"
+    if (user.status_text or "").strip():
+        status_line = f"это вы · {(user.status_text or '').strip()[:48]}"
+
+    head = profile_head_block(
+        avatar=avatar,
+        display_name=user.full_name or "Без имени",
+        status_line=status_line,
+        name_on_click=edit_name,
+    )
+
+    profile_actions = actions_row(
+        [
+            ("edit", "Изменить", edit_name),
+            (ft.Icons.ACCOUNT_CIRCLE_OUTLINED, "Аватар", lambda _: STATE.go(settings_route("avatar"))),
+            (ft.Icons.LOCK_OUTLINE, "Конфид.", lambda _: STATE.go(settings_route("privacy"))),
+            ("more", "Ещё", more_soon),
+        ]
+    )
+
+    info_rows = [
+        ("Имя", user.full_name or "", edit_name),
+        (
+            "Никнейм",
+            f"@{user.nickname}" if user.nickname else "не указано",
+            edit_nick,
         ),
-    )
-
-    nick_tap = ft.Container(
-        ink=True,
-        on_click=edit_nick,
-        padding=ft.Padding.symmetric(horizontal=8, vertical=2),
-        border_radius=8,
-        content=nick_line,
-    )
-
-    bio_block = ft.Container(
-        ink=True,
-        on_click=edit_bio,
-        padding=ft.Padding.symmetric(vertical=4),
-        border_radius=10,
-        content=ft.Column(
-            spacing=4,
-            tight=True,
-            horizontal_alignment=ft.CrossAxisAlignment.START,
-            controls=[
-                ft.Row(
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    controls=[
-                        _section_label("О себе"),
-                        mono_icons.ui_icon("edit", size=18),
-                    ],
-                ),
-                bio_body,
-            ],
+        ("Телефон / email", user.contact_value or "", edit_phone),
+        (
+            "О себе",
+            (user.status_text or "").strip() or "не указано",
+            edit_bio,
         ),
-    )
+        ("ID", user.public_id or "", None),
+    ]
 
-    head = _card(
-        ft.Column(
-            spacing=12,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            tight=True,
-            controls=[
-                _profile_avatar(user, 96),
-                name_row,
-                nick_tap,
-                ft.Text(
-                    f"ID: {user.public_id}",
-                    size=13,
-                    color=theme.MUTED,
-                    font_family=theme.FONT_FAMILY,
-                    selectable=True,
-                ),
-                ft.Container(padding=ft.Padding.only(top=4), content=bio_block),
-            ],
-        ),
-        padding=ft.Padding.symmetric(horizontal=20, vertical=20),
-    )
-
-    details = _card(
-        ft.Column(
-            spacing=0,
-            tight=True,
-            controls=[
-                _section_label("Данные профиля"),
-                _settings_row_item(
-                    title="Имя",
-                    value=user.full_name or "",
-                    on_click=edit_name,
-                ),
-                ft.Container(height=1, bgcolor=theme.DIVIDER),
-                _settings_row_item(
-                    title="Никнейм",
-                    value=f"@{user.nickname}" if user.nickname else "",
-                    on_click=edit_nick,
-                ),
-                ft.Container(height=1, bgcolor=theme.DIVIDER),
-                _settings_row_item(
-                    title="Телефон / email",
-                    value=user.contact_value or "",
-                    on_click=edit_phone,
-                ),
-                ft.Container(height=1, bgcolor=theme.DIVIDER),
-                _settings_row_item(
-                    title="Описание",
-                    value=(user.status_text or "").strip(),
-                    on_click=edit_bio,
-                ),
-            ],
-        )
-    )
+    media_block = media_tabs_block([], empty_text="Медиа из ваших чатов появятся здесь")
 
     return ft.Column(
-        spacing=12,
+        spacing=16,
         tight=True,
-        controls=[head, details, ft.Container(height=8)],
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        controls=[
+            head,
+            profile_actions,
+            info_card(info_rows),
+            media_block,
+            ft.Container(height=8),
+        ],
     )
 
 
@@ -730,11 +696,11 @@ def _page_appearance(page: ft.Page) -> ft.Control:
                     spacing=14,
                     tight=True,
                     controls=[
-                        _switch_row("Тёмная тема", theme_sw),
-                        _section_label("Предпочтительный цвет"),
+                        _switch_row(t("appearance.dark_theme"), theme_sw),
+                        _section_label(t("appearance.preferred_color")),
                         _chips_row(chips),
                         ft.Text(
-                            "Меняет кнопки, акценты и общий тон приложения.",
+                            t("appearance.color_hint"),
                             size=12,
                             color=theme.MUTED,
                         ),
@@ -747,14 +713,14 @@ def _page_appearance(page: ft.Page) -> ft.Control:
                     tight=True,
                     controls=[
                         _settings_row_item(
-                            title="Пузыри сообщений",
-                            value="Цвет ваших сообщений в чатах",
+                            title=t("appearance.bubbles_row"),
+                            value=t("appearance.bubbles_hint"),
                             on_click=lambda _: STATE.go(settings_route("bubbles")),
                         ),
-                        ft.Container(height=1, bgcolor=theme.DIVIDER),
+                        ft.Container(height=6),
                         _settings_row_item(
-                            title="Иконка приложения",
-                            value="Иконка на рабочем столе / в панели",
+                            title=t("appearance.app_icon_row"),
+                            value=t("appearance.app_icon_hint"),
                             on_click=lambda _: STATE.go(settings_route("app_icon")),
                         ),
                     ],
@@ -1267,9 +1233,9 @@ def _page_notifications(page: ft.Page) -> ft.Control:
         tight=True,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         controls=[
-            _section_label("Уведомления"),
+            _section_label(t("notif.section_notifications")),
             notif_card,
-            _section_label("Звуки"),
+            _section_label(t("notif.section_sounds")),
             sound_card,
         ],
     )
@@ -1576,19 +1542,111 @@ def _page_logs(page: ft.Page) -> ft.Control:
     )
 
 
+_LANG_CODES: tuple[str, ...] = (
+    "ru",
+    "en",
+    "kk",
+    "be",
+    "uk",
+    "de",
+    "fr",
+    "es",
+    "zh",
+    "tr",
+)
+
+
 def _page_language(page: ft.Page) -> ft.Control:
+    current = prefs.language()
+
+    rows: list[ft.Control] = []
+    for code in _LANG_CODES:
+        native = t(f"lang.{code}")
+        english = t(f"lang.{code}_hint")
+        selected = code == current
+
+        def _pick(_e=None, c=code):
+            prefs.set_language(c)
+            logs.info("prefs language=%s", c)
+            name = t(f"lang.{c}")
+            STATE.snack(t("lang.changed", name=name))
+            STATE.draft["_home_tab"] = "settings"
+            STATE.draft["_settings_no_anim"] = True
+            STATE.go(settings_route("language"))
+
+        rows.append(
+            ft.Container(
+                ink=False,
+                on_click=_pick,
+                padding=ft.Padding.symmetric(vertical=12, horizontal=8),
+                border_radius=14,
+                bgcolor=theme.PRIMARY_SOFT if selected else None,
+                content=ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=8,
+                    controls=[
+                        ft.Container(
+                            expand=True,
+                            alignment=ft.Alignment.CENTER,
+                            content=ft.Column(
+                                spacing=2,
+                                tight=True,
+                                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                                controls=[
+                                    ft.Text(
+                                        native,
+                                        size=16,
+                                        weight=ft.FontWeight.W_600
+                                        if selected
+                                        else ft.FontWeight.W_500,
+                                        color=theme.PRIMARY if selected else theme.INK,
+                                        font_family=theme.FONT_FAMILY,
+                                        text_align=ft.TextAlign.CENTER,
+                                    ),
+                                    ft.Text(
+                                        english,
+                                        size=12,
+                                        color=theme.MUTED,
+                                        font_family=theme.FONT_FAMILY,
+                                        text_align=ft.TextAlign.CENTER,
+                                    ),
+                                ],
+                            ),
+                        ),
+                        ft.Icon(
+                            ft.Icons.CHECK_ROUNDED,
+                            size=20,
+                            color=theme.PRIMARY if selected else "#00000000",
+                        ),
+                    ],
+                ),
+            )
+        )
+
     return _card(
         ft.Column(
-            spacing=10,
+            spacing=6,
             tight=True,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
-                ft.Text("Язык интерфейса", size=16, weight=ft.FontWeight.W_600),
-                ft.Text("Русский (по умолчанию)", size=14, color=theme.MUTED),
                 ft.Text(
-                    "Другие языки добавим позже.",
+                    t("lang.title"),
+                    size=16,
+                    weight=ft.FontWeight.W_600,
+                    color=theme.INK,
+                    font_family=theme.FONT_FAMILY,
+                    text_align=ft.TextAlign.CENTER,
+                ),
+                ft.Text(
+                    t("lang.subtitle"),
                     size=13,
                     color=theme.MUTED,
+                    font_family=theme.FONT_FAMILY,
+                    text_align=ft.TextAlign.CENTER,
                 ),
+                ft.Container(height=4),
+                *rows,
             ],
         )
     )
@@ -1613,7 +1671,7 @@ _BUILDERS: dict[str, Callable[[ft.Page], ft.Control]] = {
 def build(page: ft.Page, key: str) -> ft.Control:
     """Собрать экран пункта настроек. Заготовки — в _placeholder."""
     key = (key or "").strip() or "profile"
-    if key not in SETTINGS_PAGES:
+    if key not in SETTINGS_PAGE_KEYS:
         key = "profile"
     STATE.draft["_settings_page"] = key
     builder = _BUILDERS.get(key)
@@ -1627,7 +1685,7 @@ def build(page: ft.Page, key: str) -> ft.Control:
 def register_routes() -> dict[str, Callable]:
     """Карта route → builder для main.py."""
     out: dict[str, Callable] = {}
-    for key in SETTINGS_PAGES:
+    for key in SETTINGS_PAGE_KEYS:
 
         def _make(k: str):
             return lambda page, _k=k: build(page, _k)

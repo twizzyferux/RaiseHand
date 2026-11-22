@@ -44,7 +44,7 @@ jobs:
             --module-name main.py \
             --python-version 3.12 \
             --build-number "${{ github.run_number }}" \
-            --build-version "0.1.0" \
+            --build-version "0.2.0" \
             --output build/ipa
 
       - name: Pack unsigned IPA from xcarchive

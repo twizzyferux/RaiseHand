@@ -5,6 +5,7 @@ from __future__ import annotations
 import flet as ft
 
 from core import auth, session
+from core.i18n import t
 from core.config import SETTINGS, save_settings
 from flet_app.app_state import STATE
 from flet_app import theme
@@ -37,7 +38,7 @@ def _pill_field(label: str, hint: str = "", *, value: str = "", password: bool =
 def build_login(page: ft.Page) -> ft.Control:
     remembered = SETTINGS.get("remember_login", "") or ""
     login_tf = _pill_field("Логин / ID", hint="email или ID", value=remembered)
-    pass_tf = _pill_field("Пароль", password=True)
+    pass_tf = _pill_field(t("auth.password"), password=True)
     remember = ft.Checkbox(
         label="Запомнить меня",
         value=bool(session.user_id()),
@@ -79,7 +80,7 @@ def build_login(page: ft.Page) -> ft.Control:
             STATE.go("/home")
 
     back = ft.TextButton(
-        "← Назад",
+        t("common.back"),
         on_click=lambda _: STATE.go("/welcome"),
         style=ft.ButtonStyle(color=theme.PRIMARY),
     )
@@ -92,7 +93,7 @@ def build_login(page: ft.Page) -> ft.Control:
                 ft.Container(content=back, alignment=ft.Alignment.CENTER_LEFT, height=44),
                 ft.Container(height=8),
                 ft.Text(
-                    "Вход",
+                    t("auth.login"),
                     size=34,
                     weight=ft.FontWeight.BOLD,
                     color=theme.INK,
@@ -126,7 +127,7 @@ def build_login(page: ft.Page) -> ft.Control:
             controls=[
                 ft.Container(
                     alignment=ft.Alignment.CENTER,
-                    content=theme.primary_image_button("Войти", do_login),
+                    content=theme.primary_image_button(t("auth.sign_in"), do_login),
                 ),
                 ft.Container(height=8),
             ],

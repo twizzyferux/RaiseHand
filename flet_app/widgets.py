@@ -25,9 +25,9 @@ CARD_HEIGHT = 56
 NAV_HEIGHT = 60
 NAV_RADIUS = 30
 
-# фирменный градиент аватара (как в макете: розовый -> фиолетовый)
-AVATAR_GRADIENT = ["#FF8FAB", "#A78BFA"]
-BADGE_PINK = "#F0447C"
+# мягкий градиент аватара — без кислотного розово-фиолетового
+AVATAR_GRADIENT = ["#C48A96", "#7A7288"]
+BADGE_PINK = "#B86A7A"
 
 
 def _font() -> str:

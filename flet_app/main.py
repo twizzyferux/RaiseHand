@@ -202,6 +202,12 @@ def main(page: ft.Page):
         from_chat = (prev in ("/chat", "/questions")) and not to_chat and not to_sheet
         to_auth = route.startswith("/reg/") or route == "/login"
         from_auth = (prev or "").startswith("/reg/") or prev in ("/login", "/welcome")
+        # уход с чата/вопросов: на всякий случай закрыть клавиатуру (iOS sticky keyboard)
+        if from_chat:
+            try:
+                theme.dismiss_keyboard(page)
+            except Exception:
+                pass
         # один BG у шагов регистрации — нужен Stack-crossfade, иначе fade «пустой»
         use_crossfade = bool(animate and to_auth and from_auth and page.controls)
 
@@ -378,7 +384,14 @@ def main(page: ft.Page):
         pass
 
     def on_resize(_e=None):
-        theme.sync_viewport(page)
+        # Desktop: снова зафиксировать окно-телефон; mobile: подтянуть реальный экран
+        try:
+            if theme.is_mobile_runtime():
+                theme.sync_viewport(page)
+            else:
+                theme.lock_phone_window(page)
+        except Exception:
+            theme.sync_viewport(page)
 
     try:
         page.on_resize = on_resize
@@ -387,7 +400,13 @@ def main(page: ft.Page):
 
     def _net(online: bool):
         try:
-            page.pubsub.send_all({"type": "net_status", "online": online})
+            from core import net_status as _net_mod
+
+            _net_mod.set_online(online)
+        except Exception:
+            pass
+        try:
+            page.pubsub.send_all({"type": "net_status", "online": bool(online)})
         except Exception:
             pass
 
@@ -397,6 +416,16 @@ def main(page: ft.Page):
         pass
     try:
         page.on_connect = lambda e: _net(True)
+    except Exception:
+        pass
+
+    # Реальная сеть (airplane mode и т.п.) — Flet on_disconnect этого не ловит
+    try:
+        from core import net_status
+
+        net_status.refresh()
+        net_status.start_watcher(lambda online: _net(online), interval=3.0)
+        _net(net_status.is_online())
     except Exception:
         pass
 

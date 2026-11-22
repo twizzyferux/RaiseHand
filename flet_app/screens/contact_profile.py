@@ -1,14 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Профиль контакта: локальное имя, описание, медиа, сообщения, общие чаты."""
+"""Профиль контакта — Telegram-style layout."""
 from __future__ import annotations
-
-from typing import Optional
 
 import flet as ft
 
 from core import gradients
-from flet_app import chat_data, liquid_glass, mono_icons, theme
+from flet_app import chat_data, liquid_glass, theme
 from flet_app.app_state import STATE
+from flet_app.profile_ui import (
+    actions_row,
+    info_card,
+    media_cells_from_messages,
+    media_tabs_block,
+    profile_avatar_from_seed,
+    profile_head_block,
+    profile_shell,
+)
 
 
 def contact_route(cid: str) -> str:
@@ -23,50 +30,6 @@ def _back_to_chat(_=None):
     STATE.go("/chat")
 
 
-def _card(content: ft.Control, *, padding: Optional[ft.Padding] = None) -> ft.Control:
-    # Фиксированная ширина = ListView (PHONE_WIDTH − padding 16+16),
-    # иначе короткий текст (пустые фото) сжимает glass в «пилюлю».
-    card_w = float(theme.PHONE_WIDTH - 32)
-    return ft.Container(
-        alignment=ft.Alignment.CENTER_LEFT,
-        width=card_w,
-        content=liquid_glass.glass_capsule(
-            content,
-            radius=22,
-            blur=liquid_glass.BTN_BLUR,
-            tint=liquid_glass.white_glass_tint(),
-            border_color=liquid_glass.white_glass_border(),
-            padding=padding or ft.Padding.all(16),
-            shadow=True,
-            highlight=True,
-            width=card_w,
-        ),
-    )
-
-
-def _enter_wrap(child: ft.Control, *, delay_ms: int = 0) -> ft.Container:
-    """Секция: мягкий fade (без scale — иначе полосы по бокам)."""
-    return ft.Container(
-        alignment=ft.Alignment.CENTER_LEFT,
-        content=child,
-        opacity=0,
-        offset=ft.Offset(0, 0.02),
-        animate_opacity=ft.Animation(260, ft.AnimationCurve.EASE_OUT),
-        animate_offset=ft.Animation(280, ft.AnimationCurve.EASE_OUT),
-        data={"delay": delay_ms},
-    )
-
-
-def _section_title(text: str) -> ft.Control:
-    return ft.Text(
-        text,
-        size=13,
-        weight=ft.FontWeight.W_600,
-        color=theme.MUTED,
-        font_family=theme.FONT_FAMILY,
-    )
-
-
 def _peer_public_id(contact: chat_data.Contact) -> str:
     cid = str(contact.id or "")
     if cid.startswith("u:"):
@@ -74,74 +37,37 @@ def _peer_public_id(contact: chat_data.Contact) -> str:
     return (contact.seed or "").strip()
 
 
-def _avatar(contact: chat_data.Contact, size: float = 88) -> ft.Control:
-    from core import privacy as priv
-
-    pid = _peer_public_id(contact)
-    if pid and priv.for_user(pid).get("hide_avatar"):
-        return ft.Container(
-            width=size,
-            height=size,
-            border_radius=size / 2,
-            bgcolor=theme.FIELD_BG,
-            alignment=ft.Alignment.CENTER,
-            border=ft.Border.all(1, theme.STROKE),
-            content=ft.Icon(ft.Icons.PERSON_OUTLINE, size=size * 0.42, color=theme.MUTED),
-        )
-    colors = gradients.colors_for(contact.seed)
-    top = "#%02X%02X%02X" % colors["top"]
-    bottom = "#%02X%02X%02X" % colors["bottom"]
-    initials = gradients.initials_for(contact.first, contact.last)
+def _secondary_card(title: str, body_controls: list[ft.Control]) -> ft.Control:
+    card_w = float(theme.PHONE_WIDTH - 32)
     return ft.Container(
-        width=size,
-        height=size,
-        border_radius=size / 2,
-        gradient=ft.LinearGradient(
-            begin=ft.Alignment(0, -1),
-            end=ft.Alignment(0, 1),
-            colors=[top, bottom],
+        width=card_w,
+        padding=ft.Padding.all(16),
+        border_radius=20,
+        bgcolor=theme.CARD,
+        clip_behavior=ft.ClipBehavior.HARD_EDGE,
+        shadow=ft.BoxShadow(
+            blur_radius=12,
+            color=liquid_glass.white_glass_shadow(),
+            offset=ft.Offset(0, 3),
         ),
-        alignment=ft.Alignment.CENTER,
-        content=ft.Text(
-            initials,
-            size=int(size * 0.32),
-            weight=ft.FontWeight.W_700,
-            color="#FFFFFF",
-            font_family=theme.FONT_FAMILY,
-        ),
-    )
-
-
-def _header_bar(title: str) -> ft.Control:
-    back = liquid_glass.glass_circle_button(
-        _back_to_chat,
-        content=mono_icons.ui_icon("back", size=22),
-        size=44,
-        variant="white",
-    )
-    return ft.Container(
-        padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-        content=ft.Row(
-            spacing=10,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        content=ft.Column(
+            spacing=8,
+            tight=True,
             controls=[
-                back,
                 ft.Text(
                     title,
-                    size=20,
-                    weight=ft.FontWeight.W_700,
-                    color=theme.INK,
+                    size=13,
+                    weight=ft.FontWeight.W_600,
+                    color=theme.MUTED,
                     font_family=theme.FONT_FAMILY,
-                    expand=True,
-                    max_lines=1,
-                    overflow=ft.TextOverflow.ELLIPSIS,
                 ),
+                *body_controls,
             ],
         ),
     )
 
 
-def _edit_name_dialog(page: ft.Page, contact: chat_data.Contact, name_text: ft.Text):
+def _edit_name_dialog(page: ft.Page, contact: chat_data.Contact, name_ref: ft.Text | None = None):
     field = ft.TextField(
         value=contact.display_name,
         label="Имя контакта",
@@ -168,20 +94,19 @@ def _edit_name_dialog(page: ft.Page, contact: chat_data.Contact, name_text: ft.T
 
     def save(_=None):
         chat_data.set_contact_local_name(contact.id, field.value or "")
-        name_text.value = contact.display_name
-        try:
-            name_text.update()
-        except Exception:
-            pass
+        if name_ref is not None:
+            name_ref.value = contact.display_name
+            try:
+                name_ref.update()
+            except Exception:
+                pass
         close()
+        STATE.draft["_profile_reload"] = True
+        STATE.go(contact_route(contact.id))
 
     dlg = ft.AlertDialog(
         modal=True,
-        title=ft.Text(
-            "Изменить имя",
-            color=theme.INK,
-            font_family=theme.FONT_FAMILY,
-        ),
+        title=ft.Text("Изменить имя", color=theme.INK, font_family=theme.FONT_FAMILY),
         bgcolor=theme.CARD,
         content=ft.Column(
             tight=True,
@@ -211,119 +136,6 @@ def _edit_name_dialog(page: ft.Page, contact: chat_data.Contact, name_text: ft.T
             STATE.error("Не удалось открыть форму")
 
 
-def _media_grid(contact: chat_data.Contact) -> ft.Control:
-    media = chat_data.media_messages(contact.id)
-    if not media:
-        return _card(
-            ft.Text(
-                "Пока нет фото в этом чате",
-                size=14,
-                color=theme.MUTED,
-                font_family=theme.FONT_FAMILY,
-            )
-        )
-    cells: list[ft.Control] = []
-    for m in media[:12]:
-        src = m.image or ""
-        if theme._image_exists(src):
-            body: ft.Control = ft.Image(
-                src=src, width=104, height=104, fit=ft.BoxFit.COVER
-            )
-        else:
-            body = ft.Container(
-                width=104,
-                height=104,
-                bgcolor=theme.FIELD_BG,
-                alignment=ft.Alignment.CENTER,
-                content=ft.Icon(ft.Icons.IMAGE_OUTLINED, color=theme.MUTED, size=28),
-            )
-        cells.append(
-            ft.Container(
-                width=104,
-                height=104,
-                border_radius=14,
-                clip_behavior=ft.ClipBehavior.HARD_EDGE,
-                content=body,
-            )
-        )
-    return _card(
-        ft.Column(
-            spacing=10,
-            tight=True,
-            controls=[
-                _section_title(f"Фото · {len(media)}"),
-                ft.Row(wrap=True, spacing=8, run_spacing=8, controls=cells),
-            ],
-        )
-    )
-
-
-def _messages_block(contact: chat_data.Contact) -> ft.Control:
-    msgs = chat_data.text_messages(contact.id, limit=8)
-    if not msgs:
-        return _card(
-            ft.Text("Нет сообщений", size=14, color=theme.MUTED, font_family=theme.FONT_FAMILY)
-        )
-
-    def open_chat(_=None):
-        STATE.draft["_open_chat_id"] = contact.id
-        STATE.draft["_open_is_group"] = False
-        STATE.go("/chat")
-
-    rows: list[ft.Control] = []
-    for m in msgs:
-        who = "Вы" if m.mine else contact.first
-        preview = "Фото" if m.image and not m.text else (m.text or "").replace("\n", " ")
-        preview = preview[:56] + ("…" if len(preview) > 56 else "")
-        rows.append(
-            ft.Container(
-                padding=ft.Padding.symmetric(vertical=6),
-                content=ft.Row(
-                    spacing=8,
-                    controls=[
-                        ft.Text(
-                            who,
-                            size=13,
-                            weight=ft.FontWeight.W_600,
-                            color=theme.PRIMARY if m.mine else theme.INK,
-                            width=48,
-                        ),
-                        ft.Text(
-                            preview,
-                            size=13,
-                            color=theme.INK,
-                            expand=True,
-                            max_lines=1,
-                            overflow=ft.TextOverflow.ELLIPSIS,
-                        ),
-                        ft.Text(m.time, size=12, color=theme.MUTED),
-                    ],
-                ),
-            )
-        )
-
-    return _card(
-        ft.Column(
-            spacing=4,
-            tight=True,
-            controls=[
-                ft.Row(
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    controls=[
-                        _section_title("Сообщения"),
-                        ft.TextButton(
-                            "Открыть чат",
-                            style=ft.ButtonStyle(color=theme.PRIMARY, padding=0),
-                            on_click=open_chat,
-                        ),
-                    ],
-                ),
-                *rows,
-            ],
-        )
-    )
-
-
 def _shared_chats(contact: chat_data.Contact) -> ft.Control:
     from core import privacy as priv
 
@@ -344,7 +156,11 @@ def _shared_chats(contact: chat_data.Contact) -> ft.Control:
             content=ft.Row(
                 spacing=12,
                 controls=[
-                    _avatar(contact, size=40),
+                    profile_avatar_from_seed(
+                        contact.seed, contact.first, contact.last, size=40, hide=bool(
+                            pid and priv.for_user(pid).get("hide_avatar")
+                        ),
+                    ),
                     ft.Column(
                         spacing=0,
                         tight=True,
@@ -356,11 +172,7 @@ def _shared_chats(contact: chat_data.Contact) -> ft.Control:
                                 weight=ft.FontWeight.W_600,
                                 color=theme.INK,
                             ),
-                            ft.Text(
-                                contact.status or "",
-                                size=12,
-                                color=theme.MUTED,
-                            ),
+                            ft.Text(contact.status or "", size=12, color=theme.MUTED),
                         ],
                     ),
                     ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.MUTED, size=20),
@@ -428,26 +240,16 @@ def _shared_chats(contact: chat_data.Contact) -> ft.Control:
             )
         )
 
-    body_controls: list[ft.Control] = [_section_title("Чаты с этим человеком"), *rows]
     if hide_groups:
-        body_controls.append(
-            ft.Container(
-                padding=ft.Padding.symmetric(vertical=8),
-                content=ft.Text(
-                    "Общие группы скрыты настройками конфиденциальности",
-                    size=13,
-                    color=theme.MUTED,
-                    font_family=theme.FONT_FAMILY,
-                ),
+        rows.append(
+            ft.Text(
+                "Общие группы скрыты настройками конфиденциальности",
+                size=13,
+                color=theme.MUTED,
+                font_family=theme.FONT_FAMILY,
             )
         )
-    return _card(
-        ft.Column(
-            spacing=0,
-            tight=True,
-            controls=body_controls,
-        )
-    )
+    return _secondary_card("Чаты с этим человеком", rows)
 
 
 def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
@@ -466,162 +268,125 @@ def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
             ),
         )
 
+    STATE.draft.pop("_profile_reload", None)
     STATE.draft["_profile_contact_id"] = contact.id
-    name_text = ft.Text(
-        contact.display_name,
-        size=22,
-        weight=ft.FontWeight.W_700,
-        color=theme.INK,
-        font_family=theme.FONT_FAMILY,
-        max_lines=2,
-        overflow=ft.TextOverflow.ELLIPSIS,
-    )
-
-    name_row = ft.Container(
-        ink=True,
-        on_click=lambda _: _edit_name_dialog(page, contact, name_text),
-        content=ft.Row(
-            spacing=8,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[
-                name_text,
-                mono_icons.ui_icon("edit", size=18),
-            ],
-        ),
-    )
 
     from core import auth, privacy as priv
 
     peer_pid = _peer_public_id(contact)
     pset = priv.for_user(peer_pid) if peer_pid else {}
-    status_text = priv.status_for_others(peer_pid, contact.status or "") if peer_pid else (contact.status or "")
+    hide_avatar = bool(peer_pid and pset.get("hide_avatar"))
+    status_text = (
+        priv.status_for_others(peer_pid, contact.status or "") if peer_pid else (contact.status or "")
+    )
 
-    phone_line: ft.Control | None = None
+    name_text = ft.Text(
+        contact.display_name,
+        size=24,
+        weight=ft.FontWeight.W_700,
+        color=theme.INK,
+        font_family=theme.FONT_FAMILY,
+        text_align=ft.TextAlign.CENTER,
+        max_lines=2,
+        overflow=ft.TextOverflow.ELLIPSIS,
+    )
+
+    def edit_name(_e=None):
+        _edit_name_dialog(page, contact, name_text)
+
+    avatar = profile_avatar_from_seed(
+        contact.seed,
+        contact.first,
+        contact.last,
+        size=120,
+        hide=hide_avatar,
+    )
+
+    def open_chat(_e=None):
+        STATE.draft["_open_chat_id"] = contact.id
+        STATE.draft["_open_is_group"] = False
+        STATE.go("/chat")
+
+    muted = chat_data.is_muted(contact.id)
+
+    def toggle_mute(_e=None):
+        chat_data.toggle_mute(contact.id)
+        STATE.snack("Уведомления включены" if muted else "Чат без звука")
+        STATE.go(contact_route(contact.id))
+
+    def search_soon(_e=None):
+        STATE.snack("Поиск в чате скоро")
+
+    def open_report(_e=None):
+        from flet_app.screens.report import report_route
+
+        pid = peer_pid or contact.seed
+        STATE.draft["_report_target_pid"] = pid
+        STATE.draft["_report_target_name"] = contact.display_name
+        STATE.draft["_report_chat_id"] = str(contact.id)
+        STATE.draft["_report_msg_id"] = ""
+        STATE.draft["_report_back"] = contact_route(contact.id)
+        STATE.go(report_route())
+
+    def more_menu(_e=None):
+        open_report()
+
+    mute_label = "Звук" if muted else "Без звука"
+    mute_icon = ft.Icons.NOTIFICATIONS_OFF_OUTLINED if not muted else ft.Icons.NOTIFICATIONS_OUTLINED
+
+    action_items = [
+        (ft.Icons.CHAT_BUBBLE_OUTLINED, "Чат", open_chat),
+        (mute_icon, mute_label, toggle_mute),
+        (ft.Icons.SEARCH, "Поиск", search_soon),
+        ("more", "Ещё", more_menu),
+    ]
+
+    info_rows: list[tuple[str, str, object | None]] = []
+
+    peer_user = auth.find_by_public_id(peer_pid) if peer_pid else None
+    if peer_user is not None and (peer_user.contact_value or "").strip():
+        if pset.get("hide_phone"):
+            info_rows.append(("Телефон", "Скрыт", None))
+        else:
+            info_rows.append(("Телефон", str(peer_user.contact_value).strip(), None))
+
+    if peer_user is not None and (peer_user.nickname or "").strip():
+        info_rows.append(("Имя пользователя", f"@{peer_user.nickname.strip()}", None))
+
     if peer_pid:
-        peer_user = auth.find_by_public_id(peer_pid)
-        if peer_user is not None and (peer_user.contact_value or "").strip():
-            if pset.get("hide_phone"):
-                phone_line = ft.Text(
-                    "Номер скрыт",
-                    size=13,
-                    color=theme.MUTED,
-                    font_family=theme.FONT_FAMILY,
-                )
-            else:
-                phone_line = ft.Text(
-                    str(peer_user.contact_value).strip(),
-                    size=13,
-                    color=theme.INK,
-                    font_family=theme.FONT_FAMILY,
-                )
+        info_rows.append(("ID", peer_pid, None))
 
     bio = (contact.bio or "").strip() or "Пользователь ещё не добавил описание"
-    head_controls: list[ft.Control] = [
-        _avatar(contact, size=96),
-        name_row,
-        ft.Text(
-            status_text,
-            size=13,
-            color=theme.MUTED,
-            font_family=theme.FONT_FAMILY,
-        ),
-    ]
-    if phone_line is not None:
-        head_controls.append(phone_line)
-    head_controls.append(
-        ft.Container(
-            padding=ft.Padding.only(top=4),
-            content=ft.Column(
-                spacing=4,
-                tight=True,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
-                controls=[
-                    _section_title("О себе"),
-                    ft.Text(
-                        bio,
-                        size=15,
-                        color=theme.INK,
-                        font_family=theme.FONT_FAMILY,
-                    ),
-                ],
-            ),
-        )
-    )
-    profile_head = _card(
-        ft.Column(
-            spacing=12,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            tight=True,
-            controls=head_controls,
-        ),
-        padding=ft.Padding.symmetric(horizontal=20, vertical=20),
+    info_rows.append(("О себе", bio, None))
+
+    media = chat_data.media_messages(contact.id)
+    media_block = media_tabs_block(
+        media_cells_from_messages(media),
+        empty_text="Пока нет фото в этом чате",
     )
 
-    sections = [
-        _enter_wrap(profile_head, delay_ms=40),
-        _enter_wrap(_media_grid(contact), delay_ms=110),
-        _enter_wrap(_messages_block(contact), delay_ms=180),
-        _enter_wrap(_shared_chats(contact), delay_ms=250),
+    head = profile_head_block(
+        avatar=avatar,
+        display_name=name_text,
+        status_line=status_text,
+        name_on_click=edit_name,
+    )
+
+    body = [
+        ft.Container(alignment=ft.Alignment.CENTER, content=head),
+        ft.Container(alignment=ft.Alignment.CENTER, content=actions_row(action_items)),
+        ft.Container(alignment=ft.Alignment.CENTER, content=info_card(info_rows)),
+        ft.Container(alignment=ft.Alignment.CENTER, content=media_block),
+        ft.Container(alignment=ft.Alignment.CENTER, content=_shared_chats(contact)),
     ]
 
-    # ListView на всю ширину — как в настройках: без центрирования «столбиком»
-    scroller = ft.ListView(
-        expand=True,
-        spacing=12,
-        padding=ft.Padding.only(left=16, right=16, top=8, bottom=28),
-        controls=sections,
+    return profile_shell(
+        page,
+        title="Профиль",
+        on_back=_back_to_chat,
+        body_controls=body,
+        edge_swipe=True,
     )
-
-    header = _header_bar("Профиль")
-    header_wrap = ft.Container(
-        content=header,
-        opacity=0,
-        animate_opacity=ft.Animation(220, ft.AnimationCurve.EASE_OUT),
-    )
-
-    root = ft.Container(
-        expand=True,
-        bgcolor=theme.BG,
-        clip_behavior=ft.ClipBehavior.HARD_EDGE,
-        content=ft.Column(
-            expand=True,
-            spacing=0,
-            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-            controls=[
-                header_wrap,
-                scroller,
-            ],
-        ),
-    )
-
-    async def _fade_in():
-        import asyncio
-
-        await asyncio.sleep(0.03)
-        header_wrap.opacity = 1
-        try:
-            header_wrap.update()
-        except Exception:
-            pass
-        for box in sections:
-            await asyncio.sleep(0.035)
-            box.opacity = 1
-            box.offset = ft.Offset(0, 0)
-            try:
-                box.update()
-            except Exception:
-                pass
-
-    try:
-        page.run_task(_fade_in)
-    except Exception:
-        header_wrap.opacity = 1
-        for box in sections:
-            box.opacity = 1
-            box.offset = ft.Offset(0, 0)
-
-    return root
 
 
 def register_routes() -> dict:
@@ -631,7 +396,6 @@ def register_routes() -> dict:
         return build_contact_profile(page, STATE.draft.get("_profile_contact_id") or "")
 
     out = {"/contact": _by_draft}
-    # заранее известные демо-id + динамический разбор в main
     for c in chat_data.CONTACTS:
         cid = c.id
 

@@ -1,6 +1,6 @@
 {
   "app_name": "RaiseHand",
-  "dev_mode": true,
+  "dev_mode": false,
   "texts": {
     "welcome_title": "Регистрация",
     "welcome_student": "Я ученик",
@@ -89,15 +89,16 @@
   },
   "privacy_policy_path": "docs/PRIVACY_POLICY.md",
   "email": {
-    "enabled": false,
-    "provider": "smtp",
-    "smtp_host": "smtp.yandex.ru",
-    "smtp_port": 465,
-    "use_ssl": true,
+    "enabled": true,
+    "provider": "sendgrid",
+    "smtp_host": "smtp.office365.com",
+    "smtp_port": 587,
+    "use_ssl": false,
     "login": "",
     "password": "",
     "from_address": "",
-    "sendgrid_api_key": ""
+    "sendgrid_api_key": "",
+    "note": "Рекомендуется SendGrid: provider=sendgrid + sendgrid_api_key (или RH_SENDGRID_API_KEY) + подтверждённый from_address. Запасной SMTP: RH_SMTP_LOGIN/PASSWORD"
   },
   "sms": {
     "enabled": false,

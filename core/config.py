@@ -127,7 +127,50 @@ def _load_settings() -> dict:
     return _load_json("settings.defaults.json")
 
 
-SETTINGS = _load_settings()
+def _apply_email_env(settings: dict) -> dict:
+    """SMTP/SendGrid: secrets из env поверх settings (не коммитить пароли)."""
+    email = dict(settings.get("email") or {})
+    mapping = (
+        ("RH_SMTP_HOST", "smtp_host"),
+        ("RH_SMTP_PORT", "smtp_port"),
+        ("RH_SMTP_LOGIN", "login"),
+        ("RH_SMTP_PASSWORD", "password"),
+        ("RH_SMTP_FROM", "from_address"),
+        ("RH_SENDGRID_API_KEY", "sendgrid_api_key"),
+        ("RH_EMAIL_PROVIDER", "provider"),
+    )
+    for env_key, field in mapping:
+        raw = (os.environ.get(env_key) or "").strip()
+        if not raw:
+            continue
+        if field == "smtp_port":
+            try:
+                email[field] = int(raw)
+            except ValueError:
+                pass
+        else:
+            email[field] = raw
+
+    enabled_env = (os.environ.get("RH_EMAIL_ENABLED") or "").strip().lower()
+    if enabled_env in ("1", "true", "yes", "on"):
+        email["enabled"] = True
+    elif enabled_env in ("0", "false", "no", "off"):
+        email["enabled"] = False
+
+    provider = (email.get("provider") or "smtp").lower()
+    has_creds = bool(
+        (provider == "sendgrid" and email.get("sendgrid_api_key"))
+        or (email.get("login") and email.get("password"))
+    )
+    # Креды есть и флаг env не выключал — включаем отправку
+    if has_creds and not enabled_env:
+        email["enabled"] = True
+
+    settings["email"] = email
+    return settings
+
+
+SETTINGS = _apply_email_env(_load_settings())
 
 
 def text(name: str) -> str:

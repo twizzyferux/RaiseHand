@@ -195,7 +195,7 @@ def build_welcome(page: ft.Page) -> ft.Control:
                     style=ft.TextStyle(
                         size=int(S21),
                         weight=ft.FontWeight.BOLD,
-                        color="#5B6CFF",
+                        color=theme.PRIMARY,
                         font_family=theme.FONT_FAMILY,
                     ),
                 ),
@@ -204,7 +204,7 @@ def build_welcome(page: ft.Page) -> ft.Control:
                     style=ft.TextStyle(
                         size=int(S21),
                         weight=ft.FontWeight.BOLD,
-                        color="#FF4D8D",
+                        color=theme.INK,
                         font_family=theme.FONT_FAMILY,
                     ),
                 ),
