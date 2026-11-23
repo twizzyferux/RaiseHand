@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import flet as ft
 
+from core import prefs
+from core.i18n import t
 from flet_app import chat_data
 from flet_app import liquid_glass
 from flet_app import questions_data
@@ -77,8 +79,8 @@ def _is_teacher() -> bool:
 def _teacher_name() -> str:
     u = STATE.user
     if not u:
-        return "Учитель"
-    return getattr(u, "display_name", None) or getattr(u, "full_name", None) or "Учитель"
+        return t("common.teacher_role")
+    return getattr(u, "display_name", None) or getattr(u, "full_name", None) or t("common.teacher_role")
 
 
 def _rank_color(rank: int) -> str:
@@ -114,26 +116,28 @@ def _rank_badge(rank: int) -> ft.Control:
 def _like_control(q: questions_data.Question, on_toggle) -> ft.Control:
     color = _like_on() if q.liked_by_me else LIKE_OFF
     icon = ft.Icons.FAVORITE if q.liked_by_me else ft.Icons.FAVORITE_BORDER
-    return ft.Container(
-        on_click=lambda e, qid=q.id: on_toggle(qid),
-        ink=False,
-        padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-        border_radius=16,
-        content=ft.Row(
-            spacing=4,
-            tight=True,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[
-                ft.Icon(icon, size=20, color=color),
-                ft.Text(
-                    str(q.likes),
-                    size=14,
-                    weight=ft.FontWeight.W_600,
-                    color=color,
-                    font_family=theme.FONT_FAMILY,
-                ),
-            ],
+    return theme.pressable(
+        ft.Container(
+            padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+            border_radius=16,
+            content=ft.Row(
+                spacing=4,
+                tight=True,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Icon(icon, size=20, color=color),
+                    ft.Text(
+                        str(q.likes),
+                        size=14,
+                        weight=ft.FontWeight.W_600,
+                        color=color,
+                        font_family=theme.FONT_FAMILY,
+                    ),
+                ],
+            ),
         ),
+        lambda e, qid=q.id: on_toggle(qid),
+        scale_to=0.9,
     )
 
 
@@ -152,7 +156,10 @@ def _answer_block(q: questions_data.Question) -> ft.Control:
             tight=True,
             controls=[
                 ft.Text(
-                    f"Ответ учителя · {q.answer_by or 'Учитель'}",
+                    t(
+                        "questions.teacher_answer",
+                        name=q.answer_by or t("common.teacher_role"),
+                    ),
                     size=12,
                     weight=ft.FontWeight.W_600,
                     color=pal["title"],
@@ -181,7 +188,7 @@ def _question_row(
     if q.author_count > 1:
         meta.append(
             ft.Text(
-                f"ещё {q.author_count - 1} похожих",
+                t("questions.similar_more", n=q.author_count - 1),
                 size=12,
                 color=theme.MUTED,
                 font_family=theme.FONT_FAMILY,
@@ -190,7 +197,7 @@ def _question_row(
     if q.answered:
         meta.append(
             ft.Text(
-                "есть ответ",
+                t("questions.has_answer"),
                 size=12,
                 weight=ft.FontWeight.W_600,
                 color="#1B7A3A",
@@ -200,7 +207,7 @@ def _question_row(
     elif is_teacher:
         meta.append(
             ft.Text(
-                "без ответа",
+                t("questions.no_answer"),
                 size=12,
                 color=theme.HINT,
                 font_family=theme.FONT_FAMILY,
@@ -212,13 +219,13 @@ def _question_row(
         actions.insert(
             0,
             ft.TextButton(
-                "Изменить" if q.answered else "Ответить",
+                t("profile.edit") if q.answered else t("chat.reply"),
                 on_click=lambda e, qid=q.id: on_answer(qid),
                 style=ft.ButtonStyle(color=theme.PRIMARY, padding=ft.Padding.symmetric(horizontal=8)),
             ),
         )
 
-    return ft.Container(
+    card = ft.Container(
         padding=ft.Padding.symmetric(horizontal=16, vertical=12),
         bgcolor=theme.BG,
         content=ft.Column(
@@ -266,6 +273,14 @@ def _question_row(
             ],
         ),
     )
+    if prefs.double_tap_like_react():
+
+        def _dbl(_e=None, qid=q.id, liked=q.liked_by_me):
+            if not liked:
+                on_toggle(qid)
+
+        return ft.GestureDetector(content=card, on_double_tap=_dbl)
+    return card
 
 
 def _divider() -> ft.Control:
@@ -292,7 +307,7 @@ def build_questions(page: ft.Page) -> ft.Control:
                 ft.Container(
                     padding=ft.Padding.all(24),
                     content=ft.Text(
-                        "Пока нет вопросов.\nНажмите «Добавить вопрос».",
+                        t("questions.empty"),
                         size=15,
                         color=theme.MUTED,
                         text_align=ft.TextAlign.CENTER,
@@ -344,7 +359,7 @@ def build_questions(page: ft.Page) -> ft.Control:
         items = questions_data.list_ranked(gid)
         cur = next((x for x in items if x.id == qid), None)
         tf = _dialog_field(
-            hint="Ответ ученикам…",
+            hint=t("questions.answer_hint"),
             value=(cur.answer_text if cur else "") or "",
             min_lines=3,
             max_lines=6,
@@ -360,13 +375,13 @@ def build_questions(page: ft.Page) -> ft.Control:
                 )
                 _close_dlg()
                 refresh()
-                STATE.snack("Ответ опубликован")
+                STATE.snack(t("questions.answer_published"))
             except Exception as exc:
                 STATE.error(str(exc))
 
         dlg = ft.AlertDialog(
             title=ft.Text(
-                "Ответ учителя",
+                t("questions.answer_teacher_title"),
                 color=theme.INK,
                 font_family=theme.FONT_FAMILY,
             ),
@@ -386,12 +401,12 @@ def build_questions(page: ft.Page) -> ft.Control:
             ),
             actions=[
                 ft.TextButton(
-                    "Отмена",
+                    t("common.cancel"),
                     on_click=_close_dlg,
                     style=ft.ButtonStyle(color=theme.PRIMARY),
                 ),
                 ft.TextButton(
-                    "Сохранить",
+                    t("common.save"),
                     on_click=submit,
                     style=ft.ButtonStyle(color=theme.PRIMARY),
                 ),
@@ -400,14 +415,14 @@ def build_questions(page: ft.Page) -> ft.Control:
         try:
             page.show_dialog(dlg)
         except Exception:
-            STATE.snack("Не удалось открыть форму ответа")
+            STATE.snack(t("questions.form_failed"))
 
     def open_add(_=None):
-        tf = _dialog_field(hint="Ваш вопрос…", min_lines=2, max_lines=4)
+        tf = _dialog_field(hint=t("questions.your_question"), min_lines=2, max_lines=4)
         status = ft.Text(
-            "Проверка схожести: Gemini"
+            t("questions.similarity_gemini")
             if questions_data.ai_status() == "gemini"
-            else "Проверка схожести: локально (+ Gemini, если задать ключ)",
+            else t("questions.similarity_local"),
             size=12,
             color=theme.MUTED,
             font_family=theme.FONT_FAMILY,
@@ -417,7 +432,7 @@ def build_questions(page: ft.Page) -> ft.Control:
             text = (tf.value or "").strip()
             if not text:
                 return
-            status.value = "Проверяем схожесть…"
+            status.value = t("questions.checking_similarity")
             try:
                 status.update()
             except Exception:
@@ -427,15 +442,15 @@ def build_questions(page: ft.Page) -> ft.Control:
                 _close_dlg()
                 refresh()
                 if merged:
-                    STATE.snack("Похожий вопрос уже есть — засчитан как лайк")
+                    STATE.snack(t("questions.duplicate_like"))
                 else:
-                    STATE.snack("Вопрос добавлен")
+                    STATE.snack(t("questions.added"))
             except Exception as exc:
                 STATE.error(str(exc))
 
         dlg = ft.AlertDialog(
             title=ft.Text(
-                "Новый вопрос",
+                t("questions.new_title"),
                 color=theme.INK,
                 font_family=theme.FONT_FAMILY,
             ),
@@ -446,7 +461,7 @@ def build_questions(page: ft.Page) -> ft.Control:
                 controls=[
                     tf,
                     ft.Text(
-                        "Если смысл тот же (даже другими словами),\nвопрос не дублируется — добавляется лайк.",
+                        t("questions.new_body"),
                         size=12,
                         color=theme.MUTED,
                         font_family=theme.FONT_FAMILY,
@@ -456,12 +471,12 @@ def build_questions(page: ft.Page) -> ft.Control:
             ),
             actions=[
                 ft.TextButton(
-                    "Отмена",
+                    t("common.cancel"),
                     on_click=_close_dlg,
                     style=ft.ButtonStyle(color=theme.PRIMARY),
                 ),
                 ft.TextButton(
-                    "Добавить",
+                    t("questions.add_btn"),
                     on_click=submit,
                     style=ft.ButtonStyle(color=theme.PRIMARY),
                 ),
@@ -470,10 +485,10 @@ def build_questions(page: ft.Page) -> ft.Control:
         try:
             page.show_dialog(dlg)
         except Exception:
-            STATE.snack("Не удалось открыть форму")
+            STATE.snack(t("common.dialog_open_failed"))
 
     add_btn = liquid_glass.purple_glass_button(
-        "Добавить вопрос",
+        t("questions.add"),
         open_add,
         width=min(float(theme.PHONE_WIDTH - theme.PAGE_PADDING * 2) * 0.92, 340.0),
         height=52,
@@ -496,7 +511,7 @@ def build_questions(page: ft.Page) -> ft.Control:
                     tight=True,
                     controls=[
                         ft.Text(
-                            "Вопросы",
+                            t("chat.questions_title"),
                             size=20,
                             weight=ft.FontWeight.W_700,
                             color=theme.INK,
@@ -516,9 +531,9 @@ def build_questions(page: ft.Page) -> ft.Control:
     )
 
     hint = (
-        "Нажмите «Ответить», чтобы опубликовать ответ для учеников"
+        t("questions.teacher_hint_answer")
         if teacher
-        else "Лайк — если вопрос тот же; ответ учителя появится под вопросом"
+        else t("questions.student_hint")
     )
 
     refresh()

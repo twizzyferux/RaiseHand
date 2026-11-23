@@ -37,10 +37,10 @@ def _pill_field(label: str, hint: str = "", *, value: str = "", password: bool =
 
 def build_login(page: ft.Page) -> ft.Control:
     remembered = SETTINGS.get("remember_login", "") or ""
-    login_tf = _pill_field("Логин / ID", hint="email или ID", value=remembered)
+    login_tf = _pill_field(t("common.login_id"), hint=t("common.login_id_hint"), value=remembered)
     pass_tf = _pill_field(t("auth.password"), password=True)
     remember = ft.Checkbox(
-        label="Запомнить меня",
+        label=t("common.remember_me"),
         value=bool(session.user_id()),
         active_color=theme.PRIMARY,
     )
@@ -52,7 +52,7 @@ def build_login(page: ft.Page) -> ft.Control:
             STATE.error(str(exc))
             return
         except Exception as exc:
-            STATE.error(str(exc) or "Не удалось войти")
+            STATE.error(str(exc) or t("common.login_failed"))
             return
 
         pass_tf.value = ""

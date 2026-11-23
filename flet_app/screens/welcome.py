@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import flet as ft
 
+from core.i18n import t
 from flet_app.app_state import STATE
 from flet_app import theme
 
@@ -327,17 +328,17 @@ def build_welcome(page: ft.Page) -> ft.Control:
     # «Я Ученик» / «Я Учитель» — purple / white liquid glass
     btn_student = ft.Container(
         alignment=ft.Alignment.CENTER,
-        content=theme.student_image_button("Я Ученик", go_student),
+        content=theme.student_image_button(t("common.student"), go_student),
     )
     btn_teacher = ft.Container(
         alignment=ft.Alignment.CENTER,
-        content=theme.secondary_image_button("Я Учитель", go_teacher),
+        content=theme.secondary_image_button(t("common.teacher"), go_teacher),
     )
 
     login_line = ft.Text(
         spans=[
             ft.TextSpan(
-                "Уже зарегистрированы? ",
+                t("common.already_registered"),
                 style=ft.TextStyle(
                     size=int(S13 + 2),
                     color=theme.INK,
@@ -345,7 +346,7 @@ def build_welcome(page: ft.Page) -> ft.Control:
                 ),
             ),
             ft.TextSpan(
-                "Войти",
+                t("auth.sign_in"),
                 style=ft.TextStyle(
                     size=int(S13 + 2),
                     color=theme.PRIMARY,
@@ -360,7 +361,7 @@ def build_welcome(page: ft.Page) -> ft.Control:
     )
 
     join_label = ft.Text(
-        "Присоединяйтесь как…",
+        t("common.join_as"),
         size=int(S13 + 5),
         color=theme.INK,
         font_family=theme.FONT_FAMILY,

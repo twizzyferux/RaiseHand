@@ -726,23 +726,44 @@ def _press_scale(e):
         pass
 
 
+def live_panel(child: ft.Control, *, visible: bool = False) -> ft.Container:
+    """Появление панели: fade + лёгкий подъём и масштаб, как iOS sheet."""
+    try:
+        from core import prefs
+
+        if prefs.reduce_motion():
+            return ft.Container(content=child, opacity=1, offset=ft.Offset(0, 0), scale=1)
+    except Exception:
+        pass
+    return ft.Container(
+        content=child,
+        opacity=1 if visible else 0,
+        offset=ft.Offset(0, 0) if visible else ft.Offset(0, 0.018),
+        scale=1 if visible else 0.985,
+        animate_opacity=ft.Animation(240, ft.AnimationCurve.EASE_OUT_CUBIC),
+        animate_offset=ft.Animation(280, ft.AnimationCurve.EASE_OUT_CUBIC),
+        animate_scale=ft.Animation(300, ft.AnimationCurve.EASE_OUT_BACK),
+    )
+
+
 def pressable(
     content: ft.Control,
     on_tap=None,
     *,
-    scale_to: float = 0.92,
+    scale_to: float = 0.96,
     expand: bool = False,
 ) -> ft.Control:
     """Лёгкий scale при нажатии (touch + mouse), без квадратного ink."""
     box = ft.Container(
         content=content,
         scale=1,
-        animate_scale=ft.Animation(100, ft.AnimationCurve.EASE_OUT),
+        animate_scale=ft.Animation(160, ft.AnimationCurve.EASE_OUT),
         expand=expand if expand else None,
     )
 
     def _down(_e=None):
         try:
+            box.animate_scale = ft.Animation(90, ft.AnimationCurve.EASE_OUT)
             box.scale = float(scale_to)
             box.update()
         except Exception:
@@ -750,6 +771,7 @@ def pressable(
 
     def _up(_e=None):
         try:
+            box.animate_scale = ft.Animation(220, ft.AnimationCurve.EASE_OUT_BACK)
             box.scale = 1
             box.update()
         except Exception:

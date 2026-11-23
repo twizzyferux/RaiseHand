@@ -66,10 +66,8 @@ def _settings_row(
 ) -> ft.Control:
     """Строка настроек. Разделители выключены — без серых полос в капсуле."""
     label = title or t(f"settings.{key}")
-    return ft.Container(
+    row = ft.Container(
         padding=ft.Padding.symmetric(horizontal=14, vertical=12),
-        ink=False,
-        on_click=on_click,
         content=ft.Row(
             spacing=14,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -86,6 +84,7 @@ def _settings_row(
             ],
         ),
     )
+    return theme.pressable(row, on_click, scale_to=0.985, expand=True)
 
 
 def _settings_group(rows: list[ft.Control]) -> ft.Control:
@@ -111,7 +110,7 @@ def _settings_view(page: ft.Page) -> ft.Control:
     user = STATE.user
     first = (user.first_name if user else "") or "И"
     last = (user.last_name if user else "") or ""
-    name = (user.full_name if user else "") or (user.display_name if user else "Профиль") or "Профиль"
+    name = (user.full_name if user else "") or (user.display_name if user else t("home.default_profile")) or t("home.default_profile")
     nick = (user.nickname if user and user.nickname else "") or ""
     handle = f"@{nick}" if nick else ""
     contact = ""
@@ -143,6 +142,17 @@ def _settings_view(page: ft.Page) -> ft.Control:
     def do_logout(_e=None):
         from core import session
 
+        if prefs.data_clear_on_logout():
+            try:
+                from flet_app.screens.settings_pages import _clear_image_cache
+
+                _clear_image_cache()
+            except Exception:
+                pass
+            try:
+                search_history.clear(user.id if user else "")
+            except Exception:
+                pass
         session.clear()
         STATE.user = None
         STATE.reset_draft()
@@ -282,27 +292,30 @@ def _settings_view(page: ft.Page) -> ft.Control:
             ),
         ]
     )
-    g3 = _settings_group(
-        [
-            _settings_row(key="data", on_click=open_settings_page("data")),
-            _settings_row(key="language", on_click=open_settings_page("language")),
-            _settings_row(key="password", on_click=open_settings_page("password")),
-            _settings_row(key="tips", on_click=open_settings_page("tips")),
-            _settings_row(key="help", on_click=open_settings_page("help")),
-            _settings_row(key="faq", on_click=open_settings_page("faq")),
-            _settings_row(key="logs", on_click=open_settings_page("logs")),
-            _settings_row(key="logout", on_click=do_logout, show_divider=False),
-        ]
+    g3_rows: list[ft.Control] = [
+        _settings_row(key="data", on_click=open_settings_page("data")),
+        _settings_row(key="language", on_click=open_settings_page("language")),
+        _settings_row(key="password", on_click=open_settings_page("password")),
+        _settings_row(key="tips", on_click=open_settings_page("tips")),
+        _settings_row(key="help", on_click=open_settings_page("help")),
+        _settings_row(key="faq", on_click=open_settings_page("faq")),
+    ]
+    # Логи — только desktop; на телефоне не показываем
+    try:
+        _phone = theme.is_mobile_runtime()
+    except Exception:
+        _phone = True
+    if not _phone:
+        g3_rows.append(
+            _settings_row(key="logs", on_click=open_settings_page("logs"))
+        )
+    g3_rows.append(
+        _settings_row(key="logout", on_click=do_logout, show_divider=False)
     )
+    g3 = _settings_group(g3_rows)
 
     def _hub_enter(child: ft.Control) -> ft.Container:
-        return ft.Container(
-            content=child,
-            opacity=0,
-            offset=ft.Offset(0, 0.02),
-            animate_opacity=ft.Animation(260, ft.AnimationCurve.EASE_OUT),
-            animate_offset=ft.Animation(280, ft.AnimationCurve.EASE_OUT),
-        )
+        return theme.live_panel(child)
 
     # один мягкий fade всего хаба — без каскада блоков
     hub_inner = ft.Column(
@@ -486,9 +499,9 @@ def _trailing(contact: chat_data.Contact) -> ft.Control:
 def _role_badge(kind: str) -> ft.Control:
     """Бейдж роли: учитель — зелёный, админ — фиолетовый, бан — красный."""
     styles = {
-        "teacher": ("#E5F6E8", "#1B7A3A", "Учитель"),
-        "admin": ("#EDE7FF", "#5B3FF0", "Админ"),
-        "banned": ("#FDE8E8", "#C24141", "Бан"),
+        "teacher": ("#E5F6E8", "#1B7A3A", t("common.teacher_role")),
+        "admin": ("#EDE7FF", "#5B3FF0", t("common.admin")),
+        "banned": ("#FDE8E8", "#C24141", t("common.banned")),
     }
     bg, fg, label = styles.get(kind, styles["teacher"])
     return ft.Container(
@@ -517,9 +530,7 @@ def _badges_for(contact) -> list:
 
 
 def _chat_action_row(label: str, on_click, *, danger: bool = False) -> ft.Control:
-    return ft.Container(
-        ink=True,
-        on_click=on_click,
+    row = ft.Container(
         border_radius=12,
         padding=ft.Padding.symmetric(horizontal=14, vertical=12),
         bgcolor=("#3A1A22" if theme.is_dark() else "#FEE2E8") if danger else theme.FIELD_BG,
@@ -531,6 +542,7 @@ def _chat_action_row(label: str, on_click, *, danger: bool = False) -> ft.Contro
             font_family=theme.FONT_FAMILY,
         ),
     )
+    return theme.pressable(row, on_click, scale_to=0.97, expand=True)
 
 
 def _show_chat_actions(page: ft.Page, contact: chat_data.Contact, on_done) -> None:
@@ -574,7 +586,7 @@ def _show_chat_actions(page: ft.Page, contact: chat_data.Contact, on_done) -> No
         )
     rows.append(
         _chat_action_row(
-            "Прочитано",
+            t("common.read"),
             _run(lambda: chat_data.mark_read(contact.id)),
         )
     )
@@ -615,7 +627,7 @@ def _show_chat_actions(page: ft.Page, contact: chat_data.Contact, on_done) -> No
             dlg.open = True
             page.update()
         except Exception:
-            STATE.snack("Не удалось открыть меню")
+            STATE.snack(t("common.menu_open_failed"))
 
 
 def _chat_row(contact: chat_data.Contact, on_click, *, on_long=None) -> ft.Control:
@@ -669,9 +681,29 @@ def _chat_row(contact: chat_data.Contact, on_click, *, on_long=None) -> ft.Contr
             ],
         ),
     )
+    inner.scale = 1
+    inner.animate_scale = ft.Animation(200, ft.AnimationCurve.EASE_OUT_BACK)
+
+    def _down(_e=None):
+        try:
+            inner.scale = 0.985
+            inner.update()
+        except Exception:
+            pass
+
+    def _up(_e=None):
+        try:
+            inner.scale = 1
+            inner.update()
+        except Exception:
+            pass
+
     row = ft.GestureDetector(
         content=inner,
         on_tap=on_click,
+        on_tap_down=_down,
+        on_tap_up=_up,
+        on_tap_cancel=_up,
         on_long_press_start=(lambda e: on_long(contact)) if on_long else None,
         on_secondary_tap=(lambda e: on_long(contact)) if on_long else None,
     )
@@ -725,43 +757,46 @@ def _group_row(group: chat_data.Group, on_click) -> ft.Control:
 
     row = ft.GestureDetector(
         on_tap=on_click,
+        on_tap_down=lambda e: _row_press(e, True),
+        on_tap_up=lambda e: _row_press(e, False),
+        on_tap_cancel=lambda e: _row_press(e, False),
         content=ft.Container(
             padding=ft.Padding.symmetric(horizontal=_ROW_PAD_H, vertical=_ROW_PAD_V),
-            content=ft.Row(
+        content=ft.Row(
                 spacing=_ROW_GAP,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
                     _group_avatar(group, size=_ROW_AVATAR),
-                    ft.Column(
-                        expand=True,
+                ft.Column(
+                    expand=True,
                         spacing=2,
-                        tight=True,
-                        controls=[
-                            ft.Text(
-                                group.name,
+                    tight=True,
+                    controls=[
+                        ft.Text(
+                            group.name,
                                 size=_ROW_TITLE,
-                                weight=ft.FontWeight.W_600,
-                                color=theme.INK,
-                                font_family=theme.FONT_FAMILY,
-                                max_lines=1,
+                            weight=ft.FontWeight.W_600,
+                            color=theme.INK,
+                            font_family=theme.FONT_FAMILY,
+                            max_lines=1,
                                 overflow=ft.TextOverflow.ELLIPSIS,
-                            ),
-                            ft.Text(
+                        ),
+                        ft.Text(
                                 group.live_preview or group.preview or t("chat.no_messages"),
                                 size=_ROW_PREVIEW,
-                                color=preview_color,
-                                weight=preview_weight,
-                                font_family=theme.FONT_FAMILY,
-                                max_lines=1,
+                            color=preview_color,
+                            weight=preview_weight,
+                            font_family=theme.FONT_FAMILY,
+                            max_lines=1,
                                 overflow=ft.TextOverflow.ELLIPSIS,
-                            ),
-                        ],
-                    ),
-                    ft.Column(
+                        ),
+                    ],
+                ),
+                ft.Column(
                         spacing=3,
-                        horizontal_alignment=ft.CrossAxisAlignment.END,
-                        tight=True,
-                        controls=[
+                    horizontal_alignment=ft.CrossAxisAlignment.END,
+                    tight=True,
+                    controls=[
                             ft.Text(
                                 group.last_time or group.time,
                                 size=_ROW_TIME,
@@ -779,9 +814,9 @@ def _group_row(group: chat_data.Group, on_click) -> ft.Control:
                                 color=theme.MUTED,
                                 font_family=theme.FONT_FAMILY,
                             ),
-                        ],
-                    ),
-                ],
+                    ],
+                ),
+            ],
             ),
         ),
     )
@@ -799,6 +834,18 @@ def _group_row(group: chat_data.Group, on_click) -> ft.Control:
             ),
         ],
     )
+
+
+def _row_press(e, down: bool) -> None:
+    box = getattr(e.control, "content", None)
+    if box is None:
+        return
+    box.animate_scale = ft.Animation(200, ft.AnimationCurve.EASE_OUT_BACK)
+    box.scale = 0.985 if down else 1
+    try:
+        box.update()
+    except Exception:
+        pass
 
 
 def _search_owner_id() -> int:
@@ -849,15 +896,13 @@ def _search_person_row(
                 icon=ft.Icons.CLOSE,
                 icon_size=18,
                 icon_color=theme.MUTED,
-                tooltip="Убрать",
+                tooltip=t("common.remove"),
                 on_click=on_remove,
                 style=ft.ButtonStyle(padding=4),
             )
         )
-    return ft.Container(
+    body = ft.Container(
         padding=ft.Padding.symmetric(horizontal=16, vertical=8),
-        ink=True,
-        on_click=on_click,
         content=ft.Row(
             spacing=12,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -889,6 +934,7 @@ def _search_person_row(
             ],
         ),
     )
+    return theme.pressable(body, on_click, scale_to=0.985, expand=True)
 
 
 def _open_found_account(
@@ -917,7 +963,7 @@ def _open_found_account(
         STATE.snack(reason)
         return
 
-    status_view = priv.status_for_others(pid, status or "в сети")
+    status_view = priv.status_for_others(pid, status or t("common.online"))
     owner = _search_owner_id()
     search_history.remember(
         owner,
@@ -949,7 +995,7 @@ def _open_found_account(
         opener()
 
 
-def _search_view(on_open, on_scroll=None) -> ft.Control:
+def _search_view(on_open, header=None) -> ft.Control:
     """Поиск по ID: live-подсказки + активная история."""
     owner = _search_owner_id()
     gen = {"n": 0}
@@ -971,7 +1017,7 @@ def _search_view(on_open, on_scroll=None) -> ft.Control:
     empty_hint = ft.Container(
         padding=ft.Padding.symmetric(horizontal=16, vertical=20),
         content=ft.Text(
-            "Начните вводить ID — аккаунты появятся сразу",
+            t("home.search_start"),
             size=14,
             color=theme.MUTED,
             font_family=theme.FONT_FAMILY,
@@ -996,14 +1042,14 @@ def _search_view(on_open, on_scroll=None) -> ft.Control:
         if user.status_text:
             bits.append(user.status_text)
         elif user.is_teacher:
-            bits.append("учитель")
+            bits.append(t("common.teacher_badge"))
         return " · ".join(bits)
 
     def _pick_user(user: auth.User):
         def _(_e=None):
             from core import privacy as priv
 
-            st = user.status_text or "в сети"
+            st = user.status_text or t("common.online")
             _open_found_account(
                 public_id=user.public_id,
                 name=user.display_name,
@@ -1026,7 +1072,7 @@ def _search_view(on_open, on_scroll=None) -> ft.Control:
                     name=live.display_name,
                     first=live.first_name,
                     last=live.last_name,
-                    status=live.status_text or fields["status"] or "в сети",
+                    status=live.status_text or fields["status"] or t("common.online"),
                     role=live.role,
                     on_open=on_open,
                 )
@@ -1036,7 +1082,7 @@ def _search_view(on_open, on_scroll=None) -> ft.Control:
                 name=fields["name"],
                 first=fields["first"] or fields["name"],
                 last=fields["last"],
-                status=fields["status"] or "в сети",
+                status=fields["status"] or t("common.online"),
                 role=fields["role"],
                 on_open=on_open,
             )
@@ -1116,7 +1162,7 @@ def _search_view(on_open, on_scroll=None) -> ft.Control:
                 ft.Container(
                     padding=ft.Padding.symmetric(horizontal=16, vertical=18),
                     content=ft.Text(
-                        "Никого не найдено",
+                        t("home.none_found"),
                         size=14,
                         color=theme.MUTED,
                         font_family=theme.FONT_FAMILY,
@@ -1159,7 +1205,7 @@ def _search_view(on_open, on_scroll=None) -> ft.Control:
     clear_btn.on_click = on_clear
 
     field = ft.TextField(
-        hint_text="ID, ник или имя",
+        hint_text=t("home.search_hint"),
         filled=True,
         bgcolor=theme.FIELD_BG,
         border=theme.field_border(24, color="transparent", focused_color=theme.PRIMARY),
@@ -1204,13 +1250,10 @@ def _search_view(on_open, on_scroll=None) -> ft.Control:
     empty_hint.visible = not hist_rows
     section_title.value = _title_history
 
-    return ft.Column(
-        expand=True,
-        spacing=0,
-        scroll=ft.ScrollMode.AUTO,
-        on_scroll=on_scroll,
-        scroll_interval=24,
-        controls=[
+    search_controls: list[ft.Control] = []
+    if header is not None:
+        search_controls.append(header)
+    search_controls.extend([
             ft.Container(
                 padding=ft.Padding.symmetric(horizontal=16, vertical=8),
                 content=ft.Row(
@@ -1230,7 +1273,12 @@ def _search_view(on_open, on_scroll=None) -> ft.Control:
             results,
             empty_hint,
             ft.Container(height=132),
-        ],
+    ])
+    return ft.Column(
+        expand=True,
+        spacing=0,
+        scroll=ft.ScrollMode.AUTO,
+        controls=search_controls,
     )
 
 
@@ -1251,8 +1299,6 @@ def _home_tab_body(
     # место под увеличенную nav-капсулу + home indicator
     list_bottom_pad = 132
     fab_size = 48.0
-    # место под welcome + «Чаты» + fab; список стартует ниже и «наезжает» на заголовок
-    header_h = 100.0
 
     fab = liquid_glass.purple_glass_fab(on_fab, size=fab_size, icon="+")
 
@@ -1267,7 +1313,7 @@ def _home_tab_body(
         size=34,
         weight=ft.FontWeight.BOLD,
         color=theme.INK,
-        font_family=theme.FONT_FAMILY,
+            font_family=theme.FONT_FAMILY,
         text_align=ft.TextAlign.LEFT,
     )
     try:
@@ -1282,7 +1328,7 @@ def _home_tab_body(
         height=fab_size,
         controls=[
             ft.Row(
-                expand=True,
+            expand=True,
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
@@ -1297,7 +1343,7 @@ def _home_tab_body(
             ),
             ft.Container(
                 expand=True,
-                alignment=ft.Alignment.CENTER,
+            alignment=ft.Alignment.CENTER,
                 visible=_offline0,
                 content=ft.Text(
                     t("home.waiting_network"),
@@ -1311,12 +1357,11 @@ def _home_tab_body(
         ],
     )
 
-    header_layer = ft.Container(
-        height=header_h,
-        padding=ft.Padding.only(left=16, right=16, top=0, bottom=12),
+    # Заголовок — первый элемент списка, едет вместе с пальцем.
+    # Отдельный оверлей, который догоняет scroll-события, на телефоне дёргается.
+    title_block = ft.Container(
+        padding=ft.Padding.only(left=16, right=16, top=0, bottom=8),
         bgcolor=theme.BG,
-        offset=ft.Offset(0, 0),
-        animate_offset=None,
         content=ft.Column(
             spacing=0,
             tight=True,
@@ -1326,72 +1371,6 @@ def _home_tab_body(
             ],
         ),
     )
-
-    scroll_ui = {
-        "last": 0.0,
-        "dy": 0.0,
-        "revealed": False,  # sticky-показ после полного перекрытия
-        "mode": "track",  # track | hidden | sticky
-    }
-
-    def _apply_header_offset(frac: float, *, animate: bool):
-        frac = max(0.0, min(1.0, float(frac)))
-        header_layer.animate_offset = (
-            ft.Animation(130, ft.AnimationCurve.EASE_OUT_CUBIC) if animate else None
-        )
-        header_layer.offset = ft.Offset(0, -frac)
-        try:
-            header_layer.update()
-        except Exception:
-            pass
-
-    def on_scroll(e=None):
-        try:
-            pixels = float(getattr(e, "pixels", 0) or 0)
-        except Exception:
-            return
-        delta = getattr(e, "scroll_delta", None)
-        if delta is not None:
-            try:
-                delta_f = float(delta)
-            except Exception:
-                delta_f = pixels - scroll_ui["last"]
-        else:
-            delta_f = pixels - scroll_ui["last"]
-        scroll_ui["last"] = pixels
-
-        # Пока заголовок ещё не полностью перекрыт — едет 1:1 со скроллом
-        if pixels < header_h:
-            scroll_ui["revealed"] = False
-            scroll_ui["dy"] = 0.0
-            scroll_ui["mode"] = "track"
-            _apply_header_offset(pixels / header_h, animate=False)
-            return
-
-        # Полностью перекрыт скроллом
-        if scroll_ui["mode"] == "track":
-            scroll_ui["mode"] = "hidden"
-            _apply_header_offset(1.0, animate=False)
-
-        if abs(delta_f) < 0.5:
-            return
-        scroll_ui["dy"] += delta_f
-
-        # Небольшой скролл вверх — вернуть заголовок поверх списка
-        if scroll_ui["dy"] < -4:
-            scroll_ui["dy"] = 0.0
-            if not scroll_ui["revealed"]:
-                scroll_ui["revealed"] = True
-                scroll_ui["mode"] = "sticky"
-                _apply_header_offset(0.0, animate=True)
-            return
-
-        # Снова вниз — убрать sticky
-        if scroll_ui["dy"] > 8 and scroll_ui["revealed"]:
-            scroll_ui["dy"] = 0.0
-            scroll_ui["revealed"] = False
-            scroll_ui["mode"] = "hidden"
-            _apply_header_offset(1.0, animate=True)
 
     if active == "groups":
         groups = chat_data.sorted_groups()
@@ -1407,16 +1386,11 @@ def _home_tab_body(
         rows = [_group_row(g, open_group(g)) for g in groups]
 
         def create_class(_=None):
-            from core import auth as auth_mod
-            try:
-                tid = STATE.user.id if STATE.user else 0
-                code = auth_mod.create_class_invite(tid, "Новый класс", "")
-                STATE.info(
-                    t("home.create_class_body", code=code),
-                    t("home.create_class_title"),
-                )
-            except Exception as exc:
-                STATE.error(str(exc))
+            if not (STATE.user and STATE.user.is_teacher):
+                return
+            STATE.draft["_group_mode"] = "class"
+            STATE.draft["_compose_back"] = "groups"
+            STATE.go("/new_group")
 
         # В тёмной теме PRIMARY на BG почти не читается — светлый текст на акцентной капсуле
         create_fg = theme.PRIMARY_TEXT if theme.is_dark() else theme.PRIMARY
@@ -1425,18 +1399,19 @@ def _home_tab_body(
             if theme.is_dark()
             else theme.PRIMARY_SOFT
         )
-        rows.insert(
+        if STATE.user and STATE.user.is_teacher:
+            rows.insert(
             0,
             ft.Container(
-                padding=ft.Padding.symmetric(horizontal=16, vertical=8),
+            padding=ft.Padding.symmetric(horizontal=16, vertical=8),
                 content=ft.Container(
                     padding=ft.Padding.symmetric(horizontal=14, vertical=11),
                     border_radius=18,
                     bgcolor=create_bg,
                     ink=False,
-                    on_click=create_class,
+                on_click=create_class,
                     content=ft.Text(
-                        t("home.create_class"),
+                        t("newgroup.class_title"),
                         size=15,
                         weight=ft.FontWeight.W_600,
                         color=create_fg,
@@ -1447,23 +1422,21 @@ def _home_tab_body(
                 ),
             ),
         )
+        rows.insert(0, title_block)
         title_label.value = t("home.groups")
         main_list = None
     elif active == "search":
         title_label.value = t("home.search")
-        main_list = _search_view(open_chat, on_scroll=on_scroll)
+        main_list = _search_view(open_chat, header=title_block)
         rows = []
     elif active == "settings":
         # в макете нет крупного «Настройки» — сразу профиль
         title_label.value = ""
-        header_layer.visible = False
         settings_body = _settings_view(page) if page is not None else ft.Text(t("nav.settings"))
         main_list = ft.Column(
             expand=True,
             spacing=0,
             scroll=ft.ScrollMode.AUTO,
-            on_scroll=on_scroll,
-            scroll_interval=24,
             controls=[
                 settings_body,
                 ft.Container(height=list_bottom_pad),
@@ -1492,10 +1465,11 @@ def _home_tab_body(
             _chat_row(c, open_chat(c), on_long=_long if page is not None else None)
             for c in contacts
         ]
+        rows.insert(0, title_block)
         title_label.value = t("home.chats")
         main_list = None
 
-    top_pad = 8.0 if active == "settings" else header_h
+    top_pad = 8.0 if active == "settings" else 0.0
     if main_list is None:
         try:
             chat_list = ft.ListView(
@@ -1503,8 +1477,6 @@ def _home_tab_body(
                 spacing=0,
                 padding=ft.Padding.only(top=top_pad, bottom=list_bottom_pad),
                 controls=rows,
-                on_scroll=on_scroll,
-                scroll_interval=24,
                 scrollbar_theme=ft.ScrollbarTheme(thickness=0)
                 if hasattr(ft, "ScrollbarTheme")
                 else None,
@@ -1514,8 +1486,6 @@ def _home_tab_body(
                 spacing=0,
                 scroll=ft.ScrollMode.AUTO,
                 expand=True,
-                on_scroll=on_scroll,
-                scroll_interval=24,
                 controls=[ft.Container(height=top_pad)]
                 + rows
                 + [ft.Container(height=list_bottom_pad)],
@@ -1531,25 +1501,14 @@ def _home_tab_body(
     return ft.Column(
         expand=True,
         spacing=0,
-        controls=[
-            # SafeArea в main уже учитывает Dynamic Island
-            ft.Stack(
-                expand=True,
-                controls=[
-                    chat_list,
-                    ft.Container(
-                        content=header_layer,
-                        top=0,
-                        left=0,
-                        right=0,
-                    ),
-                ],
-            ),
-        ],
+        controls=[chat_list],
     )
 
 
 def build_home(page: ft.Page) -> ft.Control:
+    from flet_app.screens.new_chat import ask_contacts_permission
+
+    ask_contacts_permission(page)
     # фото для демо-истории Ивана
     photo = theme.asset("assets", "images", "photo_2026-09-30_00-09-10.jpg")
     if theme._image_exists(photo):
@@ -1573,10 +1532,14 @@ def build_home(page: ft.Page) -> ft.Control:
         return _
 
     def on_fab(_):
-        try:
-            STATE.snack(t("home.new_chat_soon"))
-        except Exception:
-            pass
+        tab = tab_state.get("active") or "chats"
+        if tab == "groups":
+            STATE.draft["_group_mode"] = "group"
+            STATE.draft["_compose_back"] = "groups"
+            STATE.go("/new_group")
+            return
+        STATE.draft["_compose_back"] = "chats"
+        STATE.go("/new_chat")
 
     def refresh_chats():
         if tab_state.get("active") != "chats":
@@ -1601,9 +1564,9 @@ def build_home(page: ft.Page) -> ft.Control:
     body_host = ft.Container(
         expand=True,
         opacity=1,
-        animate_opacity=ft.Animation(
-            liquid_glass.TAB_FADE_MS, ft.AnimationCurve.EASE_OUT
-        ),
+        offset=ft.Offset(0, 0),
+        animate_opacity=ft.Animation(220, ft.AnimationCurve.EASE_OUT_CUBIC),
+        animate_offset=ft.Animation(260, ft.AnimationCurve.EASE_OUT_CUBIC),
         content=_home_tab_body(
             tab_state["active"],
             open_chat=open_chat,
@@ -1634,12 +1597,21 @@ def build_home(page: ft.Page) -> ft.Control:
 
             tab_state["busy"] = True
             try:
-                body_host.animate_opacity = ft.Animation(
-                    liquid_glass.TAB_FADE_MS, ft.AnimationCurve.EASE_OUT
+                try:
+                    reduce = prefs.reduce_motion()
+                except Exception:
+                    reduce = False
+                body_host.animate_opacity = ft.Animation(220, ft.AnimationCurve.EASE_OUT_CUBIC)
+                body_host.animate_offset = (
+                    None
+                    if reduce
+                    else ft.Animation(260, ft.AnimationCurve.EASE_OUT_CUBIC)
                 )
                 body_host.opacity = 0
+                if not reduce:
+                    body_host.offset = ft.Offset(0, 0.015)
                 body_host.update()
-                await asyncio.sleep(liquid_glass.TAB_FADE_MS / 1000 * 0.5)
+                await asyncio.sleep(0.09)
                 body_host.content = _home_tab_body(
                     key,
                     open_chat=open_chat,
@@ -1649,6 +1621,7 @@ def build_home(page: ft.Page) -> ft.Control:
                     on_chats_changed=refresh_chats,
                 )
                 body_host.opacity = 1
+                body_host.offset = ft.Offset(0, 0)
                 body_host.update()
             finally:
                 tab_state["busy"] = False
@@ -1719,6 +1692,23 @@ def build_home(page: ft.Page) -> ft.Control:
         page.pubsub.subscribe(_on_net_pubsub)
     except Exception:
         pass
+
+    reopen = STATE.draft.pop("_open_settings_after_lang", None)
+    if reopen:
+        from flet_app.screens.settings_pages import settings_route
+
+        async def _open_settings_page():
+            import asyncio
+
+            await asyncio.sleep(0.05)
+            STATE.draft["_settings_no_anim"] = True
+            STATE.go(settings_route(str(reopen)))
+
+        try:
+            page.run_task(_open_settings_page)
+        except Exception:
+            STATE.draft["_settings_no_anim"] = True
+            STATE.go(settings_route(str(reopen)))
 
     return ft.Container(
         bgcolor=theme.BG,

@@ -72,12 +72,12 @@ class AppState:
         if isinstance(raw, list) and raw:
             return raw
         return [
-            {"title": "Не бойся\nподнять руку",
-             "subtitle": "Отправляйте вопросы учителю\nв чате. Получайте ответы\nбыстро и без стеснения."},
-            {"title": "Задавай\nвопросы смело",
-             "subtitle": "Учитель ответит в чате\nкласса — быстро, понятно\nи без стеснения."},
-            {"title": "Помогай\nодноклассникам",
-             "subtitle": "Делись знаниями\nи поддерживай тех,\nкому сейчас трудно."},
+            {"title": t("welcome.slide1_title"),
+             "subtitle": t("welcome.slide1_sub")},
+            {"title": t("welcome.slide2_title"),
+             "subtitle": t("welcome.slide2_sub")},
+            {"title": t("welcome.slide3_title"),
+             "subtitle": t("welcome.slide3_sub")},
         ]
 
 

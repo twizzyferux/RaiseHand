@@ -273,20 +273,22 @@ def glass_circle_button(
         alignment=ft.Alignment.CENTER,
         clip_behavior=ft.ClipBehavior.HARD_EDGE,
         ink=False,
-        animate_scale=ft.Animation(100, ft.AnimationCurve.EASE_OUT),
+        animate_scale=ft.Animation(160, ft.AnimationCurve.EASE_OUT),
         scale=1,
         content=content,
     )
 
     def _down(_e=None):
         try:
-            body.scale = 0.90
+            body.animate_scale = ft.Animation(90, ft.AnimationCurve.EASE_OUT)
+            body.scale = 0.92
             body.update()
         except Exception:
             pass
 
     def _up(_e=None):
         try:
+            body.animate_scale = ft.Animation(240, ft.AnimationCurve.EASE_OUT_BACK)
             body.scale = 1
             body.update()
         except Exception:
@@ -461,7 +463,7 @@ class SlidingLiquidNav:
                 (_a(theme.PRIMARY, 0.35) if theme.is_dark() else glass_surface_edge()),
             ),
             animate_position=ft.Animation(
-                PILL_SLIDE_MS, ft.AnimationCurve.EASE_IN_OUT_CUBIC
+                320, ft.AnimationCurve.EASE_OUT_BACK
             ),
             shadow=ft.BoxShadow(
                 blur_radius=8,

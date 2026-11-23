@@ -120,7 +120,11 @@ def play_ding(*, force: bool = False) -> None:
         if not force:
             if not prefs.sounds_enabled() or not prefs.sound_incoming():
                 return
+            if prefs.notif_sound_name() == "none":
+                return
         volume = prefs.sound_volume()
+        if prefs.notif_sound_name() == "soft":
+            volume *= 0.45
     except Exception:
         volume = 0.7
     path = ding_path()

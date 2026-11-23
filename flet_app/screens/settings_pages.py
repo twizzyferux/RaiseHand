@@ -8,8 +8,9 @@ from typing import Callable
 import flet as ft
 
 from core import auth, branding, gradients, logs, prefs
+from core.config import DATA_DIR, UPLOADS_DIR
 from core.i18n import t
-from flet_app import chat_data, liquid_glass, mono_icons, theme
+from flet_app import chat_data, liquid_glass, mono_icons, search_history, theme
 from flet_app.profile_ui import (
     actions_row,
     info_card,
@@ -114,15 +115,8 @@ def _header(title: str, *, on_back=None, trailing: ft.Control | None = None) -> 
 
 
 def _enter(child: ft.Control, *, visible: bool = False) -> ft.Container:
-    """Мягкий fade + едва заметный подъём. Без scale."""
-    return ft.Container(
-        alignment=ft.Alignment.CENTER_LEFT,
-        content=child,
-        opacity=1 if visible else 0,
-        offset=ft.Offset(0, 0) if visible else ft.Offset(0, 0.02),
-        animate_opacity=ft.Animation(260, ft.AnimationCurve.EASE_OUT),
-        animate_offset=ft.Animation(280, ft.AnimationCurve.EASE_OUT),
-    )
+    """Появление экрана настроек."""
+    return theme.live_panel(child, visible=visible)
 
 
 def _shell(page: ft.Page, key: str, body: ft.Control) -> ft.Control:
@@ -288,6 +282,75 @@ def _divider() -> ft.Control:
     return ft.Container(height=8)
 
 
+def _on_phone() -> bool:
+    """Телефонный порт — без desktop-only пунктов."""
+    try:
+        return theme.is_mobile_runtime()
+    except Exception:
+        return True
+
+
+def _choice_chips(
+    options: list[tuple[str, str]],
+    *,
+    selected: str,
+    on_pick,
+) -> ft.Control:
+    """Чипы выбора без remount экрана (не прыгает скролл наверх)."""
+    state = {"v": selected}
+    boxes: dict[str, ft.Container] = {}
+    labels: dict[str, ft.Text] = {}
+
+    def _paint():
+        for key, box in boxes.items():
+            on = key == state["v"]
+            box.bgcolor = theme.PRIMARY_SOFT if on else theme.FIELD_BG
+            box.border = ft.Border.all(1.5, theme.PRIMARY if on else theme.STROKE)
+            lab = labels[key]
+            lab.color = theme.PRIMARY if on else theme.INK
+            lab.weight = ft.FontWeight.W_600 if on else ft.FontWeight.W_500
+            try:
+                box.update()
+                lab.update()
+            except Exception:
+                pass
+
+    controls: list[ft.Control] = []
+    for key, title in options:
+        lab = ft.Text(
+            title,
+            size=13,
+            weight=ft.FontWeight.W_600 if key == selected else ft.FontWeight.W_500,
+            color=theme.PRIMARY if key == selected else theme.INK,
+            font_family=theme.FONT_FAMILY,
+        )
+        labels[key] = lab
+
+        def _click(_e=None, k=key):
+            if state["v"] == k:
+                return
+            state["v"] = k
+            try:
+                on_pick(k)
+            except Exception:
+                pass
+            _paint()
+
+        box = ft.Container(
+            border_radius=14,
+            bgcolor=theme.PRIMARY_SOFT if key == selected else theme.FIELD_BG,
+            padding=ft.Padding.symmetric(horizontal=14, vertical=10),
+            border=ft.Border.all(
+                1.5, theme.PRIMARY if key == selected else theme.STROKE
+            ),
+            content=lab,
+        )
+        boxes[key] = box
+        controls.append(theme.pressable(box, _click, scale_to=0.96))
+
+    return ft.Row(spacing=8, wrap=True, controls=controls)
+
+
 # --- экраны с уже рабочей логикой ---
 
 def _field(
@@ -375,7 +438,7 @@ def _show_dlg(page: ft.Page, dlg: ft.AlertDialog) -> None:
         page.update()
     except Exception as exc:
         logs.error("show dialog: %s", exc)
-        STATE.error("Не удалось открыть форму", "Профиль")
+        STATE.error(t("common.dialog_open_failed"), t("common.profile_title"))
 
 
 def _close_dlg(page: ft.Page, dlg: ft.AlertDialog | None = None) -> None:
@@ -419,12 +482,12 @@ def _edit_dialog(
         content=ft.Column(tight=True, spacing=10, controls=fields),
         actions=[
             ft.TextButton(
-                "Отмена",
+                t("common.cancel"),
                 on_click=close,
                 style=ft.ButtonStyle(color=theme.MUTED),
             ),
             ft.TextButton(
-                "Сохранить",
+                t("common.save"),
                 on_click=save,
                 style=ft.ButtonStyle(color=theme.PRIMARY),
             ),
@@ -439,9 +502,7 @@ def _settings_row_item(
     value: str,
     on_click,
 ) -> ft.Control:
-    return ft.Container(
-        ink=True,
-        on_click=on_click,
+    body = ft.Container(
         padding=ft.Padding.symmetric(vertical=14, horizontal=4),
         border_radius=12,
         content=ft.Row(
@@ -460,7 +521,7 @@ def _settings_row_item(
                             font_family=theme.FONT_FAMILY,
                         ),
                         ft.Text(
-                            value or "не указано",
+                            value or t("common.not_set"),
                             size=15,
                             weight=ft.FontWeight.W_500,
                             color=theme.INK,
@@ -474,13 +535,14 @@ def _settings_row_item(
             ],
         ),
     )
+    return theme.pressable(body, on_click, scale_to=0.985, expand=True)
 
 
 def _page_profile(page: ft.Page) -> ft.Control:
     """Свой профиль — Telegram-style (тело для settings _shell)."""
     user = STATE.user
     if user is None:
-        return _placeholder("profile", "Войдите, чтобы видеть профиль.")
+        return _placeholder("profile", t("profile.login_required"))
 
     def reload():
         STATE.draft["_settings_no_anim"] = True
@@ -488,15 +550,15 @@ def _page_profile(page: ft.Page) -> ft.Control:
 
     def apply_user(updated: auth.User):
         STATE.user = updated
-        STATE.snack("Профиль обновлён")
+        STATE.snack(t("profile.updated"))
         reload()
 
     def edit_name(_e=None):
         u = STATE.user
         if u is None:
             return
-        first_tf = _field("Имя", u.first_name or "")
-        last_tf = _field("Фамилия", u.last_name or "")
+        first_tf = _field(t("profile.first_name"), u.first_name or "")
+        last_tf = _field(t("profile.last_name"), u.last_name or "")
 
         def _save():
             apply_user(
@@ -507,7 +569,7 @@ def _page_profile(page: ft.Page) -> ft.Control:
                 )
             )
 
-        _edit_dialog(page, title="Имя", fields=[first_tf, last_tf], on_save=_save)
+        _edit_dialog(page, title=t("profile.first_name"), fields=[first_tf, last_tf], on_save=_save)
 
     STATE.draft["_profile_header_edit"] = edit_name
 
@@ -516,22 +578,22 @@ def _page_profile(page: ft.Page) -> ft.Control:
         if u is None:
             return
         nick_tf = _field(
-            "Ник",
+            t("profile.nick"),
             u.nickname or "",
-            hint="только латиница: name_01",
+            hint=t("profile.nick_hint"),
         )
 
         def _save():
             raw = (nick_tf.value or "").strip().lstrip("@")
             apply_user(auth.update_profile(u.id, nickname=raw))
 
-        _edit_dialog(page, title="Никнейм", fields=[nick_tf], on_save=_save)
+        _edit_dialog(page, title=t("profile.nickname"), fields=[nick_tf], on_save=_save)
 
     def edit_phone(_e=None):
         u = STATE.user
         if u is None:
             return
-        phone_tf = _field("Телефон или email", u.contact_value or "", hint="+7… или email")
+        phone_tf = _field(t("profile.phone_email"), u.contact_value or "", hint=t("profile.phone_hint"))
 
         def _save():
             apply_user(
@@ -540,16 +602,16 @@ def _page_profile(page: ft.Page) -> ft.Control:
                 )
             )
 
-        _edit_dialog(page, title="Контакт", fields=[phone_tf], on_save=_save)
+        _edit_dialog(page, title=t("profile.contact"), fields=[phone_tf], on_save=_save)
 
     def edit_bio(_e=None):
         u = STATE.user
         if u is None:
             return
         bio_tf = _field(
-            "О себе",
+            t("profile.about"),
             u.status_text or "",
-            hint="Короткое описание",
+            hint=t("profile.about_hint"),
             multiline=True,
         )
 
@@ -558,10 +620,10 @@ def _page_profile(page: ft.Page) -> ft.Control:
                 auth.update_profile(u.id, status_text=(bio_tf.value or "").strip())
             )
 
-        _edit_dialog(page, title="Описание", fields=[bio_tf], on_save=_save)
+        _edit_dialog(page, title=t("profile.description"), fields=[bio_tf], on_save=_save)
 
     def more_soon(_e=None):
-        STATE.snack("Дополнительные действия скоро")
+        STATE.snack(t("profile.more_soon"))
 
     seed = (user.public_id or user.display_name or "me").lower()
     avatar = profile_avatar_from_seed(
@@ -572,43 +634,46 @@ def _page_profile(page: ft.Page) -> ft.Control:
         image_path=getattr(user, "avatar_path", None),
     )
 
-    status_line = "это вы"
+    status_line = t("profile.status_you")
     if (user.status_text or "").strip():
-        status_line = f"это вы · {(user.status_text or '').strip()[:48]}"
+        status_line = t(
+            "profile.status_you_with",
+            status=(user.status_text or "").strip()[:48],
+        )
 
     head = profile_head_block(
         avatar=avatar,
-        display_name=user.full_name or "Без имени",
+        display_name=user.full_name or t("profile.no_name"),
         status_line=status_line,
         name_on_click=edit_name,
     )
 
     profile_actions = actions_row(
         [
-            ("edit", "Изменить", edit_name),
-            (ft.Icons.ACCOUNT_CIRCLE_OUTLINED, "Аватар", lambda _: STATE.go(settings_route("avatar"))),
-            (ft.Icons.LOCK_OUTLINE, "Конфид.", lambda _: STATE.go(settings_route("privacy"))),
-            ("more", "Ещё", more_soon),
+            ("edit", t("profile.edit"), edit_name),
+            (ft.Icons.ACCOUNT_CIRCLE_OUTLINED, t("avatar.title"), lambda _: STATE.go(settings_route("avatar"))),
+            (ft.Icons.LOCK_OUTLINE, t("profile.privacy_short"), lambda _: STATE.go(settings_route("privacy"))),
+            ("more", t("profile.more"), more_soon),
         ]
     )
 
     info_rows = [
-        ("Имя", user.full_name or "", edit_name),
+        (t("profile.first_name"), user.full_name or "", edit_name),
         (
-            "Никнейм",
-            f"@{user.nickname}" if user.nickname else "не указано",
+            t("profile.nickname"),
+            f"@{user.nickname}" if user.nickname else t("common.not_set"),
             edit_nick,
         ),
-        ("Телефон / email", user.contact_value or "", edit_phone),
+        (t("profile.phone_row"), user.contact_value or "", edit_phone),
         (
-            "О себе",
-            (user.status_text or "").strip() or "не указано",
+            t("profile.about"),
+            (user.status_text or "").strip() or t("common.not_set"),
             edit_bio,
         ),
         ("ID", user.public_id or "", None),
     ]
 
-    media_block = media_tabs_block([], empty_text="Медиа из ваших чатов появятся здесь")
+    media_block = media_tabs_block([], empty_text=t("profile.media_empty"))
 
     return ft.Column(
         spacing=16,
@@ -674,18 +739,119 @@ def _page_appearance(page: ft.Page) -> ft.Control:
 
     theme_sw.on_change = on_theme
 
+    accent_state = {"v": accent}
+    accent_chips: dict[str, ft.Container] = {}
+
+    def _paint_accent():
+        for k, chip in accent_chips.items():
+            on = k == accent_state["v"]
+            chip.border = ft.Border.all(3, theme.BG if on else "transparent")
+            chip.shadow = ft.BoxShadow(
+                blur_radius=12 if on else 6,
+                color=theme.PRIMARY_SOFT if on else "#00000022",
+                offset=ft.Offset(0, 2),
+            )
+            try:
+                chip.update()
+            except Exception:
+                pass
+
     chips: list[ft.Control] = []
     for key in branding.THEME_KEYS:
 
         def _pick(_e=None, k=key):
+            accent_state["v"] = k
             prefs.set_accent_theme(k)
             # по умолчанию пузыри следуют акценту, если не задавали отдельно
             prefs.set_bubble_theme(k)
             theme.apply_mode(page, prefs.theme_mode())
-            STATE.snack(f"Цвет: {branding.THEME_LABELS.get(k, k)}")
-            _quiet_reload("appearance")
+            _paint_accent()
+            STATE.snack(t("appearance.snack_color", name=branding.THEME_LABELS.get(k, k)))
 
-        chips.append(_color_chip(key, key == accent, _pick))
+        chip = _color_chip(key, key == accent, _pick)
+        accent_chips[key] = chip
+        chips.append(chip)
+
+    font_lbl = ft.Text(
+        t("appearance.font_scale", scale=f"{prefs.font_scale():.2f}"),
+        size=13,
+        weight=ft.FontWeight.W_600,
+        color=theme.MUTED,
+        font_family=theme.FONT_FAMILY,
+    )
+    font_slider = ft.Slider(
+        min=0.85,
+        max=1.25,
+        divisions=8,
+        value=prefs.font_scale(),
+        active_color=theme.PRIMARY,
+        on_change=lambda e: None,
+    )
+
+    def on_font(e):
+        prefs.set_font_scale(float(e.control.value))
+        font_lbl.value = t("appearance.font_scale", scale=f"{prefs.font_scale():.2f}")
+        try:
+            font_lbl.update()
+        except Exception:
+            pass
+
+    font_slider.on_change = on_font
+
+    dim_lbl = ft.Text(
+        t("appearance.chat_dim", pct=int(prefs.chat_bg_dim() * 100)),
+        size=13,
+        weight=ft.FontWeight.W_600,
+        color=theme.MUTED,
+        font_family=theme.FONT_FAMILY,
+    )
+    dim_slider = ft.Slider(
+        min=0.0,
+        max=0.4,
+        divisions=8,
+        value=prefs.chat_bg_dim(),
+        active_color=theme.PRIMARY,
+    )
+
+    def on_dim(e):
+        prefs.set_chat_bg_dim(float(e.control.value))
+        dim_lbl.value = t("appearance.chat_dim", pct=int(prefs.chat_bg_dim() * 100))
+        try:
+            dim_lbl.update()
+        except Exception:
+            pass
+
+    dim_slider.on_change = on_dim
+
+    reduce_sw = ft.Switch(value=prefs.reduce_motion(), active_color=theme.PRIMARY)
+    time_sw = ft.Switch(value=prefs.show_message_time(), active_color=theme.PRIMARY)
+
+    reduce_sw.on_change = lambda _e: prefs.set_reduce_motion(bool(reduce_sw.value))
+    time_sw.on_change = lambda _e: prefs.set_show_message_time(bool(time_sw.value))
+
+    corner_chips = _choice_chips(
+        [("sharp", t("appearance.corners_sharp")), ("round", t("appearance.corners_round")), ("super", t("appearance.corners_super"))],
+        selected=prefs.bubble_corners(),
+        on_pick=lambda k: prefs.set_bubble_corners(k),
+    )
+
+    look_links: list[ft.Control] = [
+        _settings_row_item(
+            title=t("appearance.bubbles_row"),
+            value=t("appearance.bubbles_hint"),
+            on_click=lambda _: STATE.go(settings_route("bubbles")),
+        ),
+    ]
+    # Иконка окна — только desktop; на телефоне системная иконка из IPA
+    if not _on_phone():
+        look_links.append(ft.Container(height=6))
+        look_links.append(
+            _settings_row_item(
+                title=t("appearance.app_icon_row"),
+                value=t("appearance.app_icon_hint"),
+                on_click=lambda _: STATE.go(settings_route("app_icon")),
+            )
+        )
 
     return ft.Column(
         spacing=12,
@@ -711,18 +877,48 @@ def _page_appearance(page: ft.Page) -> ft.Control:
                 ft.Column(
                     spacing=0,
                     tight=True,
+                    controls=look_links,
+                )
+            ),
+            _section_label(t("appearance.text_animation")),
+            _card(
+                ft.Column(
+                    spacing=12,
+                    tight=True,
                     controls=[
-                        _settings_row_item(
-                            title=t("appearance.bubbles_row"),
-                            value=t("appearance.bubbles_hint"),
-                            on_click=lambda _: STATE.go(settings_route("bubbles")),
+                        font_lbl,
+                        font_slider,
+                        _divider(),
+                        _switch_row(
+                            t("appearance.reduce_motion"),
+                            reduce_sw,
+                            hint=t("appearance.reduce_motion_hint"),
                         ),
-                        ft.Container(height=6),
-                        _settings_row_item(
-                            title=t("appearance.app_icon_row"),
-                            value=t("appearance.app_icon_hint"),
-                            on_click=lambda _: STATE.go(settings_route("app_icon")),
+                    ],
+                )
+            ),
+            _section_label(t("appearance.section_chat")),
+            _card(
+                ft.Column(
+                    spacing=12,
+                    tight=True,
+                    controls=[
+                        ft.Text(
+                            t("appearance.bubble_corners"),
+                            size=13,
+                            weight=ft.FontWeight.W_600,
+                            color=theme.MUTED,
+                            font_family=theme.FONT_FAMILY,
                         ),
+                        corner_chips,
+                        _divider(),
+                        _switch_row(
+                            t("appearance.message_time"),
+                            time_sw,
+                            hint=t("appearance.message_time_hint"),
+                        ),
+                        dim_lbl,
+                        dim_slider,
                     ],
                 )
             ),
@@ -752,7 +948,7 @@ def _page_bubbles(page: ft.Page) -> ft.Control:
                 pass
 
     bubble_label = ft.Text(
-        "Привет! Это пример вашего сообщения",
+        t("appearance.preview_outgoing"),
         size=15,
         color="#FFFFFF",
         font_family=theme.FONT_FAMILY,
@@ -783,7 +979,7 @@ def _page_bubbles(page: ft.Page) -> ft.Control:
             alignment=ft.MainAxisAlignment.CENTER,
             spacing=16,
             controls=[
-                ft.Text("Исходящее", size=13, color=theme.MUTED),
+                ft.Text(t("appearance.preview_out_label"), size=13, color=theme.MUTED),
                 bubble,
                 ft.Container(
                     bgcolor=theme.BUBBLE_IN,
@@ -792,7 +988,7 @@ def _page_bubbles(page: ft.Page) -> ft.Control:
                     ),
                     padding=ft.Padding.symmetric(horizontal=14, vertical=10),
                     content=ft.Text(
-                        "А это входящее",
+                        t("appearance.preview_incoming"),
                         size=15,
                         color=theme.INK,
                         font_family=theme.FONT_FAMILY,
@@ -802,18 +998,37 @@ def _page_bubbles(page: ft.Page) -> ft.Control:
         ),
     )
 
+    bubble_state = {"v": current}
+    bubble_chips: dict[str, ft.Container] = {}
+
+    def _paint_bubble_chips():
+        for k, chip in bubble_chips.items():
+            on = k == bubble_state["v"]
+            chip.border = ft.Border.all(3, theme.BG if on else "transparent")
+            chip.shadow = ft.BoxShadow(
+                blur_radius=12 if on else 6,
+                color=theme.PRIMARY_SOFT if on else "#00000022",
+                offset=ft.Offset(0, 2),
+            )
+            try:
+                chip.update()
+            except Exception:
+                pass
+
     chips: list[ft.Control] = []
     for key in branding.THEME_KEYS:
 
         def _pick(_e=None, k=key):
+            bubble_state["v"] = k
             prefs.set_bubble_theme(k)
             theme.apply_mode(page, prefs.theme_mode())
             _rebuild_preview(k)
-            STATE.snack(f"Пузыри: {branding.THEME_LABELS.get(k, k)}")
-            STATE.draft["_settings_no_anim"] = True
-            STATE.go(settings_route("bubbles"))
+            _paint_bubble_chips()
+            STATE.snack(t("appearance.snack_bubbles", name=branding.THEME_LABELS.get(k, k)))
 
-        chips.append(_color_chip(key, key == current, _pick, size=48))
+        chip = _color_chip(key, key == current, _pick, size=48)
+        bubble_chips[key] = chip
+        chips.append(chip)
 
     colors_panel = ft.Container(
         width=full_w,
@@ -824,7 +1039,7 @@ def _page_bubbles(page: ft.Page) -> ft.Control:
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
                     ft.Text(
-                        "Цвет пузырей",
+                        t("appearance.bubble_color"),
                         size=13,
                         weight=ft.FontWeight.W_600,
                         color=theme.MUTED,
@@ -847,23 +1062,75 @@ def _page_bubbles(page: ft.Page) -> ft.Control:
 
 
 def _page_app_icon(page: ft.Page) -> ft.Control:
+    if _on_phone():
+        return _placeholder(
+            "app_icon",
+            t("appearance.app_icon_desc"),
+        )
     current = prefs.app_icon_key()
     # light/dark спрайты уже из branding
     icons = branding.list_app_icons(dark=theme.is_dark())
     # превью крупнее; спрайты уже со скруглёнными углами (RGBA)
     icon_size = 76.0
     corner = 17.0
+    state = {"v": current}
+    frames: dict[str, ft.Container] = {}
+    labels: dict[str, ft.Text] = {}
+
+    def _paint():
+        for k, fr in frames.items():
+            on = k == state["v"]
+            fr.border = ft.Border.all(2.5, theme.PRIMARY if on else "transparent")
+            lab = labels[k]
+            lab.color = theme.PRIMARY if on else theme.MUTED
+            try:
+                fr.update()
+                lab.update()
+            except Exception:
+                pass
+
     cells: list[ft.Control] = []
     for key, label, path in icons:
 
-        def _pick(_e=None, k=key, p=path):
+        def _pick(_e=None, k=key):
+            state["v"] = k
             prefs.set_app_icon_key(k)
             theme.apply_window_icon(page)
-            STATE.snack(f"Иконка: {branding.THEME_LABELS.get(k, k)}")
-            STATE.draft["_settings_no_anim"] = True
-            STATE.go(settings_route("app_icon"))
+            _paint()
+            STATE.snack(t("appearance.snack_icon", name=branding.THEME_LABELS.get(k, k)))
 
         selected = key == current
+        frame = ft.Container(
+            width=icon_size,
+            height=icon_size,
+            border_radius=corner,
+            border=ft.Border.all(
+                2.5, theme.PRIMARY if selected else "transparent"
+            ),
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            shadow=ft.BoxShadow(
+                blur_radius=12,
+                color="#00000028",
+                offset=ft.Offset(0, 4),
+            ),
+            content=ft.Image(
+                src=path,
+                width=icon_size,
+                height=icon_size,
+                fit=ft.BoxFit.COVER,
+            ),
+        )
+        lab = ft.Text(
+            label,
+            size=10,
+            color=theme.PRIMARY if selected else theme.MUTED,
+            text_align=ft.TextAlign.CENTER,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+            width=80,
+        )
+        frames[key] = frame
+        labels[key] = lab
         cells.append(
             ft.Container(
                 ink=True,
@@ -873,37 +1140,7 @@ def _page_app_icon(page: ft.Page) -> ft.Control:
                     spacing=8,
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     tight=True,
-                    controls=[
-                        ft.Container(
-                            width=icon_size,
-                            height=icon_size,
-                            border_radius=corner,
-                            border=ft.Border.all(
-                                2.5, theme.PRIMARY if selected else "transparent"
-                            ),
-                            clip_behavior=ft.ClipBehavior.HARD_EDGE,
-                            shadow=ft.BoxShadow(
-                                blur_radius=12,
-                                color="#00000028",
-                                offset=ft.Offset(0, 4),
-                            ),
-                            content=ft.Image(
-                                src=path,
-                                width=icon_size,
-                                height=icon_size,
-                                fit=ft.BoxFit.COVER,
-                            ),
-                        ),
-                        ft.Text(
-                            label,
-                            size=10,
-                            color=theme.PRIMARY if selected else theme.MUTED,
-                            text_align=ft.TextAlign.CENTER,
-                            max_lines=1,
-                            overflow=ft.TextOverflow.ELLIPSIS,
-                            width=80,
-                        ),
-                    ],
+                    controls=[frame, lab],
                 ),
             )
         )
@@ -915,7 +1152,7 @@ def _page_app_icon(page: ft.Page) -> ft.Control:
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
                 ft.Text(
-                    "Иконка приложения",
+                    t("appearance.app_icon_title"),
                     size=13,
                     weight=ft.FontWeight.W_600,
                     color=theme.MUTED,
@@ -923,8 +1160,7 @@ def _page_app_icon(page: ft.Page) -> ft.Control:
                     text_align=ft.TextAlign.CENTER,
                 ),
                 ft.Text(
-                    "Выберите цвет иконки для светлой и тёмной темы. "
-                    "На телефоне обновится на рабочем столе.",
+                    t("appearance.app_icon_desc"),
                     size=12,
                     color=theme.MUTED,
                     text_align=ft.TextAlign.CENTER,
@@ -946,10 +1182,10 @@ def _page_favorites(page: ft.Page) -> ft.Control:
 def _page_avatar(page: ft.Page) -> ft.Control:
     user = STATE.user
     if user is None:
-        return _placeholder("avatar", "Войдите, чтобы сменить аватар.")
+        return _placeholder("avatar", t("avatar.login_required"))
 
     status = ft.Text(
-        "Нажмите «Выбрать фото» — аватар сохранится в профиле.",
+        t("avatar.pick_hint"),
         size=13,
         color=theme.MUTED,
         text_align=ft.TextAlign.CENTER,
@@ -963,17 +1199,17 @@ def _page_avatar(page: ft.Page) -> ft.Control:
             updated = auth.update_profile(STATE.user.id, avatar_path=path)
             STATE.user = updated
             avatar_host.content = _profile_avatar(updated, 112)
-            status.value = "Аватар обновлён"
+            status.value = t("avatar.updated")
             status.color = theme.PRIMARY
             try:
                 avatar_host.update()
                 status.update()
             except Exception:
                 pass
-            STATE.snack("Аватар сохранён")
+            STATE.snack(t("avatar.saved"))
             STATE.go(settings_route("avatar"))
         except Exception as exc:
-            STATE.error(str(exc), "Аватар")
+            STATE.error(str(exc), t("avatar.title"))
 
     def pick(_=None):
         async def _pick():
@@ -988,7 +1224,7 @@ def _page_avatar(page: ft.Page) -> ft.Control:
                     except Exception:
                         pass
                 files = await picker.pick_files(
-                    dialog_title="Фото профиля",
+                    dialog_title=t("avatar.dialog_title"),
                     allow_multiple=False,
                     allowed_extensions=["png", "jpg", "jpeg", "webp"],
                     file_type=ft.FilePickerFileType.CUSTOM,
@@ -1008,22 +1244,22 @@ def _page_avatar(page: ft.Page) -> ft.Control:
                     root.withdraw()
                     root.attributes("-topmost", True)
                     path = filedialog.askopenfilename(
-                        title="Фото профиля",
+                        title=t("avatar.dialog_title"),
                         filetypes=[
-                            ("Изображения", "*.png *.jpg *.jpeg *.webp"),
-                            ("Все файлы", "*.*"),
+                            (t("avatar.file_images"), "*.png *.jpg *.jpeg *.webp"),
+                            (t("avatar.file_all"), "*.*"),
                         ],
                     )
                     root.destroy()
                     if path:
                         _apply_path(path)
                 except Exception as exc:
-                    STATE.error(str(exc), "Аватар")
+                    STATE.error(str(exc), t("avatar.title"))
 
         try:
             page.run_task(_pick)
         except Exception as exc:
-            STATE.error(str(exc), "Аватар")
+            STATE.error(str(exc), t("avatar.title"))
 
     return ft.Column(
         spacing=12,
@@ -1037,7 +1273,7 @@ def _page_avatar(page: ft.Page) -> ft.Control:
                         avatar_host,
                         status,
                         liquid_glass.purple_glass_button(
-                            "Выбрать фото", pick, expand=True
+                            t("avatar.pick_photo"), pick, expand=True
                         ),
                     ],
                 ),
@@ -1054,6 +1290,11 @@ def _page_notifications(page: ft.Page) -> ft.Control:
     private_sw = ft.Switch(value=prefs.notif_private(), active_color=theme.PRIMARY)
     groups_sw = ft.Switch(value=prefs.notif_groups(), active_color=theme.PRIMARY)
     preview_sw = ft.Switch(value=prefs.notif_preview(), active_color=theme.PRIMARY)
+    questions_sw = ft.Switch(value=prefs.notif_questions(), active_color=theme.PRIMARY)
+    mentions_sw = ft.Switch(
+        value=prefs.notif_mentions_only_groups(), active_color=theme.PRIMARY
+    )
+    quiet_sw = ft.Switch(value=prefs.notif_quiet_hours(), active_color=theme.PRIMARY)
 
     sound_sw = ft.Switch(value=prefs.sounds_enabled(), active_color=theme.PRIMARY)
     incoming_sw = ft.Switch(value=prefs.sound_incoming(), active_color=theme.PRIMARY)
@@ -1081,6 +1322,15 @@ def _page_notifications(page: ft.Page) -> ft.Control:
     def on_preview(_e=None):
         prefs.set_notif_preview(bool(preview_sw.value))
 
+    def on_questions(_e=None):
+        prefs.set_notif_questions(bool(questions_sw.value))
+
+    def on_mentions(_e=None):
+        prefs.set_notif_mentions_only_groups(bool(mentions_sw.value))
+
+    def on_quiet(_e=None):
+        prefs.set_notif_quiet_hours(bool(quiet_sw.value))
+
     def on_sound(_e=None):
         prefs.set_sounds_enabled(bool(sound_sw.value))
         logs.info("prefs sounds=%s", sound_sw.value)
@@ -1095,47 +1345,53 @@ def _page_notifications(page: ft.Page) -> ft.Control:
     private_sw.on_change = on_private
     groups_sw.on_change = on_groups
     preview_sw.on_change = on_preview
+    questions_sw.on_change = on_questions
+    mentions_sw.on_change = on_mentions
+    quiet_sw.on_change = on_quiet
     sound_sw.on_change = on_sound
     incoming_sw.on_change = on_incoming
     outgoing_sw.on_change = on_outgoing
 
-    vol_labels = {
-        "low": ("Тихо", 0.35),
-        "mid": ("Нормально", 0.7),
-        "high": ("Громко", 1.0),
-    }
+    vol_map = {"low": 0.35, "mid": 0.7, "high": 1.0}
 
-    def _vol_chip(key: str) -> ft.Control:
-        label, value = vol_labels[key]
-        selected = vol_state["key"] == key
+    def _on_vol(k: str):
+        vol_state["key"] = k
+        prefs.set_sound_volume(vol_map.get(k, 0.7))
 
-        def _pick(_e=None, k=key, v=value):
-            vol_state["key"] = k
-            prefs.set_sound_volume(v)
-            STATE.draft["_settings_no_anim"] = True
-            STATE.go(settings_route("notifications"))
-
-        return ft.Container(
-            ink=True,
-            on_click=_pick,
-            border_radius=14,
-            bgcolor=theme.PRIMARY_SOFT if selected else theme.FIELD_BG,
-            padding=ft.Padding.symmetric(horizontal=14, vertical=10),
-            border=ft.Border.all(
-                1.5, theme.PRIMARY if selected else theme.STROKE
-            ),
-            content=ft.Text(
-                label,
-                size=13,
-                weight=ft.FontWeight.W_600 if selected else ft.FontWeight.W_500,
-                color=theme.PRIMARY if selected else theme.INK,
-                font_family=theme.FONT_FAMILY,
-            ),
-        )
+    vol_chips = _choice_chips(
+        [("low", t("notif.vol_low")), ("mid", t("notif.vol_mid")), ("high", t("notif.vol_high"))],
+        selected=vol_state["key"],
+        on_pick=_on_vol,
+    )
 
     def _test_sound(_e=None):
+        if prefs.notif_sound_name() == "none":
+            STATE.snack(t("notif.sound_off"))
+            return
         sounds.play_ding(force=True)
-        STATE.snack("Звук входящего")
+        STATE.snack(t("notif.sound_incoming"))
+
+    def _on_notif_sound(k: str):
+        prefs.set_notif_sound_name(k)
+
+    sound_chips = _choice_chips(
+        [("default", t("notif.tone_default")), ("soft", t("notif.tone_soft")), ("none", t("notif.tone_none"))],
+        selected=prefs.notif_sound_name(),
+        on_pick=_on_notif_sound,
+    )
+
+    qh_start = _field(
+        t("notif.qh_start"), prefs.quiet_hours_start(), hint=t("notif.qh_hint")
+    )
+    qh_end = _field(t("notif.qh_end"), prefs.quiet_hours_end(), hint=t("notif.qh_hint"))
+
+    def _save_quiet_times(_e=None):
+        prefs.set_quiet_hours_start(qh_start.value or "22:00")
+        prefs.set_quiet_hours_end(qh_end.value or "08:00")
+        STATE.snack(t("notif.qh_saved"))
+
+    qh_start.on_blur = _save_quiet_times
+    qh_end.on_blur = _save_quiet_times
 
     notif_card = _card(
         ft.Column(
@@ -1143,25 +1399,58 @@ def _page_notifications(page: ft.Page) -> ft.Control:
             tight=True,
             controls=[
                 _switch_row(
-                    "Push-уведомления",
+                    t("notif.push"),
                     push_sw,
-                    hint="Показывать уведомления о новых сообщениях",
+                    hint=t("notif.push_hint"),
                 ),
                 _divider(),
                 _switch_row(
-                    "Личные чаты",
+                    t("notif.dm"),
                     private_sw,
-                    hint="Уведомления из личных переписок",
+                    hint=t("notif.dm_hint"),
                 ),
                 _switch_row(
-                    "Группы",
+                    t("notif.groups"),
                     groups_sw,
-                    hint="Уведомления из групповых чатов",
+                    hint=t("notif.groups_hint"),
                 ),
                 _switch_row(
-                    "Текст сообщения",
+                    t("notif.show_text"),
                     preview_sw,
-                    hint="Показывать текст в уведомлении",
+                    hint=t("notif.show_text_hint"),
+                ),
+                _divider(),
+                _switch_row(
+                    t("notif.questions"),
+                    questions_sw,
+                    hint=t("notif.questions_hint"),
+                ),
+                _switch_row(
+                    t("notif.mentions_only"),
+                    mentions_sw,
+                    hint=t("notif.mentions_hint"),
+                ),
+            ],
+        )
+    )
+
+    quiet_card = _card(
+        ft.Column(
+            spacing=12,
+            tight=True,
+            controls=[
+                _switch_row(
+                    t("notif.quiet_hours"),
+                    quiet_sw,
+                    hint=t("notif.quiet_hours_hint"),
+                ),
+                qh_start,
+                qh_end,
+                ft.Text(
+                    t("notif.quiet_resume"),
+                    size=12,
+                    color=theme.MUTED,
+                    font_family=theme.FONT_FAMILY,
                 ),
             ],
         )
@@ -1173,33 +1462,37 @@ def _page_notifications(page: ft.Page) -> ft.Control:
             tight=True,
             controls=[
                 _switch_row(
-                    "Звуки",
+                    t("notif.sounds_master"),
                     sound_sw,
-                    hint="Общий переключатель звуков в приложении",
+                    hint=t("notif.sounds_hint"),
                 ),
                 _divider(),
                 _switch_row(
-                    "Входящие",
+                    t("notif.incoming"),
                     incoming_sw,
-                    hint="Звук при новом сообщении",
+                    hint=t("notif.incoming_hint"),
                 ),
                 _switch_row(
-                    "Исходящие",
+                    t("notif.outgoing"),
                     outgoing_sw,
-                    hint="Короткий звук при отправке",
+                    hint=t("notif.outgoing_hint"),
                 ),
                 ft.Text(
-                    "Громкость",
+                    t("notif.volume"),
                     size=13,
                     weight=ft.FontWeight.W_600,
                     color=theme.MUTED,
                     font_family=theme.FONT_FAMILY,
                 ),
-                ft.Row(
-                    spacing=8,
-                    wrap=True,
-                    controls=[_vol_chip("low"), _vol_chip("mid"), _vol_chip("high")],
+                vol_chips,
+                ft.Text(
+                    t("notif.sound_pick"),
+                    size=13,
+                    weight=ft.FontWeight.W_600,
+                    color=theme.MUTED,
+                    font_family=theme.FONT_FAMILY,
                 ),
+                sound_chips,
                 ft.Container(
                     ink=True,
                     on_click=_test_sound,
@@ -1216,7 +1509,7 @@ def _page_notifications(page: ft.Page) -> ft.Control:
                                 color=theme.PRIMARY,
                             ),
                             ft.Text(
-                                "Прослушать звук входящего",
+                                t("notif.preview_incoming"),
                                 size=14,
                                 color=theme.INK,
                                 font_family=theme.FONT_FAMILY,
@@ -1235,6 +1528,7 @@ def _page_notifications(page: ft.Page) -> ft.Control:
         controls=[
             _section_label(t("notif.section_notifications")),
             notif_card,
+            quiet_card,
             _section_label(t("notif.section_sounds")),
             sound_card,
         ],
@@ -1243,9 +1537,9 @@ def _page_notifications(page: ft.Page) -> ft.Control:
 
 def _page_password(page: ft.Page) -> ft.Control:
     if STATE.user is None:
-        return _placeholder("password", "Войдите, чтобы сменить пароль.")
+        return _placeholder("password", t("password.login_required"))
     p1 = ft.TextField(
-        label="Новый пароль",
+        label=t("password.new"),
         password=True,
         can_reveal_password=True,
         bgcolor=theme.FIELD_BG,
@@ -1253,7 +1547,7 @@ def _page_password(page: ft.Page) -> ft.Control:
         border=theme.field_border(16, color=theme.STROKE, focused_color=theme.PRIMARY),
     )
     p2 = ft.TextField(
-        label="Повтор",
+        label=t("password.repeat"),
         password=True,
         can_reveal_password=True,
         bgcolor=theme.FIELD_BG,
@@ -1264,14 +1558,14 @@ def _page_password(page: ft.Page) -> ft.Control:
     def save(_=None):
         try:
             auth.change_password(STATE.user.id, p1.value or "", p2.value or "")
-            STATE.snack("Пароль обновлён")
+            STATE.snack(t("password.updated"))
             logs.event("PASSWORD_CHANGE", user=STATE.user.public_id)
             p1.value = ""
             p2.value = ""
             p1.update()
             p2.update()
         except Exception as exc:
-            STATE.error(str(exc), "Пароль")
+            STATE.error(str(exc), t("password.title"))
 
     return _card(
         ft.Column(
@@ -1280,7 +1574,7 @@ def _page_password(page: ft.Page) -> ft.Control:
             controls=[
                 p1,
                 p2,
-                ft.FilledButton("Сохранить", icon=ft.Icons.SAVE, on_click=save),
+                ft.FilledButton(t("common.save"), icon=ft.Icons.SAVE, on_click=save),
             ],
         )
     )
@@ -1291,7 +1585,7 @@ def _page_privacy(page: ft.Page) -> ft.Control:
 
     user = STATE.user
     if user is None:
-        return _placeholder("privacy", "Войдите, чтобы настроить конфиденциальность.")
+        return _placeholder("privacy", t("privacy.login_required"))
 
     pid = user.public_id
     cur = priv.for_user(pid)
@@ -1308,31 +1602,19 @@ def _page_privacy(page: ft.Page) -> ft.Control:
 
     msg_mode = {"v": cur.get("who_can_message") or priv.MSG_EVERYONE}
 
-    def _msg_chip(mode: str) -> ft.Control:
-        selected = msg_mode["v"] == mode
-        label = priv.MSG_LABELS.get(mode, mode)
+    def _on_msg_mode(m: str) -> None:
+        msg_mode["v"] = m
+        priv.set_for_user(pid, who_can_message=m)
 
-        def _pick(_e=None, m=mode):
-            msg_mode["v"] = m
-            priv.set_for_user(pid, who_can_message=m)
-            STATE.draft["_settings_no_anim"] = True
-            STATE.go(settings_route("privacy"))
-
-        return ft.Container(
-            ink=True,
-            on_click=_pick,
-            border_radius=14,
-            bgcolor=theme.PRIMARY_SOFT if selected else theme.FIELD_BG,
-            padding=ft.Padding.symmetric(horizontal=14, vertical=10),
-            border=ft.Border.all(1.5, theme.PRIMARY if selected else theme.STROKE),
-            content=ft.Text(
-                label,
-                size=13,
-                weight=ft.FontWeight.W_600 if selected else ft.FontWeight.W_500,
-                color=theme.PRIMARY if selected else theme.INK,
-                font_family=theme.FONT_FAMILY,
-            ),
-        )
+    msg_chips = _choice_chips(
+        [
+            (priv.MSG_EVERYONE, priv.MSG_LABELS.get(priv.MSG_EVERYONE, priv.MSG_EVERYONE)),
+            (priv.MSG_CONTACTS, priv.MSG_LABELS.get(priv.MSG_CONTACTS, priv.MSG_CONTACTS)),
+            (priv.MSG_NOBODY, priv.MSG_LABELS.get(priv.MSG_NOBODY, priv.MSG_NOBODY)),
+        ],
+        selected=msg_mode["v"],
+        on_pick=_on_msg_mode,
+    )
 
     visibility = _card(
         ft.Column(
@@ -1341,26 +1623,26 @@ def _page_privacy(page: ft.Page) -> ft.Control:
             controls=[
                 _sw(
                     "hide_phone",
-                    "Скрыть номер / email",
-                    "Другие не увидят ваш контакт в профиле",
+                    t("privacy.hide_contact"),
+                    t("privacy.hide_contact_hint"),
                 ),
                 _divider(),
                 _sw(
                     "hide_last_seen",
-                    "Скрыть время в сети",
-                    "Вместо точного статуса — «был(а) недавно»",
+                    t("privacy.hide_online"),
+                    t("privacy.hide_online_hint"),
                 ),
                 _divider(),
                 _sw(
                     "hide_avatar",
-                    "Скрыть аватар",
-                    "Вместо фото — нейтральная заглушка",
+                    t("privacy.hide_avatar"),
+                    t("privacy.hide_avatar_hint"),
                 ),
                 _divider(),
                 _sw(
                     "hide_groups",
-                    "Скрыть общие группы",
-                    "Не показывать, в каких группах вы вместе",
+                    t("privacy.hide_groups"),
+                    t("privacy.hide_groups_hint"),
                 ),
             ],
         )
@@ -1373,8 +1655,8 @@ def _page_privacy(page: ft.Page) -> ft.Control:
             controls=[
                 _sw(
                     "hide_from_search",
-                    "Скрыть себя в поиске",
-                    "Вас нельзя найти по имени, нику или ID",
+                    t("privacy.hide_search"),
+                    t("privacy.hide_search_hint"),
                 ),
             ],
         )
@@ -1387,26 +1669,51 @@ def _page_privacy(page: ft.Page) -> ft.Control:
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             controls=[
                 ft.Text(
-                    "Кто может писать",
+                    t("privacy.who_can_write"),
                     size=16,
                     color=theme.INK,
                     font_family=theme.FONT_FAMILY,
                 ),
                 ft.Text(
-                    "Ограничение новых личных сообщений",
+                    t("privacy.dm_limit"),
                     size=12,
                     color=theme.MUTED,
                     font_family=theme.FONT_FAMILY,
                 ),
-                ft.Row(
-                    spacing=8,
-                    wrap=True,
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[
-                        _msg_chip(priv.MSG_EVERYONE),
-                        _msg_chip(priv.MSG_CONTACTS),
-                        _msg_chip(priv.MSG_NOBODY),
-                    ],
+                msg_chips,
+            ],
+        )
+    )
+
+    receipts_sw = ft.Switch(
+        value=prefs.show_read_receipts_send(), active_color=theme.PRIMARY
+    )
+    typing_sw = ft.Switch(value=prefs.show_typing(), active_color=theme.PRIMARY)
+
+    def on_receipts(_e=None):
+        prefs.set_show_read_receipts_send(bool(receipts_sw.value))
+
+    def on_typing(_e=None):
+        prefs.set_show_typing(bool(typing_sw.value))
+
+    receipts_sw.on_change = on_receipts
+    typing_sw.on_change = on_typing
+
+    signals = _card(
+        ft.Column(
+            spacing=12,
+            tight=True,
+            controls=[
+                _switch_row(
+                    t("privacy.read_receipts"),
+                    receipts_sw,
+                    hint=t("privacy.read_receipts_hint"),
+                ),
+                _divider(),
+                _switch_row(
+                    t("privacy.typing"),
+                    typing_sw,
+                    hint=t("privacy.typing_hint"),
                 ),
             ],
         )
@@ -1417,12 +1724,14 @@ def _page_privacy(page: ft.Page) -> ft.Control:
         tight=True,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         controls=[
-            _section_label("Профиль"),
+            _section_label(t("home.default_profile")),
             visibility,
-            _section_label("Поиск"),
+            _section_label(t("privacy.section_search")),
             discovery,
-            _section_label("Сообщения"),
+            _section_label(t("privacy.section_messages")),
             messaging,
+            _section_label(t("privacy.section_activity")),
+            signals,
         ],
     )
 
@@ -1432,7 +1741,7 @@ def _page_blacklist(page: ft.Page) -> ft.Control:
 
     user = STATE.user
     if user is None:
-        return _placeholder("blacklist", "Войдите, чтобы видеть чёрный список.")
+        return _placeholder("blacklist", t("blacklist.login_required"))
 
     owner = user.public_id
     items = bl.list_blocked(owner)
@@ -1444,16 +1753,14 @@ def _page_blacklist(page: ft.Page) -> ft.Control:
                 tight=True,
                 controls=[
                     ft.Text(
-                        "Список пуст",
+                        t("blacklist.empty"),
                         size=16,
                         weight=ft.FontWeight.W_600,
                         color=theme.INK,
                         font_family=theme.FONT_FAMILY,
                     ),
                     ft.Text(
-                        "Сюда попадают пользователи после блокировки "
-                        "или жалобы с добавлением в чёрный список. "
-                        "Они не видны в поиске и к ним нельзя написать.",
+                        t("blacklist.empty_hint"),
                         size=13,
                         color=theme.MUTED,
                         font_family=theme.FONT_FAMILY,
@@ -1462,65 +1769,93 @@ def _page_blacklist(page: ft.Page) -> ft.Control:
             )
         )
 
-    rows: list[ft.Control] = []
-    for i, entry in enumerate(items):
-        pid = entry["public_id"]
-        name = entry["name"] or pid
+    list_col = ft.Column(spacing=0, tight=True, controls=[])
+    empty_hint = ft.Text(
+        t("blacklist.empty"),
+        size=16,
+        weight=ft.FontWeight.W_600,
+        color=theme.INK,
+        font_family=theme.FONT_FAMILY,
+        visible=False,
+    )
 
-        def _unblock(_e=None, target=pid, title=name):
-            bl.unblock(owner, target)
-            STATE.snack(f"Разблокирован: {title}")
-            STATE.draft["_settings_no_anim"] = True
-            STATE.go(settings_route("blacklist"))
+    def _rebuild_rows() -> None:
+        list_col.controls.clear()
+        cur = bl.list_blocked(owner)
+        if not cur:
+            empty_hint.visible = True
+            try:
+                empty_hint.update()
+                list_col.update()
+            except Exception:
+                pass
+            return
+        empty_hint.visible = False
+        for i, entry in enumerate(cur):
+            pid = entry["public_id"]
+            name = entry["name"] or pid
 
-        rows.append(
-            ft.Container(
-                padding=ft.Padding.symmetric(vertical=10),
-                content=ft.Row(
-                    spacing=12,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    controls=[
-                        ft.Column(
-                            spacing=2,
-                            tight=True,
-                            expand=True,
-                            controls=[
-                                ft.Text(
-                                    name,
-                                    size=15,
-                                    weight=ft.FontWeight.W_600,
-                                    color=theme.INK,
-                                    font_family=theme.FONT_FAMILY,
-                                ),
-                                ft.Text(
-                                    f"ID {pid}",
-                                    size=12,
-                                    color=theme.MUTED,
-                                    font_family=theme.FONT_FAMILY,
-                                ),
-                            ],
-                        ),
-                        ft.TextButton(
-                            "Разблок.",
-                            on_click=_unblock,
-                            style=ft.ButtonStyle(color=theme.PRIMARY),
-                        ),
-                    ],
-                ),
+            def _unblock(_e=None, target=pid, title=name):
+                bl.unblock(owner, target)
+                STATE.snack(t("common.unblocked", name=title))
+                _rebuild_rows()
+
+            list_col.controls.append(
+                ft.Container(
+                    padding=ft.Padding.symmetric(vertical=10),
+                    content=ft.Row(
+                        spacing=12,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Column(
+                                spacing=2,
+                                tight=True,
+                                expand=True,
+                                controls=[
+                                    ft.Text(
+                                        name,
+                                        size=15,
+                                        weight=ft.FontWeight.W_600,
+                                        color=theme.INK,
+                                        font_family=theme.FONT_FAMILY,
+                                    ),
+                                    ft.Text(
+                                        f"ID {pid}",
+                                        size=12,
+                                        color=theme.MUTED,
+                                        font_family=theme.FONT_FAMILY,
+                                    ),
+                                ],
+                            ),
+                            ft.TextButton(
+                                t("common.unblock"),
+                                on_click=_unblock,
+                                style=ft.ButtonStyle(color=theme.PRIMARY),
+                            ),
+                        ],
+                    ),
+                )
             )
-        )
-        if i < len(items) - 1:
-            rows.append(_divider())
+            if i < len(cur) - 1:
+                list_col.controls.append(_divider())
+        try:
+            empty_hint.update()
+            list_col.update()
+        except Exception:
+            pass
+
+    _rebuild_rows()
 
     return ft.Column(
         spacing=14,
         tight=True,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         controls=[
-            _section_label("Заблокированные"),
-            _card(ft.Column(spacing=0, tight=True, controls=rows)),
+            _section_label(t("blacklist.section")),
+            empty_hint,
+            _card(list_col),
             ft.Text(
-                "Заблокированные не появляются в поиске и не могут начать переписку с вами в этом приложении.",
+                t("blacklist.footer"),
                 size=12,
                 color=theme.MUTED,
                 font_family=theme.FONT_FAMILY,
@@ -1533,7 +1868,7 @@ def _page_logs(page: ft.Page) -> ft.Control:
     text = logs.tail(200)
     return _card(
         ft.Text(
-            text or "Лог пуст",
+            text or t("logs.empty"),
             size=11,
             color=theme.MUTED,
             selectable=True,
@@ -1571,8 +1906,8 @@ def _page_language(page: ft.Page) -> ft.Control:
             name = t(f"lang.{c}")
             STATE.snack(t("lang.changed", name=name))
             STATE.draft["_home_tab"] = "settings"
-            STATE.draft["_settings_no_anim"] = True
-            STATE.go(settings_route("language"))
+            STATE.draft["_open_settings_after_lang"] = "language"
+            STATE.go("/home")
 
         rows.append(
             ft.Container(
@@ -1652,6 +1987,469 @@ def _page_language(page: ft.Page) -> ft.Control:
     )
 
 
+def _fmt_bytes(n: int) -> str:
+    if n < 1024:
+        return t("common.bytes_b", n=n)
+    if n < 1024 * 1024:
+        return t("common.bytes_kb", n=f"{n / 1024:.1f}")
+    return t("common.bytes_mb", n=f"{n / (1024 * 1024):.1f}")
+
+
+def _dir_size_bytes(root: str) -> int:
+    total = 0
+    if not os.path.isdir(root):
+        return 0
+    for dirpath, _dirnames, filenames in os.walk(root):
+        for fn in filenames:
+            try:
+                total += os.path.getsize(os.path.join(dirpath, fn))
+            except OSError:
+                pass
+    return total
+
+
+def _clear_image_cache() -> int:
+    """Удалить файлы в каталогах кэша изображений; вернуть число удалённых."""
+    removed = 0
+    roots = [
+        os.path.join(DATA_DIR, "avatars"),
+        os.path.join(DATA_DIR, "cache"),
+        os.path.join(DATA_DIR, "gallery"),
+        UPLOADS_DIR,
+    ]
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _dirnames, filenames in os.walk(root):
+            for fn in filenames:
+                path = os.path.join(dirpath, fn)
+                try:
+                    os.remove(path)
+                    removed += 1
+                except OSError:
+                    pass
+    return removed
+
+
+def _action_row(label: str, *, on_click) -> ft.Control:
+    row = ft.Container(
+        border_radius=14,
+        bgcolor=theme.FIELD_BG,
+        padding=ft.Padding.symmetric(horizontal=14, vertical=12),
+        content=ft.Row(
+            spacing=10,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                ft.Text(
+                    label,
+                    size=14,
+                    color=theme.INK,
+                    font_family=theme.FONT_FAMILY,
+                    expand=True,
+                ),
+                ft.Icon(ft.Icons.CHEVRON_RIGHT, size=18, color=theme.MUTED),
+            ],
+        ),
+    )
+    return theme.pressable(row, on_click, scale_to=0.98, expand=True)
+
+
+def _page_data(page: ft.Page) -> ft.Control:
+    cache_dirs = [
+        os.path.join(DATA_DIR, "avatars"),
+        os.path.join(DATA_DIR, "cache"),
+        UPLOADS_DIR,
+    ]
+    cache_bytes = sum(_dir_size_bytes(p) for p in cache_dirs)
+    size_lbl = ft.Text(
+        t("data.cache_estimate", size=_fmt_bytes(cache_bytes)),
+        size=15,
+        weight=ft.FontWeight.W_600,
+        color=theme.INK,
+        font_family=theme.FONT_FAMILY,
+    )
+
+    def clear_cache(_e=None):
+        n = _clear_image_cache()
+        cache_bytes_new = sum(_dir_size_bytes(p) for p in cache_dirs)
+        size_lbl.value = t("data.cache_estimate", size=_fmt_bytes(cache_bytes_new))
+        STATE.snack(t("data.files_removed", n=n))
+        try:
+            size_lbl.update()
+        except Exception:
+            pass
+
+    def clear_hist(_e=None):
+        user = STATE.user
+        if user is None:
+            STATE.snack(t("data.login_clear_hist"))
+            return
+        search_history.clear(user.id)
+        STATE.snack(t("data.search_hist_cleared"))
+
+    def clear_drafts(_e=None):
+        keys = [k for k in list(STATE.draft.keys()) if "draft" in k.lower() or k.startswith("_composer")]
+        if not keys:
+            STATE.snack(t("data.no_drafts"))
+            return
+        for k in keys:
+            STATE.draft.pop(k, None)
+        STATE.snack(t("data.drafts_cleared"))
+
+    wifi_sw = ft.Switch(
+        value=prefs.media_auto_download_wifi(), active_color=theme.PRIMARY
+    )
+    mobile_sw = ft.Switch(
+        value=prefs.media_auto_download_mobile(), active_color=theme.PRIMARY
+    )
+    gallery_sw = ft.Switch(value=prefs.save_to_gallery(), active_color=theme.PRIMARY)
+    logout_sw = ft.Switch(
+        value=prefs.data_clear_on_logout(), active_color=theme.PRIMARY
+    )
+    cache_sw = ft.Switch(value=prefs.data_cache_images(), active_color=theme.PRIMARY)
+    link_sw = ft.Switch(value=prefs.link_previews(), active_color=theme.PRIMARY)
+
+    wifi_sw.on_change = lambda _e: prefs.set_media_auto_download_wifi(bool(wifi_sw.value))
+    mobile_sw.on_change = lambda _e: prefs.set_media_auto_download_mobile(
+        bool(mobile_sw.value)
+    )
+    gallery_sw.on_change = lambda _e: prefs.set_save_to_gallery(bool(gallery_sw.value))
+    logout_sw.on_change = lambda _e: prefs.set_data_clear_on_logout(bool(logout_sw.value))
+    cache_sw.on_change = lambda _e: prefs.set_data_cache_images(bool(cache_sw.value))
+    link_sw.on_change = lambda _e: prefs.set_link_previews(bool(link_sw.value))
+
+    storage_card = _card(
+        ft.Column(
+            spacing=10,
+            tight=True,
+            controls=[
+                size_lbl,
+                ft.Text(
+                    t("data.cache_desc"),
+                    size=12,
+                    color=theme.MUTED,
+                    font_family=theme.FONT_FAMILY,
+                ),
+                _action_row(t("data.clear_cache"), on_click=clear_cache),
+                _action_row(t("data.clear_search"), on_click=clear_hist),
+                _action_row(t("data.clear_drafts"), on_click=clear_drafts),
+            ],
+        )
+    )
+
+    media_card = _card(
+        ft.Column(
+            spacing=12,
+            tight=True,
+            controls=[
+                _switch_row(
+                    t("data.wifi_auto"),
+                    wifi_sw,
+                    hint=t("data.wifi_auto_hint"),
+                ),
+                _divider(),
+                _switch_row(
+                    t("data.mobile_auto"),
+                    mobile_sw,
+                    hint=t("data.mobile_auto_hint"),
+                ),
+                _divider(),
+                _switch_row(
+                    t("data.cache_images"),
+                    cache_sw,
+                    hint=t("data.cache_images_hint"),
+                ),
+                _divider(),
+                _switch_row(
+                    t("data.save_gallery"),
+                    gallery_sw,
+                    hint=t("data.save_gallery_hint"),
+                ),
+            ],
+        )
+    )
+
+    other_card = _card(
+        ft.Column(
+            spacing=12,
+            tight=True,
+            controls=[
+                _switch_row(
+                    t("data.clear_on_logout"),
+                    logout_sw,
+                    hint=t("data.clear_on_logout_hint"),
+                ),
+                _divider(),
+                _switch_row(
+                    t("data.link_previews"),
+                    link_sw,
+                    hint=t("data.link_previews_hint"),
+                ),
+            ],
+        )
+    )
+
+    swipe_sw = ft.Switch(value=prefs.swipe_to_reply(), active_color=theme.PRIMARY)
+    like_sw = ft.Switch(
+        value=prefs.double_tap_like_react(), active_color=theme.PRIMARY
+    )
+    swipe_sw.on_change = lambda _e: prefs.set_swipe_to_reply(bool(swipe_sw.value))
+    like_sw.on_change = lambda _e: prefs.set_double_tap_like_react(bool(like_sw.value))
+
+    chat_controls: list[ft.Control] = [
+        _switch_row(
+            t("data.swipe_reply"),
+            swipe_sw,
+            hint=t("data.swipe_reply_hint"),
+        ),
+        _divider(),
+        _switch_row(
+            t("data.double_tap_like"),
+            like_sw,
+            hint=t("data.double_tap_hint"),
+        ),
+    ]
+    # Enter / Ctrl+Enter — клавиатурные опции ПК; на телефоне Enter не шлёт
+    if not _on_phone():
+        enter_sw = ft.Switch(
+            value=prefs.chat_enter_to_send(), active_color=theme.PRIMARY
+        )
+        ctrl_enter_sw = ft.Switch(
+            value=prefs.chat_send_by_ctrl_enter(), active_color=theme.PRIMARY
+        )
+        enter_sw.on_change = lambda _e: prefs.set_chat_enter_to_send(bool(enter_sw.value))
+        ctrl_enter_sw.on_change = lambda _e: prefs.set_chat_send_by_ctrl_enter(
+            bool(ctrl_enter_sw.value)
+        )
+        chat_controls = [
+            _switch_row(
+                t("data.enter_sends"),
+                enter_sw,
+                hint=t("data.enter_sends_hint"),
+            ),
+            _divider(),
+            _switch_row(
+                t("data.ctrl_enter"),
+                ctrl_enter_sw,
+                hint=t("data.ctrl_enter_hint"),
+            ),
+            _divider(),
+            *chat_controls,
+        ]
+
+    chat_card = _card(
+        ft.Column(
+            spacing=12,
+            tight=True,
+            controls=chat_controls,
+        )
+    )
+
+    return ft.Column(
+        spacing=14,
+        tight=True,
+        controls=[
+            _section_label(t("data.section_storage")),
+            storage_card,
+            _section_label(t("data.section_media")),
+            media_card,
+            _section_label(t("data.section_chat")),
+            chat_card,
+            _section_label(t("data.section_other")),
+            other_card,
+        ],
+    )
+
+
+def _tip_card(title: str, body: str) -> ft.Control:
+    return _card(
+        ft.Column(
+            spacing=8,
+            tight=True,
+            controls=[
+                ft.Text(
+                    title,
+                    size=16,
+                    weight=ft.FontWeight.W_600,
+                    color=theme.INK,
+                    font_family=theme.FONT_FAMILY,
+                ),
+                ft.Text(
+                    body,
+                    size=14,
+                    color=theme.MUTED,
+                    font_family=theme.FONT_FAMILY,
+                ),
+            ],
+        )
+    )
+
+
+def _page_tips(_page: ft.Page) -> ft.Control:
+    tips = [
+        (t("tips.back_title"), t("tips.back_body")),
+        (t("tips.questions_title"), t("tips.questions_body")),
+        (t("tips.fav_title"), t("tips.fav_body")),
+        (t("tips.privacy_title"), t("tips.privacy_body")),
+        (t("tips.offline_title"), t("tips.offline_body")),
+        (t("tips.lang_title"), t("tips.lang_body")),
+        (t("tips.theme_title"), t("tips.theme_body")),
+    ]
+    return ft.Column(
+        spacing=12,
+        tight=True,
+        controls=[_tip_card(title, body) for title, body in tips],
+    )
+
+
+def _page_help(page: ft.Page) -> ft.Control:
+    support_email = "help@raisehand.app"
+
+    def _copy(text: str, msg: str):
+        def _inner(_e=None):
+            try:
+                page.set_clipboard(text)
+            except Exception:
+                pass
+            STATE.snack(msg)
+
+        return _inner
+
+    def _open_report(_e=None):
+        if STATE.user is None:
+            STATE.snack(t("help.report_login"))
+            return
+        STATE.snack(t("help.report_hint"))
+
+    return ft.Column(
+        spacing=14,
+        tight=True,
+        controls=[
+            _card(
+                ft.Column(
+                    spacing=10,
+                    tight=True,
+                    controls=[
+                        ft.Text(
+                            t("help.support_title"),
+                            size=16,
+                            weight=ft.FontWeight.W_600,
+                            color=theme.INK,
+                            font_family=theme.FONT_FAMILY,
+                        ),
+                        ft.Text(
+                            t("help.about"),
+                            size=14,
+                            color=theme.MUTED,
+                            font_family=theme.FONT_FAMILY,
+                        ),
+                        _action_row(
+                            t("help.write_email", email=support_email),
+                            on_click=_copy(support_email, t("help.email_copied")),
+                        ),
+                    ],
+                )
+            ),
+            _card(
+                ft.Column(
+                    spacing=10,
+                    tight=True,
+                    controls=[
+                        ft.Text(
+                            t("help.actions_title"),
+                            size=16,
+                            weight=ft.FontWeight.W_600,
+                            color=theme.INK,
+                            font_family=theme.FONT_FAMILY,
+                        ),
+                        _action_row(
+                            t("help.class_code_q"),
+                            on_click=_copy(
+                                t("help.class_code_a"),
+                                t("help.class_code_copied"),
+                            ),
+                        ),
+                        _action_row(
+                            t("help.report_user"),
+                            on_click=_open_report,
+                        ),
+                        _action_row(
+                            t("help.privacy_policy"),
+                            on_click=_copy(
+                                t("help.privacy_path"),
+                                t("help.privacy_open"),
+                            ),
+                        ),
+                    ],
+                )
+            ),
+        ],
+    )
+
+
+def _page_faq(_page: ft.Page) -> ft.Control:
+    pairs = [(t(f"faq.q{i}"), t(f"faq.a{i}")) for i in range(1, 11)]
+    open_state: dict[int, bool] = {}
+
+    rows: list[ft.Control] = []
+    for i, (q, a) in enumerate(pairs):
+        ans = ft.Text(
+            a,
+            size=13,
+            color=theme.MUTED,
+            font_family=theme.FONT_FAMILY,
+            visible=bool(open_state.get(i, False)),
+        )
+
+        def _toggle(_e=None, idx=i, answer=ans):
+            open_state[idx] = not open_state.get(idx, False)
+            answer.visible = open_state[idx]
+            try:
+                answer.update()
+            except Exception:
+                STATE.draft["_settings_no_anim"] = True
+                STATE.go(settings_route("faq"))
+
+        rows.append(
+            ft.Container(
+                ink=True,
+                on_click=_toggle,
+                padding=ft.Padding.symmetric(vertical=12, horizontal=4),
+                border_radius=12,
+                content=ft.Column(
+                    spacing=6,
+                    tight=True,
+                    controls=[
+                        ft.Row(
+                            spacing=8,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[
+                                ft.Text(
+                                    q,
+                                    size=15,
+                                    weight=ft.FontWeight.W_600,
+                                    color=theme.INK,
+                                    font_family=theme.FONT_FAMILY,
+                                    expand=True,
+                                ),
+                                ft.Icon(
+                                    ft.Icons.EXPAND_MORE,
+                                    size=22,
+                                    color=theme.MUTED,
+                                ),
+                            ],
+                        ),
+                        ans,
+                    ],
+                ),
+            )
+        )
+        if i < len(pairs) - 1:
+            rows.append(_divider())
+
+    return _card(ft.Column(spacing=4, tight=True, controls=rows))
+
+
 _BUILDERS: dict[str, Callable[[ft.Page], ft.Control]] = {
     "profile": _page_profile,
     "avatar": _page_avatar,
@@ -1665,6 +2463,10 @@ _BUILDERS: dict[str, Callable[[ft.Page], ft.Control]] = {
     "blacklist": _page_blacklist,
     "logs": _page_logs,
     "language": _page_language,
+    "data": _page_data,
+    "tips": _page_tips,
+    "help": _page_help,
+    "faq": _page_faq,
 }
 
 

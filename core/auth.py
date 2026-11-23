@@ -469,6 +469,54 @@ def search_users(
     return out
 
 
+def list_accounts(*, exclude_user_id: Optional[int] = None, limit: int = 200) -> list[User]:
+    """Аккаунты приложения, кроме текущего пользователя."""
+    limit = max(1, min(int(limit), 400))
+    rows = db.query_all(
+        """
+        SELECT * FROM users
+        WHERE (? IS NULL OR id != ?)
+        ORDER BY first_name, last_name, public_id
+        LIMIT ?
+        """,
+        (exclude_user_id, exclude_user_id, limit),
+    )
+    out: list[User] = []
+    for row in rows:
+        user = row_to_user(row)
+        if user is not None and not user.is_banned:
+            out.append(user)
+    return out
+
+
+def _digits(value: str) -> str:
+    return "".join(ch for ch in (value or "") if ch.isdigit())
+
+
+def find_by_phone(raw: str) -> Optional[User]:
+    """Найти аккаунт по номеру. Сравниваются последние 10 цифр."""
+    digits = _digits(raw)
+    if len(digits) < 6:
+        return None
+    tail = digits[-10:]
+    rows = db.query_all(
+        """
+        SELECT * FROM users
+        WHERE contact_value IS NOT NULL AND trim(contact_value) != ''
+        """
+    )
+    for row in rows:
+        user = row_to_user(row)
+        if user is None or user.is_banned:
+            continue
+        stored = _digits(user.contact_value or "")
+        if not stored:
+            continue
+        if stored == digits or stored.endswith(tail) or digits.endswith(stored[-10:]):
+            return user
+    return None
+
+
 def change_password(user_id: int, new_password: str, repeat: str) -> None:
     """Смена пароля БЕЗ ввода старого — так описано в задании."""
     validate_password(new_password, repeat)

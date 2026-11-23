@@ -951,11 +951,122 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 }
 # fmt: on
 
+from core.i18n_extra import EXTENDED_TRANSLATIONS
+
+for _lang in _SUPPORTED:
+    TRANSLATIONS.setdefault(_lang, {}).update(EXTENDED_TRANSLATIONS.get(_lang, {}))
+
+_COMPOSE = {
+    "ru": {
+        "newchat.title": "Новый чат",
+        "newchat.search": "Имя, номер, @ник",
+        "newchat.group": "Новая группа",
+        "newchat.contact": "Новый контакт",
+        "newchat.phone_title": "Номер телефона",
+        "newchat.phone_hint": "+7…",
+        "newchat.find": "Найти",
+        "newchat.no_account": "Аккаунта с этим номером нет",
+        "newchat.contacts_section": "Контакты в RaiseHand",
+        "newchat.perm_title": "Доступ к контактам",
+        "newchat.perm_body": "Так RaiseHand покажет людей из вашей книги, у которых уже есть аккаунт.",
+        "newchat.allow": "Разрешить",
+        "newchat.deny": "Не сейчас",
+        "newchat.empty": "Пока никого с аккаунтом",
+        "newchat.need_perm": "Разрешите доступ к контактам, чтобы увидеть, кто уже в RaiseHand.",
+        "newgroup.title": "Новая группа",
+        "newgroup.class_title": "Создать класс",
+        "newgroup.name_hint": "Название",
+        "newgroup.members": "Участники",
+        "newgroup.create": "Создать группу",
+        "newgroup.need_name": "Введите название",
+        "newgroup.subject": "Выберите предмет",
+        "newgroup.class_step": "Выберите класс",
+        "newgroup.next": "Дальше",
+        "newgroup.invite": "Код приглашения: {code}",
+        "newgroup.pick_subject": "Сначала выберите предмет",
+        "newgroup.pick_class": "Выберите цифру и букву класса",
+        "subj.math": "Математика",
+        "subj.physics": "Физика",
+        "subj.literature": "Литература",
+        "subj.history": "История",
+        "subj.chemistry": "Химия",
+        "subj.biology": "Биология",
+        "subj.geography": "География",
+        "subj.cs": "Информатика",
+        "subj.english": "Английский",
+        "subj.russian": "Русский язык",
+    },
+    "en": {
+        "newchat.title": "New chat",
+        "newchat.search": "Name, number, @username",
+        "newchat.group": "New group",
+        "newchat.contact": "New contact",
+        "newchat.phone_title": "Phone number",
+        "newchat.phone_hint": "+1…",
+        "newchat.find": "Find",
+        "newchat.no_account": "No account with this number",
+        "newchat.contacts_section": "Contacts on RaiseHand",
+        "newchat.perm_title": "Contacts access",
+        "newchat.perm_body": "RaiseHand will show people from your contacts who already have an account.",
+        "newchat.allow": "Allow",
+        "newchat.deny": "Not now",
+        "newchat.empty": "No one with an account yet",
+        "newchat.need_perm": "Allow contacts to see who is already on RaiseHand.",
+        "newgroup.title": "New group",
+        "newgroup.class_title": "Create class",
+        "newgroup.name_hint": "Name",
+        "newgroup.members": "Members",
+        "newgroup.create": "Create group",
+        "newgroup.need_name": "Enter a name",
+        "newgroup.subject": "Choose a subject",
+        "newgroup.class_step": "Choose a class",
+        "newgroup.next": "Next",
+        "newgroup.invite": "Invite code: {code}",
+        "newgroup.pick_subject": "Choose a subject first",
+        "newgroup.pick_class": "Choose the class number and letter",
+        "subj.math": "Math",
+        "subj.physics": "Physics",
+        "subj.literature": "Literature",
+        "subj.history": "History",
+        "subj.chemistry": "Chemistry",
+        "subj.biology": "Biology",
+        "subj.geography": "Geography",
+        "subj.cs": "Computer science",
+        "subj.english": "English",
+        "subj.russian": "Russian",
+    },
+}
+for _code, _pack in _COMPOSE.items():
+    TRANSLATIONS.setdefault(_code, {}).update(_pack)
+for _code in _SUPPORTED:
+    if _code not in _COMPOSE:
+        TRANSLATIONS.setdefault(_code, {}).update(_COMPOSE["en"])
+
+_lang_cache: str | None = None
+_bucket_cache: dict[str, str] | None = None
+
+
+def invalidate_cache() -> None:
+    """Сбросить кэш языка после prefs.set_language."""
+    global _lang_cache, _bucket_cache
+    _lang_cache = None
+    _bucket_cache = None
+
+
+def _active_bucket() -> tuple[str, dict[str, str]]:
+    global _lang_cache, _bucket_cache
+    lang = prefs.language()
+    if _lang_cache == lang and _bucket_cache is not None:
+        return lang, _bucket_cache
+    bucket = TRANSLATIONS.get(lang) or TRANSLATIONS.get("ru", {})
+    _lang_cache = lang
+    _bucket_cache = bucket
+    return lang, bucket
+
 
 def t(key: str, **kwargs) -> str:
     """Текущий язык из prefs → ru → key; подстановка {name} и т.п."""
-    lang = prefs.language()
-    bucket = TRANSLATIONS.get(lang) or TRANSLATIONS.get("ru", {})
+    _lang, bucket = _active_bucket()
     text = bucket.get(key)
     if text is None:
         text = TRANSLATIONS.get("ru", {}).get(key)
@@ -972,3 +1083,4 @@ def t(key: str, **kwargs) -> str:
 def set_lang(code: str) -> None:
     """Сохранить код языка в prefs."""
     prefs.set_language(code)
+    invalidate_cache()

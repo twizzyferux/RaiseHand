@@ -5,6 +5,7 @@ from __future__ import annotations
 import flet as ft
 
 from core import gradients
+from core.i18n import t
 from flet_app import chat_data, liquid_glass, theme
 from flet_app.app_state import STATE
 from flet_app.profile_ui import (
@@ -70,7 +71,7 @@ def _secondary_card(title: str, body_controls: list[ft.Control]) -> ft.Control:
 def _edit_name_dialog(page: ft.Page, contact: chat_data.Contact, name_ref: ft.Text | None = None):
     field = ft.TextField(
         value=contact.display_name,
-        label="Имя контакта",
+        label=t("profile.contact_name"),
         filled=True,
         bgcolor=theme.FIELD_BG,
         color=theme.INK,
@@ -106,7 +107,7 @@ def _edit_name_dialog(page: ft.Page, contact: chat_data.Contact, name_ref: ft.Te
 
     dlg = ft.AlertDialog(
         modal=True,
-        title=ft.Text("Изменить имя", color=theme.INK, font_family=theme.FONT_FAMILY),
+        title=ft.Text(t("contact.rename_title"), color=theme.INK, font_family=theme.FONT_FAMILY),
         bgcolor=theme.CARD,
         content=ft.Column(
             tight=True,
@@ -114,15 +115,15 @@ def _edit_name_dialog(page: ft.Page, contact: chat_data.Contact, name_ref: ft.Te
             controls=[
                 field,
                 ft.Text(
-                    "Имя видно только вам. Описание контакта не меняется.",
+                    t("contact.rename_hint"),
                     size=12,
                     color=theme.MUTED,
                 ),
             ],
         ),
         actions=[
-            ft.TextButton("Отмена", on_click=close),
-            ft.TextButton("Сохранить", on_click=save),
+            ft.TextButton(t("common.cancel"), on_click=close),
+            ft.TextButton(t("common.save"), on_click=save),
         ],
     )
     try:
@@ -133,7 +134,7 @@ def _edit_name_dialog(page: ft.Page, contact: chat_data.Contact, name_ref: ft.Te
             dlg.open = True
             page.update()
         except Exception:
-            STATE.error("Не удалось открыть форму")
+            STATE.error(t("common.dialog_open_failed"))
 
 
 def _shared_chats(contact: chat_data.Contact) -> ft.Control:
@@ -167,7 +168,7 @@ def _shared_chats(contact: chat_data.Contact) -> ft.Control:
                         expand=True,
                         controls=[
                             ft.Text(
-                                "Личный чат",
+                                t("contact.dm_chat"),
                                 size=15,
                                 weight=ft.FontWeight.W_600,
                                 color=theme.INK,
@@ -243,13 +244,13 @@ def _shared_chats(contact: chat_data.Contact) -> ft.Control:
     if hide_groups:
         rows.append(
             ft.Text(
-                "Общие группы скрыты настройками конфиденциальности",
+                t("contact.groups_hidden"),
                 size=13,
                 color=theme.MUTED,
                 font_family=theme.FONT_FAMILY,
             )
         )
-    return _secondary_card("Чаты с этим человеком", rows)
+    return _secondary_card(t("contact.shared_chats"), rows)
 
 
 def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
@@ -262,8 +263,8 @@ def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
             padding=24,
             content=ft.Column(
                 controls=[
-                    ft.Text("Контакт не найден", size=18, color=theme.INK),
-                    ft.TextButton("Назад", on_click=lambda _: STATE.go("/home")),
+                    ft.Text(t("contact.not_found"), size=18, color=theme.INK),
+                    ft.TextButton(t("common.back"), on_click=lambda _: STATE.go("/home")),
                 ]
             ),
         )
@@ -311,11 +312,11 @@ def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
 
     def toggle_mute(_e=None):
         chat_data.toggle_mute(contact.id)
-        STATE.snack("Уведомления включены" if muted else "Чат без звука")
+        STATE.snack(t("contact.notif_on") if muted else t("contact.muted"))
         STATE.go(contact_route(contact.id))
 
     def search_soon(_e=None):
-        STATE.snack("Поиск в чате скоро")
+        STATE.snack(t("contact.search_soon"))
 
     def open_report(_e=None):
         from flet_app.screens.report import report_route
@@ -331,14 +332,14 @@ def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
     def more_menu(_e=None):
         open_report()
 
-    mute_label = "Звук" if muted else "Без звука"
+    mute_label = t("contact.sound") if muted else t("notif.tone_none")
     mute_icon = ft.Icons.NOTIFICATIONS_OFF_OUTLINED if not muted else ft.Icons.NOTIFICATIONS_OUTLINED
 
     action_items = [
-        (ft.Icons.CHAT_BUBBLE_OUTLINED, "Чат", open_chat),
+        (ft.Icons.CHAT_BUBBLE_OUTLINED, t("appearance.section_chat"), open_chat),
         (mute_icon, mute_label, toggle_mute),
-        (ft.Icons.SEARCH, "Поиск", search_soon),
-        ("more", "Ещё", more_menu),
+        (ft.Icons.SEARCH, t("privacy.section_search"), search_soon),
+        ("more", t("profile.more"), more_menu),
     ]
 
     info_rows: list[tuple[str, str, object | None]] = []
@@ -346,23 +347,23 @@ def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
     peer_user = auth.find_by_public_id(peer_pid) if peer_pid else None
     if peer_user is not None and (peer_user.contact_value or "").strip():
         if pset.get("hide_phone"):
-            info_rows.append(("Телефон", "Скрыт", None))
+            info_rows.append((t("contact.phone"), t("contact.hidden"), None))
         else:
-            info_rows.append(("Телефон", str(peer_user.contact_value).strip(), None))
+            info_rows.append((t("contact.phone"), str(peer_user.contact_value).strip(), None))
 
     if peer_user is not None and (peer_user.nickname or "").strip():
-        info_rows.append(("Имя пользователя", f"@{peer_user.nickname.strip()}", None))
+        info_rows.append((t("contact.username"), f"@{peer_user.nickname.strip()}", None))
 
     if peer_pid:
         info_rows.append(("ID", peer_pid, None))
 
-    bio = (contact.bio or "").strip() or "Пользователь ещё не добавил описание"
-    info_rows.append(("О себе", bio, None))
+    bio = (contact.bio or "").strip() or t("contact.no_bio")
+    info_rows.append((t("profile.about"), bio, None))
 
     media = chat_data.media_messages(contact.id)
     media_block = media_tabs_block(
         media_cells_from_messages(media),
-        empty_text="Пока нет фото в этом чате",
+        empty_text=t("contact.no_photos"),
     )
 
     head = profile_head_block(
@@ -382,7 +383,7 @@ def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
 
     return profile_shell(
         page,
-        title="Профиль",
+        title=t("home.default_profile"),
         on_back=_back_to_chat,
         body_controls=body,
         edge_swipe=True,

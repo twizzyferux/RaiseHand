@@ -19,6 +19,8 @@ def notify(title: str, body: str = "") -> None:
     """Показать уведомление, если включено в настройках."""
     if not prefs.push_enabled():
         return
+    if prefs.in_quiet_hours():
+        return
     text = f"{title}: {body}".strip(": ").strip() if body else title
     logs.info("push %s", text)
 

@@ -12,6 +12,7 @@ from core.config import UPLOADS_DIR
 
 DEFAULT_ALLOWED = (".jpg", ".jpeg", ".png", ".pdf", ".webp")
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024  # 5 МБ
+IMAGE_MAX_BYTES = 25 * 1024 * 1024  # полноразмерные фото с телефона
 
 
 class UploadError(Exception):
@@ -55,7 +56,14 @@ def save_upload(
     max_bytes: int = DEFAULT_MAX_BYTES,
     subdir: str = "chat",
 ) -> str:
-    """Проверить и скопировать файл в data/uploads/… Вернуть новый путь."""
+    """Проверить и скопировать файл в data/uploads/… Вернуть новый путь.
+
+    Если в prefs выключено кэширование изображений — всё равно копируем
+    (чат должен иметь стабильный путь), но без дублей в cache/.
+    """
+    # Для фото поднимаем лимит, если вызывающий не задал свой
+    if max_bytes == DEFAULT_MAX_BYTES and is_image(path):
+        max_bytes = IMAGE_MAX_BYTES
     src = validate_file(path, allowed_ext=allowed_ext, max_bytes=max_bytes)
     dest_dir = os.path.join(UPLOADS_DIR, subdir)
     os.makedirs(dest_dir, exist_ok=True)
@@ -63,6 +71,17 @@ def save_upload(
     name = f"{uuid.uuid4().hex}{ext}"
     dest = os.path.join(dest_dir, name)
     shutil.copy2(src, dest)
+    try:
+        from core import prefs
+
+        if prefs.data_cache_images() and is_image(dest):
+            cache_dir = os.path.join(os.path.dirname(UPLOADS_DIR), "cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_dest = os.path.join(cache_dir, name)
+            if not os.path.isfile(cache_dest):
+                shutil.copy2(dest, cache_dest)
+    except Exception:
+        pass
     return dest
 
 

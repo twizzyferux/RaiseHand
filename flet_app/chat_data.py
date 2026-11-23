@@ -523,15 +523,23 @@ def older_available(cid: str, loaded: int) -> bool:
     return loaded < len(real)
 
 
+_demo_photo_done = False
+
+
 def attach_demo_photo(path: str) -> None:
-    """Подставить путь к фото в историю Ивана, если файл есть."""
+    """Подставить путь к фото в историю Ивана, если файл есть (один раз за процесс)."""
+    global _demo_photo_done
+    if _demo_photo_done:
+        return
     c = get_contact("c2")
     if not c:
+        _demo_photo_done = True
         return
     for m in c.messages:
         if m.mine and not m.text and m.time == "20:15":
             m.image = path
             break
+    _demo_photo_done = True
 
 
 
@@ -677,6 +685,32 @@ def get_group(gid: str) -> Optional[Group]:
         if g.id == gid:
             return g
     return None
+
+
+def create_group(
+    name: str,
+    *,
+    members: int = 1,
+    system_text: str = "",
+) -> Group:
+    """Новая группа в текущем сеансе. system_text — плашка по центру ленты."""
+    gid = "g" + uuid.uuid4().hex[:8]
+    title = (name or "").strip() or "Группа"
+    msgs: list[Message] = []
+    if (system_text or "").strip():
+        msgs.append(Message(date=system_text.strip()))
+    group = Group(
+        id=gid,
+        name=title,
+        members=max(1, int(members)),
+        seed=gid,
+        preview=(system_text or "")[:48],
+        time="сейчас" if system_text else "",
+        unread=0,
+        messages=msgs,
+    )
+    GROUPS.insert(0, group)
+    return group
 
 
 def mark_group_read(gid: str) -> None:

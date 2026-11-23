@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import flet as ft
 
-from core import gradients, logs, offline_outbox, push, rate_limit, sounds, uploads
+from core import gradients, logs, offline_outbox, prefs, push, rate_limit, sounds, uploads
+from core.config import DATA_DIR
 from core.i18n import t
 from flet_app import chat_data
 from flet_app import liquid_glass
@@ -22,17 +23,65 @@ TOPIC_CHAT = "raisehand.chat"
 
 # Контекстное меню RaiseHand (компактное, под сообщением)
 MENU_RADIUS = 14
+MENU_WIDTH = 210.0
 MENU_DANGER = "#E11D48"
+
+
+class DisplayPrefs(NamedTuple):
+    """Снимок prefs на одну сборку ленты — без повторных чтений на каждое сообщение."""
+
+    bubble_corners: str
+    font_scale: float
+    show_message_time: bool
+    show_read_receipts: bool
+    swipe_to_reply: bool
+    reduce_motion: bool
+    link_previews: bool
+    media_autoload: bool
+
+
+def _snapshot_display_prefs() -> DisplayPrefs:
+    return DisplayPrefs(
+        bubble_corners=prefs.bubble_corners(),
+        font_scale=prefs.font_scale(),
+        show_message_time=prefs.show_message_time(),
+        show_read_receipts=prefs.show_read_receipts_send(),
+        swipe_to_reply=prefs.swipe_to_reply(),
+        reduce_motion=prefs.reduce_motion(),
+        link_previews=prefs.link_previews(),
+        media_autoload=bool(
+            prefs.media_auto_download_wifi() or prefs.media_auto_download_mobile()
+        ),
+    )
+
+
+def _image_display_size(path: str, *, max_w: float) -> tuple[float, float]:
+    """Ширина/высота превью без обрезки (CONTAIN), по реальному aspect ratio."""
+    max_h = min(float(theme.PHONE_WIDTH) * 1.15, 480.0)
+    w, h = max_w, max_w * 0.75
+    try:
+        from PIL import Image as _PILImage
+
+        with _PILImage.open(path) as im:
+            iw, ih = im.size
+        if iw > 0 and ih > 0:
+            scale = min(max_w / float(iw), max_h / float(ih), 1.0)
+            w = max(120.0, float(iw) * scale)
+            h = max(80.0, float(ih) * scale)
+    except Exception:
+        pass
+    return w, h
 
 
 def _approx_bubble_width(msg: chat_data.Message) -> float:
     """Ширина пузыря — панель меню делается такой же."""
-    max_w = float(theme.PHONE_WIDTH) * 0.72
+    max_w = float(theme.PHONE_WIDTH) * 0.78
     if msg.image and theme._image_exists(msg.image) and not msg.deleted:
-        return min(208.0, max_w)
+        w, _h = _image_display_size(msg.image, max_w=max_w)
+        return w
     text = msg.text or ""
     if msg.deleted:
-        text = "удалено"
+        text = t("common.deleted")
     if "\n" in text or len(text) > 36:
         return max_w
     # текст + время в одной строке
@@ -42,7 +91,10 @@ def _approx_bubble_width(msg: chat_data.Message) -> float:
 
 def _approx_bubble_height(msg: chat_data.Message) -> float:
     if msg.image and theme._image_exists(msg.image) and not msg.deleted:
-        return 168.0
+        max_w = float(theme.PHONE_WIDTH) * 0.78
+        _w, h = _image_display_size(msg.image, max_w=max_w)
+        extra = 28.0 if (msg.text or "").strip() else 18.0
+        return h + extra
     text = msg.text or ""
     if "\n" in text or len(text) > 36:
         lines = text.count("\n") + 1
@@ -57,14 +109,6 @@ def _menu_bg() -> str:
 
 def _menu_item_bg() -> str:
     return theme.PRIMARY_SOFT if theme.is_dark() else "#EEEBE6"
-
-
-def _sprite(*parts: str) -> str:
-    return theme.asset("assets", "images", *parts)
-
-
-def _status_icon(kind: str) -> str:
-    return _sprite("chats", f"status_{kind}.png")
 
 
 def _avatar_circle(seed: str, first: str, last: str, size: float = 40) -> ft.Control:
@@ -119,7 +163,9 @@ def _date_chip(label: str) -> ft.Control:
     )
 
 
-def _bubble_ticks(msg: chat_data.Message) -> Optional[ft.Control]:
+def _bubble_ticks(
+    msg: chat_data.Message, dp: DisplayPrefs
+) -> Optional[ft.Control]:
     """Галочки на своём сообщении; офлайн/очередь — часы из kit (status-sending)."""
     if not msg.mine or msg.deleted:
         return None
@@ -132,28 +178,30 @@ def _bubble_ticks(msg: chat_data.Message) -> Optional[ft.Control]:
     if msg.pending or offline:
         img = mono_icons.status_image("sending", size=13, on_bubble=True)
         return img or ft.Icon(ft.Icons.SCHEDULE, size=13, color="#FFFFFF99")
-    kind = "read" if msg.read else "sent"
+    # «прочитано» скрываем, если выключены read receipts
+    show_read = dp.show_read_receipts
+    kind = "read" if (msg.read and show_read) else "sent"
     img = mono_icons.status_image(kind, size=14, on_bubble=True)
     if img is not None:
         return img
-    if msg.read:
+    if msg.read and show_read:
         return ft.Icon(ft.Icons.DONE_ALL, size=14, color="#F2EFEA")
     return ft.Icon(ft.Icons.DONE, size=14, color="#FFFFFFB3")
 
 
-def _meta(msg: chat_data.Message, time_color: str) -> ft.Control:
+def _meta(msg: chat_data.Message, time_color: str, dp: DisplayPrefs) -> ft.Control:
     """Время у всех сообщений; галочки — только у исходящих."""
     parts: list[ft.Control] = []
     if msg.edited and not msg.deleted:
         parts.append(
-            ft.Text("изменено", size=11, color=time_color, font_family=theme.FONT_FAMILY)
+            ft.Text(t("chat.edited"), size=11, color=time_color, font_family=theme.FONT_FAMILY)
         )
-    # время всегда — и у своих, и у входящих
-    if msg.time:
+    # время — если включено в оформлении
+    if msg.time and dp.show_message_time:
         parts.append(
             ft.Text(msg.time, size=12, color=time_color, font_family=theme.FONT_FAMILY)
         )
-    ticks = _bubble_ticks(msg)
+    ticks = _bubble_ticks(msg, dp)
     if ticks is not None:
         parts.append(ticks)
     return ft.Row(
@@ -164,16 +212,23 @@ def _meta(msg: chat_data.Message, time_color: str) -> ft.Control:
     )
 
 
-def _corners(mine: bool):
-    tl = tr = 16
-    if mine:
-        bl, brc = 16, 5
+def _corners(mine: bool, dp: DisplayPrefs):
+    style = dp.bubble_corners
+    if style == "sharp":
+        base, tip = 8, 2
+    elif style == "super":
+        base, tip = 22, 8
     else:
-        bl, brc = 5, 16
+        base, tip = 16, 5
+    tl = tr = base
+    if mine:
+        bl, brc = base, tip
+    else:
+        bl, brc = tip, base
     try:
         return ft.BorderRadius(top_left=tl, top_right=tr, bottom_left=bl, bottom_right=brc)
     except Exception:
-        return 16
+        return base
 
 
 def _reply_quote(msg: chat_data.Message, fg: str) -> Optional[ft.Control]:
@@ -194,9 +249,51 @@ def _reply_quote(msg: chat_data.Message, fg: str) -> Optional[ft.Control]:
     )
 
 
-def _text_bubble(msg: chat_data.Message, bg: str, fg: str, time_color: str, br) -> ft.Control:
+def _link_preview_chip(text: str, fg: str) -> Optional[ft.Control]:
+    """Простое превью первой http(s)-ссылки в тексте (без сетевого fetch)."""
+    import re
+
+    m = re.search(r"https?://[^\s<>\"']+", text or "")
+    if not m:
+        return None
+    url = m.group(0).rstrip(".,);]")
+    host = url.split("/")[2] if "://" in url else url
+    return ft.Container(
+        bgcolor="#00000018",
+        border_radius=10,
+        padding=ft.Padding.symmetric(horizontal=8, vertical=6),
+        content=ft.Column(
+            spacing=2,
+            tight=True,
+            controls=[
+                ft.Text(
+                    host,
+                    size=12,
+                    weight=ft.FontWeight.W_600,
+                    color=fg,
+                    font_family=theme.FONT_FAMILY,
+                    max_lines=1,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                ),
+                ft.Text(
+                    url,
+                    size=11,
+                    color=fg,
+                    font_family=theme.FONT_FAMILY,
+                    max_lines=1,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                    opacity=0.75,
+                ),
+            ],
+        ),
+    )
+
+
+def _text_bubble(
+    msg: chat_data.Message, bg: str, fg: str, time_color: str, br, dp: DisplayPrefs
+) -> ft.Control:
     if msg.deleted:
-        body = ft.Text("Сообщение удалено", size=14, italic=True, color=time_color, font_family=theme.FONT_FAMILY)
+        body = ft.Text(t("chat.msg_deleted"), size=14, italic=True, color=time_color, font_family=theme.FONT_FAMILY)
         return ft.Container(
             bgcolor=bg,
             border_radius=br,
@@ -206,9 +303,11 @@ def _text_bubble(msg: chat_data.Message, bg: str, fg: str, time_color: str, br) 
 
     quote = _reply_quote(msg, fg)
     text = msg.text or ""
-    text_ctrl = ft.Text(text, size=15, color=fg, font_family=theme.FONT_FAMILY)
-    meta = _meta(msg, time_color)
+    fs = max(12, int(round(15 * dp.font_scale)))
+    text_ctrl = ft.Text(text, size=fs, color=fg, font_family=theme.FONT_FAMILY)
+    meta = _meta(msg, time_color, dp)
     long = len(text) > 28 or "\n" in text or text.count(" ") > 4
+    link_preview = _link_preview_chip(text, fg) if dp.link_previews else None
 
     column_controls: list[ft.Control] = []
     if quote:
@@ -218,16 +317,22 @@ def _text_bubble(msg: chat_data.Message, bg: str, fg: str, time_color: str, br) 
                 text_ctrl,
                 ft.Container(alignment=ft.Alignment.CENTER_RIGHT, content=meta),
         ])
-        inner = ft.Column(spacing=2, tight=True, controls=column_controls)
     else:
-        row = ft.Row(
-            spacing=8,
+        column_controls.append(
+            ft.Row(
+                spacing=8,
             tight=True,
             vertical_alignment=ft.CrossAxisAlignment.END,
             controls=[text_ctrl, meta],
+            )
         )
-        column_controls.append(row)
-        inner = ft.Column(spacing=2, tight=True, controls=column_controls) if quote else row
+    if link_preview is not None:
+        column_controls.append(link_preview)
+    inner = (
+        ft.Column(spacing=2, tight=True, controls=column_controls)
+        if len(column_controls) > 1 or quote or link_preview
+        else column_controls[0]
+        )
 
     return ft.Container(
         bgcolor=bg,
@@ -237,46 +342,211 @@ def _text_bubble(msg: chat_data.Message, bg: str, fg: str, time_color: str, br) 
     )
 
 
-def _image_bubble(msg: chat_data.Message, bg: str, time_color: str, br) -> ft.Control:
-    img_w = 220
+_photo_viewer: dict = {"path": None, "close": None}
+
+
+def _show_photo(page: ft.Page, path: str) -> None:
+    """Фото на весь экран. Тап по фону или крестик закрывают."""
+    if not path or not theme._image_exists(path):
+        return
+    if _photo_viewer.get("path") == path and _photo_viewer.get("close"):
+        return
+    prev = _photo_viewer.get("close")
+    if prev:
+        try:
+            prev(True)
+        except Exception:
+            pass
+
+    try:
+        w = float(getattr(page, "width", 0) or 0) or float(theme.PHONE_WIDTH)
+        h = float(getattr(page, "height", 0) or 0) or float(theme.PHONE_HEIGHT)
+    except Exception:
+        w, h = float(theme.PHONE_WIDTH), float(theme.PHONE_HEIGHT)
+
+    reduce = False
+    try:
+        reduce = prefs.reduce_motion()
+    except Exception:
+        pass
+
+    holder: dict = {"ctrl": None}
+
+    def _remove() -> None:
+        ctrl = holder.get("ctrl")
+        holder["ctrl"] = None
+        if _photo_viewer.get("path") == path:
+            _photo_viewer["path"] = None
+            _photo_viewer["close"] = None
+        if ctrl is None:
+            return
+        try:
+            page.overlay.remove(ctrl)
+        except Exception:
+            pass
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    def _close(immediate: bool = False, _e=None) -> None:
+        if immediate or reduce or holder.get("ctrl") is None:
+            _remove()
+            return
+        ctrl = holder["ctrl"]
+        ctrl.opacity = 0
+        try:
+            photo.opacity = 0
+            photo.scale = 0.96
+            ctrl.update()
+        except Exception:
+            _remove()
+            return
+
+        async def _gone():
+            import asyncio
+
+            await asyncio.sleep(0.18)
+            _remove()
+
+        try:
+            page.run_task(_gone)
+        except Exception:
+            _remove()
+
+    photo = ft.Container(
+        alignment=ft.Alignment.CENTER,
+        opacity=1 if reduce else 0,
+        scale=1 if reduce else 0.92,
+        animate_opacity=ft.Animation(200, ft.AnimationCurve.EASE_OUT),
+        animate_scale=ft.Animation(280, ft.AnimationCurve.EASE_OUT_BACK),
+        content=ft.Image(src=path, fit=ft.BoxFit.CONTAIN, width=w, height=h),
+    )
+    close_btn = ft.Container(
+        width=36,
+        height=36,
+        border_radius=18,
+        bgcolor="#66000000",
+        alignment=ft.Alignment.CENTER,
+        content=ft.Icon(ft.Icons.CLOSE, color="#FFFFFF", size=22),
+        on_click=lambda e: _close(False),
+    )
+    close_top = 54.0 if theme.is_mobile_runtime() else float(theme.SAFE_MIN_TOP) + 8
+    ctrl = ft.Container(
+        width=w,
+        height=h,
+        bgcolor="#F2000000",
+        opacity=1 if reduce else 0,
+        animate_opacity=ft.Animation(200, ft.AnimationCurve.EASE_OUT),
+        on_click=lambda e: _close(False),
+        content=ft.Stack(
+            controls=[
+                ft.Container(
+                    width=w,
+                    height=h,
+                    alignment=ft.Alignment.CENTER,
+                    content=photo,
+                ),
+                ft.Container(right=16, top=close_top, content=close_btn),
+            ]
+        ),
+    )
+    holder["ctrl"] = ctrl
+    _photo_viewer["path"] = path
+    _photo_viewer["close"] = _close
+    try:
+        page.overlay.append(ctrl)
+        page.update()
+    except Exception:
+        _photo_viewer["path"] = None
+        _photo_viewer["close"] = None
+        holder["ctrl"] = None
+        return
+
+    if reduce:
+        return
+
+    async def _show():
+        import asyncio
+
+        await asyncio.sleep(0.02)
+        if holder.get("ctrl") is not ctrl:
+            return
+        ctrl.opacity = 1
+        photo.opacity = 1
+        photo.scale = 1
+        try:
+            ctrl.update()
+        except Exception:
+            pass
+
+    try:
+        page.run_task(_show)
+    except Exception:
+        ctrl.opacity = 1
+        photo.opacity = 1
+        photo.scale = 1
+
+
+def _image_bubble(
+    msg: chat_data.Message,
+    bg: str,
+    time_color: str,
+    br,
+    dp: DisplayPrefs,
+    on_photo=None,
+) -> ft.Control:
+    max_w = float(theme.PHONE_WIDTH) * 0.78
+    img_w, img_h = _image_display_size(msg.image or "", max_w=max_w)
     quote = _reply_quote(msg, theme.PRIMARY_TEXT if msg.mine else theme.INK)
     controls: list[ft.Control] = []
     if quote:
         controls.append(quote)
     if msg.deleted:
-        controls.append(ft.Text("Сообщение удалено", size=14, italic=True, color=time_color))
+        controls.append(ft.Text(t("chat.msg_deleted"), size=14, italic=True, color=time_color))
     else:
-        controls.append(
-                ft.Container(
-                    width=img_w - 8,
-                    height=160,
-                    border_radius=10,
-                    clip_behavior=ft.ClipBehavior.HARD_EDGE,
-                    content=ft.Image(
-                        src=msg.image,
-                        width=img_w - 8,
-                        height=160,
-                        fit=ft.BoxFit.COVER,
-                        border_radius=10,
-                    ),
-            )
+        shot = ft.Container(
+            width=img_w,
+            height=img_h,
+            border_radius=12,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            content=ft.Image(
+                src=msg.image,
+                width=img_w,
+                height=img_h,
+                fit=ft.BoxFit.CONTAIN,
+                border_radius=12,
+            ),
         )
-        if msg.text:
-            controls.append(ft.Text(
-                msg.text,
-                size=14,
-                color=theme.PRIMARY_TEXT if msg.mine else theme.INK,
-                font_family=theme.FONT_FAMILY,
-            ))
+        if on_photo is not None:
+            shot = ft.GestureDetector(
+                content=shot,
+                on_tap=lambda e, p=msg.image: on_photo(p),
+            )
+        controls.append(shot)
+        caption = (msg.text or "").strip()
+        if caption:
+            fs = max(12, int(round(15 * dp.font_scale)))
+            controls.append(
+                ft.Container(
+                    padding=ft.Padding.only(left=6, right=6, top=4),
+                    content=ft.Text(
+                        caption,
+                        size=fs,
+                        color=theme.PRIMARY_TEXT if msg.mine else theme.INK,
+                        font_family=theme.FONT_FAMILY,
+                    ),
+                )
+            )
     controls.append(
                 ft.Container(
                     alignment=ft.Alignment.CENTER_RIGHT,
-            padding=ft.Padding.only(right=4, bottom=2),
-                    content=_meta(msg, time_color),
+            padding=ft.Padding.only(right=6, bottom=4, top=2),
+            content=_meta(msg, time_color, dp),
         )
     )
     return ft.Container(
-        width=img_w,
+        width=img_w + 8,
         bgcolor=bg,
         border_radius=br,
         padding=4,
@@ -284,18 +554,67 @@ def _image_bubble(msg: chat_data.Message, bg: str, time_color: str, br) -> ft.Co
     )
 
 
-def _bubble_body(msg: chat_data.Message, *, highlighted: bool = False) -> ft.Control:
+def _bubble_body(
+    msg: chat_data.Message,
+    *,
+    highlighted: bool = False,
+    dp: DisplayPrefs,
+    on_photo=None,
+) -> ft.Control:
     """Сам пузырь без жестов — подсветка на месте в ленте."""
     bg = theme.BUBBLE_OUT if msg.mine else theme.BUBBLE_IN
     fg = theme.PRIMARY_TEXT if msg.mine else theme.INK
     time_color = theme.TIME_OUT if msg.mine else theme.TIME_IN
-    br = _corners(msg.mine)
+    br = _corners(msg.mine, dp)
     max_w = float(theme.PHONE_WIDTH) * 0.72
 
     if msg.image and theme._image_exists(msg.image) and not msg.deleted:
-        body = _image_bubble(msg, bg, time_color, br)
+        if msg.mine or dp.media_autoload:
+            body = _image_bubble(msg, bg, time_color, br, dp, on_photo=on_photo)
+        else:
+            # автозагрузка выкл. — плейсхолдер, тап раскрывает и открывает фото
+            shown = {"v": False}
+            host: dict = {"c": None}
+
+            def _reveal(_e=None):
+                if not shown["v"]:
+                    shown["v"] = True
+                    host["c"].content = _image_bubble(
+                        msg, bg, time_color, br, dp, on_photo=on_photo
+                    )
+                    host["c"].on_click = None
+                    host["c"].ink = False
+                    host["c"].padding = ft.Padding.all(0)
+                    try:
+                        host["c"].update()
+                    except Exception:
+                        pass
+                if on_photo and msg.image:
+                    on_photo(msg.image)
+
+            host["c"] = ft.Container(
+                bgcolor=bg,
+                border_radius=br,
+                padding=ft.Padding.symmetric(horizontal=14, vertical=12),
+                ink=True,
+                on_click=_reveal,
+                content=ft.Row(
+                    spacing=8,
+                    tight=True,
+                    controls=[
+                        ft.Icon(ft.Icons.IMAGE_OUTLINED, size=18, color=fg),
+                        ft.Text(
+                            t("chat.photo_tap_load"),
+                            size=13,
+                            color=fg,
+                            font_family=theme.FONT_FAMILY,
+                ),
+            ],
+        ),
+    )
+            body = host["c"]
     else:
-        body = _text_bubble(msg, bg, fg, time_color, br)
+        body = _text_bubble(msg, bg, fg, time_color, br, dp)
         if len(msg.text or "") > 36 or "\n" in (msg.text or ""):
             body = ft.Container(content=body, width=max_w)
 
@@ -314,7 +633,7 @@ def _bubble_body(msg: chat_data.Message, *, highlighted: bool = False) -> ft.Con
     return body
 
 def _sender_nick_label(msg: chat_data.Message) -> ft.Control:
-    nick = msg.sender_nick or msg.sender_first or "Участник"
+    nick = msg.sender_nick or msg.sender_first or t("common.participant")
     colors = gradients.colors_for(msg.sender_seed or nick)
     # цвет ника из градиента аватара
     accent = "#%02X%02X%02X" % colors["top"]
@@ -337,12 +656,24 @@ def _bubble(
     animate_in: bool = False,
     highlighted: bool = False,
     dimmed: bool = False,
+    dp: Optional[DisplayPrefs] = None,
 ) -> ft.Control:
     if msg.date:
         return _date_chip(msg.date)
 
+    if dp is None:
+        dp = _snapshot_display_prefs()
+
     align = ft.MainAxisAlignment.END if msg.mine else ft.MainAxisAlignment.START
-    body = _bubble_body(msg, highlighted=highlighted)
+
+    def _open_photo(path: str | None = None):
+        opener = actions.get("open_photo")
+        if opener and (path or msg.image):
+            opener(path or msg.image)
+
+    body = _bubble_body(
+        msg, highlighted=highlighted, dp=dp, on_photo=_open_photo
+    )
 
     def _long(e=None, m=msg):
         opener = actions.get("open_menu")
@@ -355,12 +686,46 @@ def _bubble(
             closer = actions.get("close_menu")
             if closer:
                 closer()
+            return
+        if (
+            msg.image
+            and not msg.deleted
+            and theme._image_exists(msg.image)
+            and (msg.mine or dp.media_autoload)
+        ):
+            _open_photo(msg.image)
+
+    swipe_state = {"dx": 0.0}
+    swipe_on = dp.swipe_to_reply
+
+    def _pan_update(e):
+        if not swipe_on:
+            return
+        try:
+            dx = float(getattr(getattr(e, "local_delta", None), "x", 0) or 0)
+        except Exception:
+            dx = 0.0
+        swipe_state["dx"] += dx
+
+    def _pan_end(_e=None):
+        if not swipe_on:
+            swipe_state["dx"] = 0.0
+            return
+        dx = swipe_state["dx"]
+        swipe_state["dx"] = 0.0
+        # свайп вправо (входящие) / влево (свои) → ответ
+        if (not msg.mine and dx > 48) or (msg.mine and dx < -48):
+            reply = actions.get("reply")
+            if reply:
+                reply(msg)
 
     pressed = ft.GestureDetector(
         content=body,
         on_tap=_tap,
         on_long_press_start=_long,
         on_secondary_tap=_long,  # ПКМ на десктопе
+        on_horizontal_drag_update=_pan_update if swipe_on else None,
+        on_horizontal_drag_end=_pan_end if swipe_on else None,
     )
 
     # Группа: у чужих — маленький аватар слева и ник сверху сообщения
@@ -394,25 +759,19 @@ def _bubble(
 
     # Появление «из композера»: рост из нижнего угла + подъём + лёгкий tilt
     origin = ft.Alignment(1, 1) if msg.mine else ft.Alignment(-1, 1)
-    if animate_in:
-        start_scale = ft.Scale(scale=0.46, alignment=origin)
+    if animate_in and not dp.reduce_motion:
+        start_scale = ft.Scale(scale=0.82, alignment=origin)
         start_offset = (
-            ft.Offset(0.18, 0.62) if msg.mine else ft.Offset(-0.10, 0.42)
-        )
-        start_rotate = ft.Rotate(
-            angle=0.07 if msg.mine else -0.045,
-            alignment=origin,
+            ft.Offset(0.04, 0.16) if msg.mine else ft.Offset(-0.03, 0.12)
         )
         motion = ft.Container(
             content=row,
             opacity=0,
             scale=start_scale,
             offset=start_offset,
-            rotate=start_rotate,
-            animate_opacity=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
-            animate_scale=ft.Animation(420, ft.AnimationCurve.EASE_OUT_CUBIC),
-            animate_offset=ft.Animation(400, ft.AnimationCurve.EASE_OUT_CUBIC),
-            animate_rotation=ft.Animation(380, ft.AnimationCurve.EASE_OUT_CUBIC),
+            animate_opacity=ft.Animation(160, ft.AnimationCurve.EASE_OUT),
+            animate_scale=ft.Animation(280, ft.AnimationCurve.EASE_OUT_BACK),
+            animate_offset=ft.Animation(260, ft.AnimationCurve.EASE_OUT_CUBIC),
         )
     else:
         motion = ft.Container(content=row)
@@ -440,23 +799,24 @@ def _menu_row(
     color = MENU_DANGER if danger else theme.INK
     left: list[ft.Control] = []
     if sprite:
-        left.append(mono_icons.ui_icon(sprite, size=15))
+        left.append(mono_icons.ui_icon(sprite, size=16))
     left.append(
         ft.Text(
             label,
-            size=13,
+            size=14,
             color=color,
             weight=ft.FontWeight.W_500,
             font_family=theme.FONT_FAMILY,
+            max_lines=1,
         )
     )
-    return ft.Container(
+    row = ft.Container(
         border_radius=10,
         bgcolor=_menu_item_bg() if not danger else ("#3A1A22" if theme.is_dark() else "#FEE2E8"),
-        padding=ft.Padding.symmetric(horizontal=10, vertical=7),
-        on_click=on_click,
+        padding=ft.Padding.symmetric(horizontal=12, vertical=7),
         content=ft.Row(spacing=8, controls=left),
     )
+    return theme.pressable(row, on_click, scale_to=0.96)
 
 
 def _context_menu_card(
@@ -469,30 +829,30 @@ def _context_menu_card(
     rows: list[ft.Control] = []
     if msg.mine and not msg.deleted:
         rows.append(_menu_row(
-            "Редактировать",
+            t("chat.edit"),
             lambda e: (close(), actions["edit"](msg)),
             sprite="edit",
         ))
     rows.append(_menu_row(
-        "Копировать",
+        t("chat.copy"),
         lambda e: (close(), actions["copy"](msg)),
         sprite="copy",
     ))
     rows.append(_menu_row(
-        "Ответить",
+        t("chat.reply"),
         lambda e: (close(), actions["reply"](msg)),
         sprite="reply",
     ))
     if not msg.deleted:
         rows.append(_menu_row(
-            "Удалить",
+            t("chat.delete_msg"),
             lambda e: (close(), actions["delete"](msg)),
             danger=True,
             sprite="delete",
         ))
     if not msg.mine and not msg.deleted and actions.get("report"):
         rows.append(_menu_row(
-            "Пожаловаться",
+            t("chat.report"),
             lambda e: (close(), actions["report"](msg)),
             danger=True,
             sprite="flag",
@@ -505,13 +865,13 @@ def _context_menu_card(
         padding=5,
         blur=ft.Blur(12, 12, ft.BlurTileMode.CLAMP),
         shadow=ft.BoxShadow(
-            blur_radius=18,
+            blur_radius=14,
             spread_radius=0,
             color="#1A103830",
-            offset=ft.Offset(0, 6),
+            offset=ft.Offset(0, 4),
         ),
         border=ft.Border.all(1, liquid_glass.white_glass_border()),
-        content=ft.Column(spacing=3, tight=True, controls=rows),
+        content=ft.Column(spacing=2, tight=True, controls=rows),
     )
 
 
@@ -531,10 +891,13 @@ def _build_message_controls(
     *,
     is_group: bool = False,
     highlight_id: Optional[str] = None,
+    dp: Optional[DisplayPrefs] = None,
 ) -> list[ft.Control]:
     out: list[ft.Control] = []
     prev: Optional[chat_data.Message] = None
     menu_open = bool(highlight_id)
+    if dp is None:
+        dp = _snapshot_display_prefs()
     for msg in messages:
         if msg.date:
             out.append(_date_chip(msg.date))
@@ -558,6 +921,7 @@ def _build_message_controls(
                 show_sender=show_sender,
                 highlighted=is_hi,
                 dimmed=bool(menu_open and not is_hi),
+                dp=dp,
             )
         )
         prev = msg
@@ -588,16 +952,16 @@ def _header(
         avatar = theme.pressable(avatar, on_profile, scale_to=0.90)
 
     title_block: ft.Control = ft.Column(
-        spacing=0,
-        tight=True,
+                    spacing=0,
+                    tight=True,
         expand=True,
-        controls=[
-            ft.Text(
-                short,
-                size=16,
-                weight=ft.FontWeight.W_600,
-                color=theme.INK,
-                font_family=theme.FONT_FAMILY,
+                    controls=[
+                        ft.Text(
+                            short,
+                            size=16,
+                            weight=ft.FontWeight.W_600,
+                            color=theme.INK,
+                            font_family=theme.FONT_FAMILY,
                 max_lines=1,
                 overflow=ft.TextOverflow.ELLIPSIS,
             ),
@@ -676,7 +1040,7 @@ def build_chat(page: ft.Page) -> ft.Control:
         assert contact is not None
         chat_data.mark_read(contact.id)
         peer_title = contact.display_name
-        peer_status = "только вы · заметки" if is_favorites else contact.status
+        peer_status = t("chat.favorites_status") if is_favorites else contact.status
         peer_seed = contact.seed
         peer_first = contact.first
         peer_last = contact.last
@@ -713,6 +1077,8 @@ def build_chat(page: ft.Page) -> ft.Control:
         "chat_id": cid,
         "picking": False,
         "file_picker": None,
+        "dp": _snapshot_display_prefs(),
+        "pending_image": None,
     }
 
     online_label = ft.Text(
@@ -731,9 +1097,11 @@ def build_chat(page: ft.Page) -> ft.Control:
         left=24,
         top=200,
         opacity=0,
-        offset=ft.Offset(0, 0.08),
+        scale=0.94,
+        offset=ft.Offset(0, 0.06),
         animate_opacity=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
-        animate_offset=ft.Animation(200, ft.AnimationCurve.EASE_OUT),
+        animate_offset=ft.Animation(220, ft.AnimationCurve.EASE_OUT_CUBIC),
+        animate_scale=ft.Animation(260, ft.AnimationCurve.EASE_OUT_BACK),
         content=None,
     )
     scrim = ft.Container(
@@ -779,6 +1147,7 @@ def build_chat(page: ft.Page) -> ft.Control:
             actions,
             is_group=is_group,
             highlight_id=_highlight_id(),
+            dp=state.get("dp"),
         )
         try:
             list_col.update()
@@ -851,7 +1220,7 @@ def build_chat(page: ft.Page) -> ft.Control:
         _set_banner("", visible=False)
         tf = field_ref.get("tf")
         if tf is not None:
-            tf.hint_text = "Сообщение"
+            tf.hint_text = t("chat.hint_message")
             try:
                 tf.update()
             except Exception:
@@ -876,7 +1245,7 @@ def build_chat(page: ft.Page) -> ft.Control:
                 on_click=cancel_banner,
                 padding=ft.Padding.symmetric(horizontal=8, vertical=4),
                 border_radius=12,
-                content=ft.Text("Отмена", size=12, color=STATUS_MUTED, font_family=theme.FONT_FAMILY),
+                content=ft.Text(t("common.cancel"), size=12, color=STATUS_MUTED, font_family=theme.FONT_FAMILY),
             ),
         ],
     )
@@ -885,17 +1254,17 @@ def build_chat(page: ft.Page) -> ft.Control:
         text = msg.text or ""
         try:
             page.set_clipboard(text)
-            STATE.snack("Скопировано")
+            STATE.snack(t("common.copied"))
         except Exception:
-            STATE.snack(text[:80] if text else "Пусто")
+            STATE.snack(text[:80] if text else t("common.empty"))
 
     def on_reply(msg: chat_data.Message):
         state["edit_id"] = None
         state["reply_to"] = msg.id
-        _set_banner(f"Ответ на: {(msg.text or 'фото')[:40]}", visible=True)
+        _set_banner(t("chat.reply_banner", preview=(msg.text or t("common.photo"))[:40]), visible=True)
         tf = field_ref.get("tf")
         if tf is not None:
-            tf.hint_text = "Ваш ответ…"
+            tf.hint_text = t("chat.reply_hint")
             try:
                 tf.focus()
                 tf.update()
@@ -912,8 +1281,8 @@ def build_chat(page: ft.Page) -> ft.Control:
         state["reply_to"] = None
         state["edit_id"] = msg.id
         tf.value = msg.text or ""
-        tf.hint_text = "Измените сообщение…"
-        _set_banner("Редактирование", visible=True)
+        tf.hint_text = t("chat.edit_hint")
+        _set_banner(t("chat.edit_banner"), visible=True)
         try:
             tf.focus()
             tf.update()
@@ -941,7 +1310,8 @@ def build_chat(page: ft.Page) -> ft.Control:
 
             scrim.opacity = 0
             menu_card_host.opacity = 0
-            menu_card_host.offset = ft.Offset(0, 0.08)
+            menu_card_host.scale = 0.94
+            menu_card_host.offset = ft.Offset(0, 0.06)
             try:
                 scrim.update()
                 menu_card_host.update()
@@ -989,15 +1359,19 @@ def build_chat(page: ft.Page) -> ft.Control:
         bw = _approx_bubble_width(msg)
         bh = _approx_bubble_height(msg)
         left, top = _menu_anchor(msg, e, width=bw, bubble_h=bh)
+        if msg.mine:
+            left += max(0.0, bw - MENU_WIDTH)
+        left = max(8.0, min(left, float(theme.PHONE_WIDTH) - MENU_WIDTH - 8.0))
         menu_card_host.left = left
         menu_card_host.top = top
         menu_card_host.content = ft.GestureDetector(
             on_tap=lambda _e: None,
-            content=_context_menu_card(msg, actions, close_menu, width=bw),
+            content=_context_menu_card(msg, actions, close_menu, width=MENU_WIDTH),
         )
         scrim.opacity = 0
         menu_card_host.opacity = 0
-        menu_card_host.offset = ft.Offset(0, 0.08)
+        menu_card_host.scale = 0.94
+        menu_card_host.offset = ft.Offset(0, 0.06)
         menu_host.visible = True
         try:
             menu_host.update()
@@ -1015,6 +1389,7 @@ def build_chat(page: ft.Page) -> ft.Control:
                 return
             scrim.opacity = 1
             menu_card_host.opacity = 1
+            menu_card_host.scale = 1
             menu_card_host.offset = ft.Offset(0, 0)
             try:
                 scrim.update()
@@ -1027,6 +1402,7 @@ def build_chat(page: ft.Page) -> ft.Control:
         except Exception:
             scrim.opacity = 1
             menu_card_host.opacity = 1
+            menu_card_host.scale = 1
             menu_card_host.offset = ft.Offset(0, 0)
 
     def _report_target_pid() -> str:
@@ -1067,6 +1443,7 @@ def build_chat(page: ft.Page) -> ft.Control:
         "open_menu": open_menu,
         "close_menu": close_menu,
         "is_menu_open": lambda: state.get("menu_msg") is not None,
+        "open_photo": lambda path: _show_photo(page, path),
     }
 
     initial = _page_msgs(PAGE_SIZE, 0)
@@ -1096,14 +1473,18 @@ def build_chat(page: ft.Page) -> ft.Control:
             spacing=0,
             padding=ft.Padding.only(top=4, bottom=12),
             auto_scroll=False,
-            controls=_build_message_controls(initial, actions, is_group=is_group),
+            controls=_build_message_controls(
+                initial, actions, is_group=is_group, dp=state["dp"]
+            ),
         )
     except Exception:
         list_col = ft.Column(
             spacing=0,
             scroll=ft.ScrollMode.AUTO,
             expand=True,
-            controls=_build_message_controls(initial, actions, is_group=is_group),
+            controls=_build_message_controls(
+                initial, actions, is_group=is_group, dp=state["dp"]
+            ),
             auto_scroll=False,
         )
 
@@ -1121,7 +1502,7 @@ def build_chat(page: ft.Page) -> ft.Control:
             pass
 
     load_older_btn = ft.TextButton(
-        "Загрузить ранее",
+        t("chat.load_earlier"),
         visible=_older_ok(state["loaded"]),
         on_click=lambda e: load_older(),
     )
@@ -1137,6 +1518,12 @@ def build_chat(page: ft.Page) -> ft.Control:
 
     def go_back(_=None):
         close_menu()
+        closer = _photo_viewer.get("close")
+        if closer:
+            try:
+                closer(True)
+            except Exception:
+                pass
         state["alive"] = False
         # Снять фокус с композера ДО смены роута — иначе iOS оставляет клавиатуру на /home
         try:
@@ -1209,6 +1596,7 @@ def build_chat(page: ft.Page) -> ft.Control:
             is_group=is_group,
             show_sender=show_sender,
             animate_in=True,
+            dp=state.get("dp"),
         )
         list_col.controls.append(bubble)
         try:
@@ -1231,13 +1619,12 @@ def build_chat(page: ft.Page) -> ft.Control:
             # фаза 1 — вылет из композера с лёгким overshoot
             motion.opacity = 1
             motion.offset = ft.Offset(0, 0)
-            motion.rotate = ft.Rotate(angle=0, alignment=origin)
-            motion.scale = ft.Scale(scale=1.05, alignment=origin)
+            motion.scale = ft.Scale(scale=1.02, alignment=origin)
             try:
                 motion.update()
             except Exception:
                 return
-            await asyncio.sleep(0.30)
+            await asyncio.sleep(0.16)
             if not state.get("alive"):
                 return
             # фаза 2 — мягкий settle
@@ -1324,20 +1711,113 @@ def build_chat(page: ft.Page) -> ft.Control:
             except Exception:
                 pass
 
+    pending_preview = ft.Container(visible=False, padding=ft.Padding.only(left=12, right=12, top=4))
+
+    def _refresh_pending_preview() -> None:
+        path_img = state.get("pending_image")
+        tf = field_ref.get("tf")
+        if not path_img or not theme._image_exists(path_img):
+            pending_preview.visible = False
+            pending_preview.content = None
+            if tf is not None:
+                tf.hint_text = t("chat.hint_message")
+                try:
+                    tf.update()
+                except Exception:
+                    pass
+            try:
+                pending_preview.update()
+            except Exception:
+                pass
+            return
+        thumb_w, thumb_h = _image_display_size(path_img, max_w=96.0)
+        thumb_h = min(thumb_h, 72.0)
+        thumb_w = min(thumb_w, 96.0)
+
+        def _clear_pending(_e=None):
+            state["pending_image"] = None
+            _refresh_pending_preview()
+
+        pending_preview.content = ft.Container(
+            bgcolor=theme.CARD,
+            border_radius=16,
+            padding=ft.Padding.all(8),
+            border=ft.Border.all(1, theme.STROKE),
+            content=ft.Row(
+                spacing=10,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.GestureDetector(
+                        on_tap=lambda e, p=path_img: _show_photo(page, p),
+                        content=ft.Container(
+                            width=thumb_w,
+                            height=thumb_h,
+                            border_radius=10,
+                            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                            content=ft.Image(
+                                src=path_img,
+                                width=thumb_w,
+                                height=thumb_h,
+                                fit=ft.BoxFit.COVER,
+                            ),
+                        ),
+                    ),
+                    ft.Column(
+                        expand=True,
+                        spacing=2,
+                        tight=True,
+                        controls=[
+                            ft.Text(
+                                "Фото готово к отправке",
+                                size=13,
+                                weight=ft.FontWeight.W_600,
+                                color=theme.INK,
+                                font_family=theme.FONT_FAMILY,
+                            ),
+                            ft.Text(
+                                "Напишите подпись и нажмите отправить",
+                                size=12,
+                                color=theme.MUTED,
+                                font_family=theme.FONT_FAMILY,
+                            ),
+                        ],
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.CLOSE_ROUNDED,
+                        icon_size=20,
+                        icon_color=theme.MUTED,
+                        on_click=_clear_pending,
+                    ),
+                ],
+            ),
+        )
+        pending_preview.visible = True
+        if tf is not None:
+            tf.hint_text = "Подпись к фото…"
+            try:
+                tf.update()
+            except Exception:
+                pass
+        try:
+            pending_preview.update()
+        except Exception:
+            pass
+
     def on_send(_=None):
         tf = field_ref.get("tf")
         if not tf:
             return
         text = (tf.value or "").strip()
-        if not text:
-            return
+        pending_image = state.get("pending_image")
 
         # Режим редактирования — меняем существующее сообщение, не шлём новое
         edit_id = state.get("edit_id") or ""
         if edit_id:
+            if not text:
+                return
             updated = chat_data.edit_message(cid, edit_id, text)
             if updated is None:
-                STATE.error("Не удалось изменить сообщение")
+                STATE.error(t("chat.edit_failed"))
                 return
             page.pubsub.send_all({
                 "type": "chat_edit",
@@ -1345,13 +1825,16 @@ def build_chat(page: ft.Page) -> ft.Control:
                 "msg_id": edit_id,
                 "text": text,
             })
-        tf.value = ""
-        try:
-            tf.update()
-        except Exception:
-            pass
+            tf.value = ""
+            try:
+                tf.update()
+            except Exception:
+                pass
             _clear_composer_modes()
             _refresh_list()
+            return
+
+        if not text and not pending_image:
             return
 
         try:
@@ -1372,27 +1855,56 @@ def build_chat(page: ft.Page) -> ft.Control:
         except Exception:
             pass
         reply_to = state["reply_to"]
+        image = pending_image
+        state["pending_image"] = None
+        _refresh_pending_preview()
         _clear_composer_modes()
 
         if is_favorites:
-            _deliver_now(text, None, reply_to, pending=False)
+            _deliver_now(text, image, reply_to, pending=False)
             return
 
         if not state["online"]:
-            offline_outbox.enqueue(chat_id=cid, text=text, reply_to_id=reply_to)
-            _deliver_now(text, None, reply_to, pending=True)
-            STATE.snack("Нет сети — сообщение в очереди")
+            offline_outbox.enqueue(
+                chat_id=cid,
+                text=text,
+                attachment_path=image,
+                reply_to_id=reply_to,
+            )
+            _deliver_now(text, image, reply_to, pending=True)
+            STATE.snack(t("chat.offline_queue") if not image else t("chat.offline_file"))
             return
 
         try:
-            _deliver_now(text, None, reply_to, pending=False)
+            _deliver_now(text, image, reply_to, pending=False)
         except Exception as exc:
-            offline_outbox.enqueue(chat_id=cid, text=text, reply_to_id=reply_to)
-            _deliver_now(text, None, reply_to, pending=True)
-            STATE.snack(f"Оффлайн: сохранено локально ({exc})")
+            offline_outbox.enqueue(
+                chat_id=cid,
+                text=text,
+                attachment_path=image,
+                reply_to_id=reply_to,
+            )
+            _deliver_now(text, image, reply_to, pending=True)
+            STATE.snack(t("chat.offline_saved", detail=exc))
+
+    def _ensure_picker() -> ft.FilePicker:
+        picker = state.get("file_picker")
+        if picker is not None:
+            return picker
+        picker = ft.FilePicker()
+        try:
+            page.services.append(picker)
+        except Exception:
+            try:
+                page.overlay.append(picker)
+                page.update()
+            except Exception:
+                pass
+        state["file_picker"] = picker
+        return picker
 
     def _attach_path(path: str) -> None:
-        """Обработать уже выбранный файл (только из UI-потока Flet)."""
+        """Файл выбран: фото → превью+подпись; остальное — сразу в чат."""
         if not path or not state.get("alive"):
             return
         try:
@@ -1402,26 +1914,19 @@ def build_chat(page: ft.Page) -> ft.Control:
             return
 
         if state.get("edit_id"):
-            STATE.snack("Сначала завершите редактирование")
+            STATE.snack(t("chat.finish_edit"))
+            return
+
+        if uploads.is_image(stored):
+            state["pending_image"] = stored
+            _refresh_pending_preview()
             return
 
         reply_to = state["reply_to"]
         _clear_composer_modes()
-
-        caption = ""
-        tf = field_ref.get("tf")
-        if tf and (tf.value or "").strip():
-            caption = tf.value.strip()
-            tf.value = ""
-            try:
-                tf.update()
-            except Exception:
-                pass
-
-        image = stored if uploads.is_image(stored) else None
-        text = caption if image else (caption or os.path.basename(stored))
+        text = os.path.basename(stored)
         if is_favorites:
-            _deliver_now(text, image, reply_to, pending=False)
+            _deliver_now(text, None, reply_to, pending=False)
             return
         if not state["online"]:
             offline_outbox.enqueue(
@@ -1430,42 +1935,42 @@ def build_chat(page: ft.Page) -> ft.Control:
                 attachment_path=stored,
                 reply_to_id=reply_to,
             )
-            _deliver_now(text, image, reply_to, pending=True)
-            STATE.snack("Нет сети — файл в очереди")
+            _deliver_now(text, None, reply_to, pending=True)
+            STATE.snack(t("chat.offline_file"))
             return
-        _deliver_now(text, image, reply_to, pending=False)
+        _deliver_now(text, None, reply_to, pending=False)
 
-    def on_attach(_=None):
-        """Неблокирующий выбор файла: иначе tkinter/fut.result() замораживали UI."""
+    def _pick_files(*, kind: str) -> None:
+        """kind: gallery | camera | file"""
         if state.get("picking") or not state.get("alive"):
-            return
-        if state.get("edit_id"):
-            STATE.snack("Сначала завершите редактирование")
             return
         state["picking"] = True
 
         async def _pick():
             try:
-                picker = state.get("file_picker")
-                if picker is None:
-                    picker = ft.FilePicker()
-                    try:
-                        page.services.append(picker)
-                    except Exception:
-                        # старые сборки — overlay
-                        try:
-                            page.overlay.append(picker)
-                            page.update()
-                        except Exception:
-                            pass
-                    state["file_picker"] = picker
-
-                files = await picker.pick_files(
-                    dialog_title="Фото или PDF",
-                    allow_multiple=False,
-                    allowed_extensions=["jpg", "jpeg", "png", "pdf", "webp"],
-                    file_type=ft.FilePickerFileType.CUSTOM,
-                )
+                picker = _ensure_picker()
+                if kind == "gallery":
+                    files = await picker.pick_files(
+                        dialog_title="Галерея",
+                        allow_multiple=False,
+                        file_type=ft.FilePickerFileType.IMAGE,
+                        compression_quality=0,
+                    )
+                elif kind == "camera":
+                    # Системный IMAGE-пикер: на телефоне часто есть пункт «Снять фото».
+                    files = await picker.pick_files(
+                        dialog_title="Камера / фото",
+                        allow_multiple=False,
+                        file_type=ft.FilePickerFileType.IMAGE,
+                        compression_quality=0,
+                    )
+                else:
+                    files = await picker.pick_files(
+                        dialog_title=t("chat.file_dialog"),
+                        allow_multiple=False,
+                        allowed_extensions=["jpg", "jpeg", "png", "pdf", "webp"],
+                        file_type=ft.FilePickerFileType.CUSTOM,
+                    )
                 if not state.get("alive"):
                     return
                 if not files:
@@ -1475,7 +1980,7 @@ def build_chat(page: ft.Page) -> ft.Control:
                     _attach_path(path)
             except Exception as exc:
                 if state.get("alive"):
-                    STATE.error(f"Не удалось выбрать файл: {exc}")
+                    STATE.error(t("chat.file_pick_failed", detail=exc))
             finally:
                 state["picking"] = False
 
@@ -1483,7 +1988,209 @@ def build_chat(page: ft.Page) -> ft.Control:
             page.run_task(_pick)
         except Exception as exc:
             state["picking"] = False
-            STATE.error(f"Не удалось открыть выбор файла: {exc}")
+            STATE.error(t("chat.file_open_failed", detail=exc))
+
+    attach_open = {"v": False}
+    attach_gen = {"n": 0}
+    lift = float(theme.bottom_inset()) + 64
+    _anchor = ft.Alignment(-1, 1)
+
+    def _attach_row(icon, label: str, kind: str) -> ft.Control:
+        def _tap(_e=None, k=kind):
+            _set_attach_menu(False)
+            _pick_files(kind=k)
+
+        return ft.Container(
+            opacity=0,
+            offset=ft.Offset(0, 0.35),
+            animate_opacity=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
+            animate_offset=ft.Animation(240, ft.AnimationCurve.EASE_OUT_CUBIC),
+            content=theme.pressable(
+                ft.Container(
+                    border_radius=16,
+                    padding=ft.Padding.symmetric(horizontal=8, vertical=6),
+                    content=ft.Row(
+                        spacing=12,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Container(
+                                width=36,
+                                height=36,
+                                border_radius=18,
+                                bgcolor=theme.PRIMARY_SOFT,
+                                alignment=ft.Alignment.CENTER,
+                                content=ft.Icon(icon, size=20, color=theme.PRIMARY),
+                            ),
+                            ft.Text(
+                                label,
+                                size=16,
+                                weight=ft.FontWeight.W_500,
+                                color=theme.INK,
+                                font_family=theme.FONT_FAMILY,
+                            ),
+                        ],
+                    ),
+                ),
+                _tap,
+                scale_to=0.96,
+            ),
+        )
+
+    attach_rows = [
+        _attach_row(ft.Icons.PHOTO_CAMERA_OUTLINED, "Камера", "camera"),
+        _attach_row(ft.Icons.PHOTO_LIBRARY_OUTLINED, "Галерея", "gallery"),
+        _attach_row(ft.Icons.ATTACH_FILE_ROUNDED, "Файл", "file"),
+    ]
+
+    attach_card = ft.Container(
+        visible=False,
+        opacity=0,
+        scale=ft.Scale(0.55, alignment=_anchor),
+        offset=ft.Offset(0, 0.18),
+        animate_opacity=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
+        animate_scale=ft.Animation(320, ft.AnimationCurve.EASE_OUT_BACK),
+        animate_offset=ft.Animation(280, ft.AnimationCurve.EASE_OUT_CUBIC),
+        width=228,
+        left=10,
+        bottom=lift,
+        border_radius=22,
+        bgcolor=theme.CARD,
+        border=ft.Border.all(1, liquid_glass.white_glass_border()),
+        shadow=ft.BoxShadow(
+            blur_radius=24,
+            color="#00000033",
+            offset=ft.Offset(0, 8),
+        ),
+        padding=ft.Padding.symmetric(horizontal=6, vertical=6),
+        content=ft.Column(spacing=2, tight=True, controls=attach_rows),
+    )
+
+    def _rows_at(shown: bool) -> None:
+        for row in attach_rows:
+            row.opacity = 1 if shown else 0
+            row.offset = ft.Offset(0, 0) if shown else ft.Offset(0, 0.35)
+
+    def _paint_attach() -> None:
+        try:
+            attach_scrim.update()
+            attach_card.update()
+        except Exception:
+            pass
+
+    def _set_attach_menu(on: bool) -> None:
+        attach_open["v"] = on
+        attach_gen["n"] += 1
+        token = attach_gen["n"]
+        reduce = False
+        try:
+            reduce = prefs.reduce_motion()
+        except Exception:
+            pass
+
+        if on:
+            attach_scrim.visible = True
+            attach_card.visible = True
+            if reduce:
+                attach_scrim.opacity = 1
+                attach_card.opacity = 1
+                attach_card.scale = ft.Scale(1, alignment=_anchor)
+                attach_card.offset = ft.Offset(0, 0)
+                _rows_at(True)
+                _paint_attach()
+                return
+            attach_scrim.opacity = 0
+            attach_card.opacity = 0
+            attach_card.scale = ft.Scale(0.55, alignment=_anchor)
+            attach_card.offset = ft.Offset(0, 0.18)
+            _rows_at(False)
+            _paint_attach()
+
+            async def _show():
+                import asyncio
+
+                await asyncio.sleep(0.02)
+                if token != attach_gen["n"] or not attach_open["v"]:
+                    return
+                attach_scrim.opacity = 1
+                attach_card.opacity = 1
+                attach_card.scale = ft.Scale(1, alignment=_anchor)
+                attach_card.offset = ft.Offset(0, 0)
+                _paint_attach()
+                for row in attach_rows:
+                    await asyncio.sleep(0.045)
+                    if token != attach_gen["n"] or not attach_open["v"]:
+                        return
+                    row.opacity = 1
+                    row.offset = ft.Offset(0, 0)
+                    try:
+                        row.update()
+                    except Exception:
+                        pass
+
+            try:
+                page.run_task(_show)
+            except Exception:
+                attach_scrim.opacity = 1
+                attach_card.opacity = 1
+                attach_card.scale = ft.Scale(1, alignment=_anchor)
+                attach_card.offset = ft.Offset(0, 0)
+                _rows_at(True)
+                _paint_attach()
+            return
+
+        if reduce:
+            attach_scrim.opacity = 0
+            attach_card.opacity = 0
+            attach_card.visible = False
+            attach_scrim.visible = False
+            _rows_at(False)
+            _paint_attach()
+            return
+
+        attach_scrim.opacity = 0
+        attach_card.opacity = 0
+        attach_card.scale = ft.Scale(0.72, alignment=_anchor)
+        attach_card.offset = ft.Offset(0, 0.12)
+        _rows_at(False)
+        _paint_attach()
+
+        async def _hide():
+            import asyncio
+
+            await asyncio.sleep(0.2)
+            if token != attach_gen["n"] or attach_open["v"]:
+                return
+            attach_card.visible = False
+            attach_scrim.visible = False
+            _paint_attach()
+
+        try:
+            page.run_task(_hide)
+        except Exception:
+            attach_card.visible = False
+            attach_scrim.visible = False
+            _paint_attach()
+
+    def _scrim_tap(_e=None):
+        _set_attach_menu(False)
+
+    attach_scrim = ft.Container(
+        visible=False,
+        opacity=0,
+        animate_opacity=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
+        expand=True,
+        bgcolor="#00000022",
+        on_click=_scrim_tap,
+    )
+
+    def on_attach(_=None):
+        """Меню вложений над кнопкой — камера, галерея, файл."""
+        if state.get("picking") or not state.get("alive"):
+            return
+        if state.get("edit_id"):
+            STATE.snack(t("chat.finish_edit"))
+            return
+        _set_attach_menu(not attach_open["v"])
 
     def on_pubsub(message):
         if not state["alive"]:
@@ -1509,7 +2216,7 @@ def build_chat(page: ft.Page) -> ft.Control:
                     image=payload.get("image"),
                     reply_to_id=payload.get("reply_to_id"),
                     msg_id=payload.get("id"),
-                    sender_nick=payload.get("sender_nick") or "Участник",
+                    sender_nick=payload.get("sender_nick") or t("common.participant"),
                     sender_seed=payload.get("sender_seed") or "u",
                     sender_first=payload.get("sender_first") or "?",
                     sender_last=payload.get("sender_last") or "",
@@ -1527,14 +2234,54 @@ def build_chat(page: ft.Page) -> ft.Control:
                 _append_local(m)
                 from core import prefs as _prefs
 
+                img_path = (m.image or "").strip()
+                if img_path and _prefs.save_to_gallery():
+                    try:
+                        import shutil
+
+                        gal = os.path.join(DATA_DIR, "gallery")
+                        os.makedirs(gal, exist_ok=True)
+                        if os.path.isfile(img_path):
+                            dest = os.path.join(gal, os.path.basename(img_path))
+                            if not os.path.isfile(dest):
+                                shutil.copy2(img_path, dest)
+                    except Exception:
+                        pass
                 muted_chat = (not is_group) and chat_data.is_muted(cid)
                 if not muted_chat:
                     sounds.play_ding()
                 if (not muted_chat) and _prefs.notif_allowed(is_group=bool(is_group)):
-                    preview = (m.text or "Фото")[:80]
+                    preview = (m.text or t("common.photo"))[:80]
                     if not _prefs.notif_preview():
-                        preview = "Новое сообщение"
-                    push.notify(peer_title or "Сообщение", preview)
+                        preview = t("common.new_message")
+                    push.notify(peer_title or t("common.message"), preview)
+        elif mtype == "chat_typing":
+            if not prefs.show_typing():
+                return
+            if message.get("from_user") and STATE.user and message["from_user"] == STATE.user.public_id:
+                return
+            online_label.value = t("chat.typing")
+            try:
+                online_label.update()
+            except Exception:
+                pass
+
+            async def _restore_status():
+                import asyncio
+
+                await asyncio.sleep(2.2)
+                if not state.get("alive"):
+                    return
+                online_label.value = peer_status if state.get("online", True) else t("common.offline_queue")
+                try:
+                    online_label.update()
+                except Exception:
+                    pass
+
+            try:
+                page.run_task(_restore_status)
+            except Exception:
+                pass
         elif mtype == "chat_edit":
             chat_data.edit_message(cid, message.get("msg_id"), message.get("text") or "")
             _refresh_list()
@@ -1565,7 +2312,29 @@ def build_chat(page: ft.Page) -> ft.Control:
     if state["online"]:
         flush_outbox()
 
-    composer = _composer(on_send, on_attach, field_ref)
+    _typing_sent = {"t": 0.0}
+
+    def _on_composer_change(_e=None):
+        if not prefs.show_typing() or is_favorites:
+            return
+        import time
+
+        now = time.time()
+        if now - _typing_sent["t"] < 1.6:
+            return
+        _typing_sent["t"] = now
+        try:
+            page.pubsub.send_all(
+                {
+                    "type": "chat_typing",
+                    "chat_id": cid,
+                    "from_user": getattr(STATE.user, "public_id", None),
+                }
+            )
+        except Exception:
+            pass
+
+    composer = _composer(on_send, on_attach, field_ref, on_change=_on_composer_change)
 
     def open_contact_profile(_=None):
         if is_group or contact is None or is_favorites:
@@ -1609,11 +2378,12 @@ def build_chat(page: ft.Page) -> ft.Control:
         body_controls.append(
             _questions_plaque(count=q_count, on_open=_open_questions)
         )
+    body_controls.append(pending_preview)
     body_controls.append(composer)
 
     chat_body = ft.Column(
-        expand=True,
-        spacing=0,
+            expand=True,
+            spacing=0,
         controls=body_controls,
     )
 
@@ -1628,12 +2398,25 @@ def build_chat(page: ft.Page) -> ft.Control:
     except Exception:
         pass
 
+    dim = float(prefs.chat_bg_dim() or 0.0)
+    stack_controls: list[ft.Control] = [chat_body]
+    if dim > 0.01:
+        stack_controls.insert(
+            0,
+            ft.Container(
+                expand=True,
+                bgcolor=f"#000000{int(min(dim, 0.4) * 255):02X}",
+            ),
+        )
+    stack_controls.append(menu_host)
+    stack_controls.append(attach_scrim)
+    stack_controls.append(attach_card)
     root = ft.Container(
         expand=True,
         bgcolor=theme.BG,
         content=ft.Stack(
             expand=True,
-            controls=[chat_body, menu_host],
+            controls=stack_controls,
         ),
     )
     return theme.edge_swipe_back(root, on_back=go_back)
@@ -1642,14 +2425,14 @@ def build_chat(page: ft.Page) -> ft.Control:
 def _questions_plaque(*, count: int = 0, on_open=None) -> ft.Control:
     """Плашка «Вопросы» над композером в групповом чате."""
     eye = mono_icons.ui_icon("eye", size=22)
-    count_label = "нет" if count <= 0 else str(int(count))
+    count_label = t("common.none") if count <= 0 else str(int(count))
 
     def _tap(_=None):
         if on_open:
             on_open()
         else:
             try:
-                STATE.snack("Вопросы класса")
+                STATE.snack(t("chat.questions_snack"))
             except Exception:
                 pass
 
@@ -1663,7 +2446,7 @@ def _questions_plaque(*, count: int = 0, on_open=None) -> ft.Control:
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
                     ft.Text(
-                        "Вопросы",
+                        t("chat.questions_title"),
                         size=16,
                         weight=ft.FontWeight.W_600,
                         color=theme.INK,
@@ -1684,7 +2467,7 @@ def _questions_plaque(*, count: int = 0, on_open=None) -> ft.Control:
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
                     ft.Text(
-                        "Смотреть",
+                        t("chat.questions_watch"),
                         size=13,
                         weight=ft.FontWeight.W_500,
                         color=theme.PRIMARY,
@@ -1713,33 +2496,39 @@ def _questions_plaque(*, count: int = 0, on_open=None) -> ft.Control:
     )
 
 
-def _composer(on_send, on_attach, field_ref: dict) -> ft.Control:
+def _composer(on_send, on_attach, field_ref: dict, on_change=None) -> ft.Control:
     # Пропорции как в Telegram: круги ≈ поле по высоте, поле тянется по ширине
-    btn_size = 40.0
+    # Скрепка крупнее — удобнее тапать на телефоне
+    btn_size = 44.0
+    attach_size = 48.0
     field_radius = btn_size / 2
     gap = 6.0
+    fs = max(14, int(round(16 * prefs.font_scale())))
 
     tf = ft.TextField(
-        hint_text="Сообщение",
+        hint_text=t("chat.hint_message"),
         filled=True,
         bgcolor=liquid_glass._a("#FFFFFF", 0.0),
         border=theme.field_border(
             field_radius, color="transparent", focused_color="transparent"
         ),
         cursor_color=theme.PRIMARY,
-        text_size=16,
+        text_size=fs,
         color=theme.INK,
         content_padding=ft.Padding.symmetric(horizontal=14, vertical=8),
-        text_style=ft.TextStyle(font_family=theme.FONT_FAMILY, size=16, color=theme.INK),
+        text_style=ft.TextStyle(font_family=theme.FONT_FAMILY, size=fs, color=theme.INK),
         hint_style=ft.TextStyle(
-            color=theme.HINT, font_family=theme.FONT_FAMILY, size=16
+            color=theme.HINT, font_family=theme.FONT_FAMILY, size=fs
         ),
         expand=True,
-        multiline=False,
+        multiline=prefs.chat_send_by_ctrl_enter() or not prefs.chat_enter_to_send(),
         min_lines=1,
-        max_lines=1,
-        height=btn_size,
-        on_submit=on_send,
+        max_lines=4 if (prefs.chat_send_by_ctrl_enter() or not prefs.chat_enter_to_send()) else 1,
+        height=btn_size if prefs.chat_enter_to_send() and not prefs.chat_send_by_ctrl_enter() else None,
+        on_submit=on_send
+        if prefs.chat_enter_to_send() and not prefs.chat_send_by_ctrl_enter()
+        else None,
+        on_change=on_change,
     )
     field_ref["tf"] = tf
 
@@ -1770,11 +2559,11 @@ def _composer(on_send, on_attach, field_ref: dict) -> ft.Control:
         ),
     )
 
-    attach_icon = mono_icons.ui_icon("attach", size=20)
-    send_icon = mono_icons.ui_icon("send", size=18, variant="onaccent")
+    attach_icon = mono_icons.ui_icon("attach", size=28)
+    send_icon = mono_icons.ui_icon("send", size=20, variant="onaccent")
 
     attach = liquid_glass.glass_circle_button(
-        on_attach, content=attach_icon, size=btn_size, variant="white"
+        on_attach, content=attach_icon, size=attach_size, variant="white"
     )
     send_btn = liquid_glass.glass_circle_button(
         on_send, content=send_icon, size=btn_size, variant="purple"

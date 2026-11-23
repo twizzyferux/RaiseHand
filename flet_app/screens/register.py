@@ -347,10 +347,10 @@ def _chrome(
 
 def build_reg_name(page: ft.Page) -> ft.Control:
     first_col, first = _pill_field(
-        "Имя", "Иван", value=STATE.draft.get("first_name", ""), helper="Видно всем"
+        t("profile.first_name"), "Иван", value=STATE.draft.get("first_name", ""), helper="Видно всем"
     )
     last_col, last = _pill_field(
-        "Фамилия", "Иванов", value=STATE.draft.get("last_name", ""), helper="Видно всем"
+        t("profile.last_name"), "Иванов", value=STATE.draft.get("last_name", ""), helper="Видно всем"
     )
 
     def next_(_):
@@ -388,7 +388,7 @@ def build_reg_password(page: ft.Page) -> ft.Control:
     )
     pwd2_col, pwd2 = _pill_field("Подтверждение пароля", password=True)
     remember = ft.Checkbox(
-        label="Запомнить меня",
+        label=t("common.remember_me"),
         value=bool(STATE.draft.get("remember", False)),
         active_color=theme.PRIMARY,
         label_style=ft.TextStyle(font_family=theme.FONT_FAMILY, size=15, color=theme.INK),
@@ -883,8 +883,8 @@ def build_reg_proof(page: ft.Page) -> ft.Control:
             path = filedialog.askopenfilename(
                 title="Скриншот или фото",
                 filetypes=[
-                    ("Изображения", "*.png *.jpg *.jpeg *.webp"),
-                    ("Все файлы", "*.*"),
+                    (t("avatar.file_images"), "*.png *.jpg *.jpeg *.webp"),
+                    (t("avatar.file_all"), "*.*"),
                 ],
             )
             root.destroy()

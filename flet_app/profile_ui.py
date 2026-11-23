@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional, Union
 import flet as ft
 
 from core import gradients
+from core.i18n import t
 from flet_app import liquid_glass, mono_icons, theme
 
 IconLike = Union[str, ft.Icons, ft.Control]
@@ -216,9 +217,9 @@ def _seg_tab(label: str, selected: bool, on_tap: Callable) -> ft.Control:
 def media_tabs_block(
     media_controls: list[ft.Control],
     *,
-    empty_text: str = "Пока нет медиа",
+    empty_text: str = t("profile.no_media"),
     links_controls: list[ft.Control] | None = None,
-    links_empty_text: str = "Пока нет ссылок",
+    links_empty_text: str = t("profile.no_links"),
 ) -> ft.Control:
     links_controls = links_controls if links_controls is not None else []
 
@@ -271,8 +272,8 @@ def media_tabs_block(
             content=ft.Row(
                 spacing=4,
                 controls=[
-                    _seg_tab("Медиа", state["tab"] == "media", _set_tab("media")),
-                    _seg_tab("Ссылки", state["tab"] == "links", _set_tab("links")),
+                    _seg_tab(t("profile.media_tab"), state["tab"] == "media", _set_tab("media")),
+                    _seg_tab(t("profile.links_tab"), state["tab"] == "links", _set_tab("links")),
                 ],
             ),
         )

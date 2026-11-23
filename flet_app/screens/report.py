@@ -5,6 +5,7 @@ from __future__ import annotations
 import flet as ft
 
 from core import blacklist, logs, push, reports
+from core.i18n import t
 from flet_app import liquid_glass, mono_icons, theme
 from flet_app.app_state import STATE
 
@@ -48,7 +49,7 @@ def build_report(page: ft.Page) -> ft.Control:
     msg_id = str(STATE.draft.get("_report_msg_id") or "")
 
     reason_dd = ft.Dropdown(
-        label="Причина",
+        label=t("report.reason"),
         value=reports.REPORT_REASONS[0],
         options=[ft.dropdown.Option(r) for r in reports.REPORT_REASONS],
         filled=True,
@@ -61,8 +62,8 @@ def build_report(page: ft.Page) -> ft.Control:
         expand=True,
     )
     details_tf = ft.TextField(
-        label="Описание",
-        hint_text="Что произошло? Коротко опишите ситуацию",
+        label=t("report.details"),
+        hint_text=t("report.details_hint"),
         multiline=True,
         min_lines=4,
         max_lines=8,
@@ -100,7 +101,7 @@ def build_report(page: ft.Page) -> ft.Control:
             return
         details = (details_tf.value or "").strip()
         if not details:
-            status_text.value = "Нужно описание жалобы"
+            status_text.value = t("report.need_details")
             status_text.color = "#E11D48"
             try:
                 status_text.update()
@@ -108,7 +109,7 @@ def build_report(page: ft.Page) -> ft.Control:
                 pass
             return
         if target in ("", "—"):
-            status_text.value = "Не указан ID пользователя"
+            status_text.value = t("report.need_target")
             status_text.color = "#E11D48"
             try:
                 status_text.update()
@@ -118,7 +119,7 @@ def build_report(page: ft.Page) -> ft.Control:
 
         _set_busy(
             True,
-            "Отправка в Discord…" if not also_block else "Жалоба и блокировка…",
+            t("report.sending") if not also_block else t("report.sending_block"),
         )
 
         async def _send():
@@ -149,17 +150,17 @@ def build_report(page: ft.Page) -> ft.Control:
                 try:
                     if also_block and blocked_ok:
                         push.notify(
-                            "Жалоба и блокировка",
-                            f"№{rid} · {target} в чёрном списке",
+                            t("report.push_block_title"),
+                            f"№{rid} · {target}",
                         )
                     else:
-                        push.notify("Жалоба отправлена", f"№{rid}")
+                        push.notify(t("report.push_title"), f"№{rid}")
                 except Exception:
                     pass
                 if also_block and blocked_ok:
-                    STATE.snack(f"Жалоба №{rid} · пользователь в чёрном списке")
+                    STATE.snack(t("report.snack_block", id=rid))
                 else:
-                    STATE.snack(f"Жалоба №{rid} отправлена модераторам")
+                    STATE.snack(t("report.snack_sent", id=rid))
                 _back()
             except reports.ReportError as exc:
                 logs.error("report failed: %s", exc)
@@ -170,7 +171,7 @@ def build_report(page: ft.Page) -> ft.Control:
                     status_text.update()
                 except Exception:
                     pass
-                STATE.error(str(exc), "Жалоба")
+                STATE.error(str(exc), t("report.title_short"))
             except Exception as exc:
                 logs.error("report failed: %s", exc)
                 _set_busy(False)
@@ -180,13 +181,13 @@ def build_report(page: ft.Page) -> ft.Control:
                     status_text.update()
                 except Exception:
                     pass
-                STATE.error(str(exc), "Жалоба")
+                STATE.error(str(exc), t("report.title_short"))
 
         try:
             page.run_task(_send)
         except Exception as exc:
             _set_busy(False)
-            STATE.error(str(exc), "Жалоба")
+            STATE.error(str(exc), t("report.title_short"))
 
     back = liquid_glass.glass_circle_button(
         _back,
@@ -202,7 +203,7 @@ def build_report(page: ft.Page) -> ft.Control:
             controls=[
                 back,
                 ft.Text(
-                    "Пожаловаться",
+                    t("chat.report"),
                     size=20,
                     weight=ft.FontWeight.W_700,
                     color=theme.INK,
@@ -218,7 +219,7 @@ def build_report(page: ft.Page) -> ft.Control:
             spacing=6,
             tight=True,
             controls=[
-                ft.Text("Пользователь", size=13, color=theme.MUTED, font_family=theme.FONT_FAMILY),
+                ft.Text(t("report.user"), size=13, color=theme.MUTED, font_family=theme.FONT_FAMILY),
                 ft.Text(
                     target,
                     size=22,
@@ -228,7 +229,7 @@ def build_report(page: ft.Page) -> ft.Control:
                     selectable=True,
                 ),
                 ft.Text(
-                    "ID из приложения — уйдёт модераторам в Discord",
+                    t("report.id_hint"),
                     size=12,
                     color=theme.MUTED,
                     font_family=theme.FONT_FAMILY,
@@ -250,7 +251,7 @@ def build_report(page: ft.Page) -> ft.Control:
     )
 
     submit_btn = liquid_glass.purple_glass_button(
-        "Отправить жалобу",
+        t("report.submit"),
         lambda e=None: submit(also_block=False),
         expand=True,
     )
@@ -262,7 +263,7 @@ def build_report(page: ft.Page) -> ft.Control:
         padding=ft.Padding.symmetric(horizontal=16, vertical=14),
         border=ft.Border.all(1, theme.STROKE),
         content=ft.Text(
-            "Жалоба + в чёрный список",
+            t("report.submit_block"),
             size=15,
             weight=ft.FontWeight.W_600,
             color=theme.INK,
@@ -283,8 +284,7 @@ def build_report(page: ft.Page) -> ft.Control:
             ft.Container(alignment=ft.Alignment.CENTER, content=submit_btn),
             ft.Container(alignment=ft.Alignment.CENTER, content=submit_block_btn),
             ft.Text(
-                "Чёрный список: пользователь исчезнет из поиска, "
-                "новый чат с ним открыть будет нельзя.",
+                t("report.footer"),
                 size=12,
                 color=theme.MUTED,
                 font_family=theme.FONT_FAMILY,

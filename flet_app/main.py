@@ -30,6 +30,7 @@ from flet_app.screens import (
     settings_pages,
     contact_profile,
     report,
+    new_chat,
 )
 
 
@@ -131,6 +132,8 @@ def main(page: ft.Page):
             "/reg/done": register.build_reg_done,
             "/home": home.build_home,
             "/chat": chat.build_chat,
+            "/new_chat": new_chat.build_new_chat,
+            "/new_group": new_chat.build_new_group,
             "/questions": questions.build_questions,
             "/verify": home.build_home,
             "/teacher_proof": home.build_home,
