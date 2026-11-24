@@ -262,8 +262,8 @@ def _switch_row(label: str, sw: ft.Switch, *, hint: str = "") -> ft.Control:
         left.append(
             ft.Text(
                 hint,
-                size=12,
-                color=theme.MUTED,
+                size=14,
+                color=theme.INK,
                 font_family=theme.FONT_FAMILY,
             )
         )
@@ -305,7 +305,7 @@ def _choice_chips(
         for key, box in boxes.items():
             on = key == state["v"]
             box.bgcolor = theme.PRIMARY_SOFT if on else theme.FIELD_BG
-            box.border = ft.Border.all(1.5, theme.PRIMARY if on else theme.STROKE)
+            box.border = ft.Border.all(1.5, theme.PRIMARY) if on else None
             lab = labels[key]
             lab.color = theme.PRIMARY if on else theme.INK
             lab.weight = ft.FontWeight.W_600 if on else ft.FontWeight.W_500
@@ -319,7 +319,7 @@ def _choice_chips(
     for key, title in options:
         lab = ft.Text(
             title,
-            size=13,
+            size=16,
             weight=ft.FontWeight.W_600 if key == selected else ft.FontWeight.W_500,
             color=theme.PRIMARY if key == selected else theme.INK,
             font_family=theme.FONT_FAMILY,
@@ -337,16 +337,14 @@ def _choice_chips(
             _paint()
 
         box = ft.Container(
-            border_radius=14,
+            border_radius=16,
             bgcolor=theme.PRIMARY_SOFT if key == selected else theme.FIELD_BG,
-            padding=ft.Padding.symmetric(horizontal=14, vertical=10),
-            border=ft.Border.all(
-                1.5, theme.PRIMARY if key == selected else theme.STROKE
-            ),
+            padding=ft.Padding.symmetric(horizontal=18, vertical=12),
+            border=ft.Border.all(2, theme.PRIMARY) if key == selected else None,
             content=lab,
         )
         boxes[key] = box
-        controls.append(theme.pressable(box, _click, scale_to=0.96))
+        controls.append(theme.pressable(box, _click, scale_to=theme.PRESS_SCALE))
 
     return ft.Row(spacing=8, wrap=True, controls=controls)
 
@@ -372,7 +370,7 @@ def _field(
         filled=True,
         bgcolor=theme.FIELD_BG,
         color=theme.INK,
-        border=theme.field_border(16, color=theme.STROKE, focused_color=theme.PRIMARY),
+        border=theme.field_border(16, color="transparent", focused_color=theme.PRIMARY),
         cursor_color=theme.PRIMARY,
         text_style=ft.TextStyle(font_family=theme.FONT_FAMILY, color=theme.INK),
         hint_style=ft.TextStyle(color=theme.HINT, font_family=theme.FONT_FAMILY),
@@ -383,9 +381,9 @@ def _field(
 def _section_label(text: str) -> ft.Control:
     return ft.Text(
         text,
-        size=13,
-        weight=ft.FontWeight.W_600,
-        color=theme.MUTED,
+        size=16,
+        weight=ft.FontWeight.W_700,
+        color=theme.INK,
         font_family=theme.FONT_FAMILY,
     )
 
@@ -441,6 +439,136 @@ def _show_dlg(page: ft.Page, dlg: ft.AlertDialog) -> None:
         STATE.error(t("common.dialog_open_failed"), t("common.profile_title"))
 
 
+_INACTIVE_LABELS = {
+    3: "3 месяца",
+    6: "6 месяцев",
+    12: "1 год",
+    18: "1,5 года",
+    24: "2 года",
+}
+
+
+def _fresh_user() -> auth.User | None:
+    user = STATE.user
+    if user is None:
+        return None
+    try:
+        fresh = auth.get_user_by_id(user.id)
+    except Exception:
+        fresh = None
+    if fresh is not None:
+        STATE.user = fresh
+        return fresh
+    return user
+
+
+def _terms_status_text(user: auth.User) -> str:
+    if user.terms_accepted and user.terms_version:
+        when = (user.terms_accepted_at or "").strip()
+        when = when[:16].replace("T", " ") if when else ""
+        if when:
+            return f"Правила приняты · версия {user.terms_version} · {when}"
+        return f"Правила приняты · версия {user.terms_version}"
+    return "Согласие с правилами ещё не записано в профиль"
+
+
+def _confirm_delete_account(page: ft.Page) -> None:
+    user = _fresh_user()
+    if user is None:
+        STATE.snack("Сначала войдите в аккаунт")
+        return
+
+    word = ft.TextField(
+        hint_text="УДАЛИТЬ",
+        bgcolor=theme.FIELD_BG,
+        border=theme.field_border(16, color="transparent", focused_color=theme.PRIMARY),
+        color=theme.INK,
+        text_style=ft.TextStyle(font_family=theme.FONT_FAMILY, size=16, color=theme.INK),
+        hint_style=ft.TextStyle(font_family=theme.FONT_FAMILY, size=16, color=theme.HINT),
+        cursor_color=theme.PRIMARY,
+        autofocus=True,
+    )
+
+    def close(_=None):
+        _close_dlg(page, dlg)
+
+    def do_delete(_=None):
+        if (word.value or "").strip() != "УДАЛИТЬ":
+            STATE.snack("Чтобы удалить аккаунт, введите УДАЛИТЬ")
+            return
+        uid = user.id
+        try:
+            auth.delete_account(uid)
+        except Exception as exc:
+            logs.error("delete account: %s", exc)
+            STATE.error("Не удалось удалить аккаунт")
+            return
+        try:
+            from core import session
+
+            session.clear()
+        except Exception:
+            pass
+        STATE.user = None
+        STATE.reset_draft()
+        close()
+        STATE.go("/welcome")
+
+    dlg = ft.AlertDialog(
+        modal=True,
+        bgcolor=theme.CARD,
+        title=ft.Text(
+            "Удалить аккаунт?",
+            size=20,
+            weight=ft.FontWeight.W_700,
+            color=theme.INK,
+            font_family=theme.FONT_FAMILY,
+        ),
+        content=ft.Column(
+            tight=True,
+            spacing=12,
+            width=max(220.0, float(theme.content_width()) - 88),
+            controls=[
+                ft.Text(
+                    "Профиль, чаты и фото на этом устройстве исчезнут. Вернуть их будет нельзя.",
+                    size=15,
+                    color=theme.INK,
+                    font_family=theme.FONT_FAMILY,
+                ),
+                ft.Text(
+                    "Введите УДАЛИТЬ, чтобы подтвердить.",
+                    size=14,
+                    color=theme.MUTED,
+                    font_family=theme.FONT_FAMILY,
+                ),
+                word,
+            ],
+        ),
+        actions=[
+            theme.action_button("Отмена", close, width=130),
+            theme.pressable(
+                ft.Container(
+                    width=150,
+                    height=48,
+                    border_radius=16,
+                    bgcolor="#C4475A",
+                    alignment=ft.Alignment.CENTER,
+                    content=ft.Text(
+                        "Удалить",
+                        size=16,
+                        weight=ft.FontWeight.W_700,
+                        color="#FFFBFF",
+                        font_family=theme.FONT_FAMILY,
+                    ),
+                ),
+                do_delete,
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.CENTER,
+    )
+    _show_dlg(page, dlg)
+
+
 def _close_dlg(page: ft.Page, dlg: ft.AlertDialog | None = None) -> None:
     try:
         page.pop_dialog()
@@ -481,16 +609,8 @@ def _edit_dialog(
         bgcolor=theme.CARD,
         content=ft.Column(tight=True, spacing=10, controls=fields),
         actions=[
-            ft.TextButton(
-                t("common.cancel"),
-                on_click=close,
-                style=ft.ButtonStyle(color=theme.MUTED),
-            ),
-            ft.TextButton(
-                t("common.save"),
-                on_click=save,
-                style=ft.ButtonStyle(color=theme.PRIMARY),
-            ),
+            theme.action_button(t("common.cancel"), close, width=140),
+            theme.action_button(t("common.save"), save, primary=True, width=140),
         ],
     )
     _show_dlg(page, dlg)
@@ -516,13 +636,14 @@ def _settings_row_item(
                     controls=[
                         ft.Text(
                             title,
-                            size=13,
-                            color=theme.MUTED,
+                            size=16,
+                            weight=ft.FontWeight.W_600,
+                            color=theme.INK,
                             font_family=theme.FONT_FAMILY,
                         ),
                         ft.Text(
                             value or t("common.not_set"),
-                            size=15,
+                            size=16,
                             weight=ft.FontWeight.W_500,
                             color=theme.INK,
                             font_family=theme.FONT_FAMILY,
@@ -535,12 +656,12 @@ def _settings_row_item(
             ],
         ),
     )
-    return theme.pressable(body, on_click, scale_to=0.985, expand=True)
+    return theme.pressable(body, on_click, scale_to=theme.PRESS_SCALE, expand=True)
 
 
 def _page_profile(page: ft.Page) -> ft.Control:
     """Свой профиль — Telegram-style (тело для settings _shell)."""
-    user = STATE.user
+    user = _fresh_user()
     if user is None:
         return _placeholder("profile", t("profile.login_required"))
 
@@ -683,13 +804,20 @@ def _page_profile(page: ft.Page) -> ft.Control:
             head,
             profile_actions,
             info_card(info_rows),
+            ft.Text(
+                _terms_status_text(user),
+                size=14,
+                color=theme.MUTED,
+                font_family=theme.FONT_FAMILY,
+                text_align=ft.TextAlign.CENTER,
+            ),
             media_block,
             ft.Container(height=8),
         ],
     )
 
 
-def _color_chip(key: str, selected: bool, on_tap, *, size: float = 44.0) -> ft.Control:
+def _color_chip(key: str, selected: bool, on_tap, *, size: float = 52.0) -> ft.Control:
     tok = branding.theme_tokens(key, "dark" if theme.is_dark() else "light")
     fill = tok.get("fill") or theme.PRIMARY
     ring = theme.BG if selected else "transparent"
@@ -774,9 +902,9 @@ def _page_appearance(page: ft.Page) -> ft.Control:
 
     font_lbl = ft.Text(
         t("appearance.font_scale", scale=f"{prefs.font_scale():.2f}"),
-        size=13,
+        size=16,
         weight=ft.FontWeight.W_600,
-        color=theme.MUTED,
+        color=theme.INK,
         font_family=theme.FONT_FAMILY,
     )
     font_slider = ft.Slider(
@@ -800,9 +928,9 @@ def _page_appearance(page: ft.Page) -> ft.Control:
 
     dim_lbl = ft.Text(
         t("appearance.chat_dim", pct=int(prefs.chat_bg_dim() * 100)),
-        size=13,
+        size=16,
         weight=ft.FontWeight.W_600,
-        color=theme.MUTED,
+        color=theme.INK,
         font_family=theme.FONT_FAMILY,
     )
     dim_slider = ft.Slider(
@@ -823,6 +951,11 @@ def _page_appearance(page: ft.Page) -> ft.Control:
 
     dim_slider.on_change = on_dim
 
+    fps_chips = _choice_chips(
+        [("60", "60"), ("120", "120")],
+        selected=str(prefs.frame_rate()),
+        on_pick=lambda key: prefs.set_frame_rate(int(key)),
+    )
     reduce_sw = ft.Switch(value=prefs.reduce_motion(), active_color=theme.PRIMARY)
     time_sw = ft.Switch(value=prefs.show_message_time(), active_color=theme.PRIMARY)
 
@@ -867,8 +1000,9 @@ def _page_appearance(page: ft.Page) -> ft.Control:
                         _chips_row(chips),
                         ft.Text(
                             t("appearance.color_hint"),
-                            size=12,
-                            color=theme.MUTED,
+                            size=14,
+                            color=theme.INK,
+                            font_family=theme.FONT_FAMILY,
                         ),
                     ],
                 )
@@ -894,6 +1028,21 @@ def _page_appearance(page: ft.Page) -> ft.Control:
                             reduce_sw,
                             hint=t("appearance.reduce_motion_hint"),
                         ),
+                        _divider(),
+                        ft.Text(
+                            t("appearance.frame_rate"),
+                            size=16,
+                            weight=ft.FontWeight.W_600,
+                            color=theme.INK,
+                            font_family=theme.FONT_FAMILY,
+                        ),
+                        fps_chips,
+                        ft.Text(
+                            t("appearance.frame_rate_hint"),
+                            size=14,
+                            color=theme.INK,
+                            font_family=theme.FONT_FAMILY,
+                        ),
                     ],
                 )
             ),
@@ -905,9 +1054,9 @@ def _page_appearance(page: ft.Page) -> ft.Control:
                     controls=[
                         ft.Text(
                             t("appearance.bubble_corners"),
-                            size=13,
+                            size=16,
                             weight=ft.FontWeight.W_600,
-                            color=theme.MUTED,
+                            color=theme.INK,
                             font_family=theme.FONT_FAMILY,
                         ),
                         corner_chips,
@@ -979,7 +1128,12 @@ def _page_bubbles(page: ft.Page) -> ft.Control:
             alignment=ft.MainAxisAlignment.CENTER,
             spacing=16,
             controls=[
-                ft.Text(t("appearance.preview_out_label"), size=13, color=theme.MUTED),
+                ft.Text(
+                    t("appearance.preview_out_label"),
+                    size=15,
+                    color=theme.INK,
+                    font_family=theme.FONT_FAMILY,
+                ),
                 bubble,
                 ft.Container(
                     bgcolor=theme.BUBBLE_IN,
@@ -1040,9 +1194,9 @@ def _page_bubbles(page: ft.Page) -> ft.Control:
                 controls=[
                     ft.Text(
                         t("appearance.bubble_color"),
-                        size=13,
+                        size=16,
                         weight=ft.FontWeight.W_600,
-                        color=theme.MUTED,
+                        color=theme.INK,
                         font_family=theme.FONT_FAMILY,
                         text_align=ft.TextAlign.CENTER,
                     ),
@@ -1082,7 +1236,7 @@ def _page_app_icon(page: ft.Page) -> ft.Control:
             on = k == state["v"]
             fr.border = ft.Border.all(2.5, theme.PRIMARY if on else "transparent")
             lab = labels[k]
-            lab.color = theme.PRIMARY if on else theme.MUTED
+            lab.color = theme.PRIMARY if on else theme.INK
             try:
                 fr.update()
                 lab.update()
@@ -1122,12 +1276,14 @@ def _page_app_icon(page: ft.Page) -> ft.Control:
         )
         lab = ft.Text(
             label,
-            size=10,
-            color=theme.PRIMARY if selected else theme.MUTED,
+            size=14,
+            weight=ft.FontWeight.W_600,
+            color=theme.PRIMARY if selected else theme.INK,
+            font_family=theme.FONT_FAMILY,
             text_align=ft.TextAlign.CENTER,
             max_lines=1,
             overflow=ft.TextOverflow.ELLIPSIS,
-            width=80,
+            width=88,
         )
         frames[key] = frame
         labels[key] = lab
@@ -1153,16 +1309,17 @@ def _page_app_icon(page: ft.Page) -> ft.Control:
             controls=[
                 ft.Text(
                     t("appearance.app_icon_title"),
-                    size=13,
+                    size=16,
                     weight=ft.FontWeight.W_600,
-                    color=theme.MUTED,
+                    color=theme.INK,
                     font_family=theme.FONT_FAMILY,
                     text_align=ft.TextAlign.CENTER,
                 ),
                 ft.Text(
                     t("appearance.app_icon_desc"),
-                    size=12,
-                    color=theme.MUTED,
+                    size=14,
+                    color=theme.INK,
+                    font_family=theme.FONT_FAMILY,
                     text_align=ft.TextAlign.CENTER,
                 ),
                 _chips_row(cells, spacing=8),
@@ -1186,8 +1343,9 @@ def _page_avatar(page: ft.Page) -> ft.Control:
 
     status = ft.Text(
         t("avatar.pick_hint"),
-        size=13,
-        color=theme.MUTED,
+        size=15,
+        color=theme.INK,
+        font_family=theme.FONT_FAMILY,
         text_align=ft.TextAlign.CENTER,
     )
     avatar_host = ft.Container(content=_profile_avatar(user, 112))
@@ -1448,8 +1606,8 @@ def _page_notifications(page: ft.Page) -> ft.Control:
                 qh_end,
                 ft.Text(
                     t("notif.quiet_resume"),
-                    size=12,
-                    color=theme.MUTED,
+                    size=14,
+                    color=theme.INK,
                     font_family=theme.FONT_FAMILY,
                 ),
             ],
@@ -1479,17 +1637,17 @@ def _page_notifications(page: ft.Page) -> ft.Control:
                 ),
                 ft.Text(
                     t("notif.volume"),
-                    size=13,
+                    size=16,
                     weight=ft.FontWeight.W_600,
-                    color=theme.MUTED,
+                    color=theme.INK,
                     font_family=theme.FONT_FAMILY,
                 ),
                 vol_chips,
                 ft.Text(
                     t("notif.sound_pick"),
-                    size=13,
+                    size=16,
                     weight=ft.FontWeight.W_600,
-                    color=theme.MUTED,
+                    color=theme.INK,
                     font_family=theme.FONT_FAMILY,
                 ),
                 sound_chips,
@@ -1538,27 +1696,28 @@ def _page_notifications(page: ft.Page) -> ft.Control:
 def _page_password(page: ft.Page) -> ft.Control:
     if STATE.user is None:
         return _placeholder("password", t("password.login_required"))
-    p1 = ft.TextField(
-        label=t("password.new"),
-        password=True,
-        can_reveal_password=True,
-        bgcolor=theme.FIELD_BG,
-        color=theme.INK,
-        border=theme.field_border(16, color=theme.STROKE, focused_color=theme.PRIMARY),
-    )
-    p2 = ft.TextField(
-        label=t("password.repeat"),
-        password=True,
-        can_reveal_password=True,
-        bgcolor=theme.FIELD_BG,
-        color=theme.INK,
-        border=theme.field_border(16, color=theme.STROKE, focused_color=theme.PRIMARY),
-    )
+    def _pwd_field(label: str) -> ft.TextField:
+        return ft.TextField(
+            label=label,
+            password=True,
+            can_reveal_password=True,
+            filled=True,
+            bgcolor=theme.FIELD_BG,
+            color=theme.INK,
+            cursor_color=theme.PRIMARY,
+            border=theme.field_border(28, color="transparent", focused_color=theme.PRIMARY, width=1.5),
+            text_style=ft.TextStyle(font_family=theme.FONT_FAMILY, size=16, color=theme.INK),
+            label_style=ft.TextStyle(font_family=theme.FONT_FAMILY, size=15, color=theme.MUTED),
+            height=56,
+            content_padding=ft.Padding.symmetric(horizontal=20, vertical=14),
+        )
+
+    p1 = _pwd_field(t("password.new"))
+    p2 = _pwd_field(t("password.repeat"))
 
     def save(_=None):
         try:
             auth.change_password(STATE.user.id, p1.value or "", p2.value or "")
-            STATE.snack(t("password.updated"))
             logs.event("PASSWORD_CHANGE", user=STATE.user.public_id)
             p1.value = ""
             p2.value = ""
@@ -1567,23 +1726,21 @@ def _page_password(page: ft.Page) -> ft.Control:
         except Exception as exc:
             STATE.error(str(exc), t("password.title"))
 
-    return _card(
-        ft.Column(
-            spacing=12,
-            tight=True,
-            controls=[
-                p1,
-                p2,
-                ft.FilledButton(t("common.save"), icon=ft.Icons.SAVE, on_click=save),
-            ],
-        )
+    return ft.Column(
+        spacing=14,
+        tight=True,
+        controls=[
+            p1,
+            p2,
+            theme.primary_button(t("common.save"), save),
+        ],
     )
 
 
 def _page_privacy(page: ft.Page) -> ft.Control:
     from core import privacy as priv
 
-    user = STATE.user
+    user = _fresh_user()
     if user is None:
         return _placeholder("privacy", t("privacy.login_required"))
 
@@ -1676,8 +1833,8 @@ def _page_privacy(page: ft.Page) -> ft.Control:
                 ),
                 ft.Text(
                     t("privacy.dm_limit"),
-                    size=12,
-                    color=theme.MUTED,
+                    size=14,
+                    color=theme.INK,
                     font_family=theme.FONT_FAMILY,
                 ),
                 msg_chips,
@@ -1719,6 +1876,104 @@ def _page_privacy(page: ft.Page) -> ft.Control:
         )
     )
 
+    months_now = int(user.inactive_delete_months or 12)
+    if months_now not in auth.INACTIVE_MONTH_CHOICES:
+        months_now = 12
+
+    def _pick_months(raw: str) -> None:
+        try:
+            updated = auth.set_inactive_delete_months(user.id, int(raw))
+        except Exception as exc:
+            STATE.error(str(exc))
+            return
+        STATE.user = updated
+
+    idle_chips = _choice_chips(
+        [(str(n), _INACTIVE_LABELS[n]) for n in auth.INACTIVE_MONTH_CHOICES],
+        selected=str(months_now),
+        on_pick=_pick_months,
+    )
+
+    def _accept_terms(_e=None):
+        from flet_app.screens.legal import TERMS_VERSION
+
+        try:
+            updated = auth.record_terms(user.id, TERMS_VERSION)
+        except Exception as exc:
+            STATE.error(str(exc))
+            return
+        STATE.user = updated
+        STATE.snack("Согласие с правилами записано в профиль")
+        STATE.draft["_settings_no_anim"] = True
+        STATE.go(settings_route("privacy"))
+
+    account_card = _card(
+        ft.Column(
+            spacing=12,
+            tight=True,
+            controls=[
+                ft.Text(
+                    _terms_status_text(user),
+                    size=15,
+                    color=theme.INK,
+                    font_family=theme.FONT_FAMILY,
+                ),
+                theme.pressable(
+                    ft.Container(
+                        height=48,
+                        border_radius=16,
+                        bgcolor=theme.FIELD_BG,
+                        alignment=ft.Alignment.CENTER,
+                        content=ft.Text(
+                            "Открыть правила",
+                            size=16,
+                            weight=ft.FontWeight.W_700,
+                            color=theme.INK,
+                            font_family=theme.FONT_FAMILY,
+                        ),
+                    ),
+                    lambda _: (
+                        STATE.draft.__setitem__("_legal_back", settings_route("privacy")),
+                        STATE.go("/legal"),
+                    ),
+                ),
+                theme.action_button("Записать согласие", _accept_terms, primary=True, width=220)
+                if not user.terms_accepted
+                else ft.Container(height=0),
+                ft.Text(
+                    "Удалять аккаунт, если не заходить",
+                    size=16,
+                    weight=ft.FontWeight.W_600,
+                    color=theme.INK,
+                    font_family=theme.FONT_FAMILY,
+                ),
+                ft.Text(
+                    "От 3 месяцев до 2 лет. Если не открывать приложение дольше, аккаунт удалится при следующем запуске.",
+                    size=14,
+                    color=theme.MUTED,
+                    font_family=theme.FONT_FAMILY,
+                ),
+                idle_chips,
+                theme.pressable(
+                    ft.Container(
+                        height=48,
+                        border_radius=16,
+                        bgcolor="#C4475A",
+                        alignment=ft.Alignment.CENTER,
+                        content=ft.Text(
+                            "Удалить аккаунт",
+                            size=16,
+                            weight=ft.FontWeight.W_700,
+                            color="#FFFBFF",
+                            font_family=theme.FONT_FAMILY,
+                        ),
+                    ),
+                    lambda _: _confirm_delete_account(page),
+                ),
+            ],
+        )
+    )
+
     return ft.Column(
         spacing=14,
         tight=True,
@@ -1732,6 +1987,8 @@ def _page_privacy(page: ft.Page) -> ft.Control:
             messaging,
             _section_label(t("privacy.section_activity")),
             signals,
+            _section_label("Аккаунт"),
+            account_card,
         ],
     )
 
@@ -1761,8 +2018,8 @@ def _page_blacklist(page: ft.Page) -> ft.Control:
                     ),
                     ft.Text(
                         t("blacklist.empty_hint"),
-                        size=13,
-                        color=theme.MUTED,
+                        size=15,
+                        color=theme.INK,
                         font_family=theme.FONT_FAMILY,
                     ),
                 ],
@@ -1821,16 +2078,18 @@ def _page_blacklist(page: ft.Page) -> ft.Control:
                                     ),
                                     ft.Text(
                                         f"ID {pid}",
-                                        size=12,
-                                        color=theme.MUTED,
+                                        size=14,
+                                        color=theme.INK,
                                         font_family=theme.FONT_FAMILY,
                                     ),
                                 ],
                             ),
-                            ft.TextButton(
+                            theme.action_button(
                                 t("common.unblock"),
-                                on_click=_unblock,
-                                style=ft.ButtonStyle(color=theme.PRIMARY),
+                                _unblock,
+                                primary=True,
+                                width=132,
+                                height=40,
                             ),
                         ],
                     ),
@@ -1856,8 +2115,8 @@ def _page_blacklist(page: ft.Page) -> ft.Control:
             _card(list_col),
             ft.Text(
                 t("blacklist.footer"),
-                size=12,
-                color=theme.MUTED,
+                size=14,
+                color=theme.INK,
                 font_family=theme.FONT_FAMILY,
             ),
         ],
@@ -1916,13 +2175,9 @@ def _page_language(page: ft.Page) -> ft.Control:
                 padding=ft.Padding.symmetric(vertical=12, horizontal=8),
                 border_radius=14,
                 bgcolor=theme.PRIMARY_SOFT if selected else None,
-                content=ft.Row(
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=8,
+                content=ft.Stack(
                     controls=[
                         ft.Container(
-                            expand=True,
                             alignment=ft.Alignment.CENTER,
                             content=ft.Column(
                                 spacing=2,
@@ -1941,18 +2196,24 @@ def _page_language(page: ft.Page) -> ft.Control:
                                     ),
                                     ft.Text(
                                         english,
-                                        size=12,
-                                        color=theme.MUTED,
+                                        size=14,
+                                        color=theme.INK,
                                         font_family=theme.FONT_FAMILY,
                                         text_align=ft.TextAlign.CENTER,
                                     ),
                                 ],
                             ),
                         ),
-                        ft.Icon(
-                            ft.Icons.CHECK_ROUNDED,
-                            size=20,
-                            color=theme.PRIMARY if selected else "#00000000",
+                        ft.Container(
+                            right=4,
+                            top=0,
+                            bottom=0,
+                            alignment=ft.Alignment.CENTER_RIGHT,
+                            content=ft.Icon(
+                                ft.Icons.CHECK_ROUNDED,
+                                size=20,
+                                color=theme.PRIMARY if selected else "#00000000",
+                            ),
                         ),
                     ],
                 ),
@@ -1975,8 +2236,8 @@ def _page_language(page: ft.Page) -> ft.Control:
                 ),
                 ft.Text(
                     t("lang.subtitle"),
-                    size=13,
-                    color=theme.MUTED,
+                    size=15,
+                    color=theme.INK,
                     font_family=theme.FONT_FAMILY,
                     text_align=ft.TextAlign.CENTER,
                 ),
@@ -2051,7 +2312,7 @@ def _action_row(label: str, *, on_click) -> ft.Control:
             ],
         ),
     )
-    return theme.pressable(row, on_click, scale_to=0.98, expand=True)
+    return theme.pressable(row, on_click, scale_to=theme.PRESS_SCALE, expand=True)
 
 
 def _page_data(page: ft.Page) -> ft.Control:
@@ -2126,8 +2387,8 @@ def _page_data(page: ft.Page) -> ft.Control:
                 size_lbl,
                 ft.Text(
                     t("data.cache_desc"),
-                    size=12,
-                    color=theme.MUTED,
+                    size=14,
+                    color=theme.INK,
                     font_family=theme.FONT_FAMILY,
                 ),
                 _action_row(t("data.clear_cache"), on_click=clear_cache),
@@ -2375,10 +2636,14 @@ def _page_help(page: ft.Page) -> ft.Control:
                         ),
                         _action_row(
                             t("help.privacy_policy"),
-                            on_click=_copy(
-                                t("help.privacy_path"),
-                                t("help.privacy_open"),
+                            on_click=lambda _: (
+                                STATE.draft.__setitem__("_legal_back", settings_route("help")),
+                                STATE.go("/legal"),
                             ),
+                        ),
+                        _action_row(
+                            "Удалить аккаунт",
+                            on_click=lambda _: _confirm_delete_account(page),
                         ),
                     ],
                 )
@@ -2395,8 +2660,8 @@ def _page_faq(_page: ft.Page) -> ft.Control:
     for i, (q, a) in enumerate(pairs):
         ans = ft.Text(
             a,
-            size=13,
-            color=theme.MUTED,
+            size=15,
+            color=theme.INK,
             font_family=theme.FONT_FAMILY,
             visible=bool(open_state.get(i, False)),
         )

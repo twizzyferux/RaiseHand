@@ -131,6 +131,11 @@ class User(Base):
     city: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     class_name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     school_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    terms_accepted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    terms_version: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    terms_accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    inactive_delete_months: Mapped[int] = mapped_column(Integer, nullable=False, default=12)
+    last_active_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
     school_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("schools.id", ondelete="SET NULL"),
         nullable=True,

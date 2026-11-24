@@ -75,7 +75,7 @@ def _edit_name_dialog(page: ft.Page, contact: chat_data.Contact, name_ref: ft.Te
         filled=True,
         bgcolor=theme.FIELD_BG,
         color=theme.INK,
-        border=theme.field_border(16, color=theme.STROKE, focused_color=theme.PRIMARY),
+        border=theme.field_border(16, color="transparent", focused_color=theme.PRIMARY),
         cursor_color=theme.PRIMARY,
         text_style=ft.TextStyle(font_family=theme.FONT_FAMILY, color=theme.INK),
         label_style=ft.TextStyle(color=theme.MUTED, font_family=theme.FONT_FAMILY),
@@ -121,10 +121,8 @@ def _edit_name_dialog(page: ft.Page, contact: chat_data.Contact, name_ref: ft.Te
                 ),
             ],
         ),
-        actions=[
-            ft.TextButton(t("common.cancel"), on_click=close),
-            ft.TextButton(t("common.save"), on_click=save),
-        ],
+        actions=[theme.dialog_buttons(t("common.cancel"), close, t("common.save"), save)],
+        actions_alignment=ft.MainAxisAlignment.CENTER,
     )
     try:
         page.show_dialog(dlg)
@@ -264,7 +262,19 @@ def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
             content=ft.Column(
                 controls=[
                     ft.Text(t("contact.not_found"), size=18, color=theme.INK),
-                    ft.TextButton(t("common.back"), on_click=lambda _: STATE.go("/home")),
+                    theme.pressable(
+                        ft.Container(
+                            padding=ft.Padding.symmetric(horizontal=4, vertical=8),
+                            content=ft.Text(
+                                t("common.back"),
+                                size=16,
+                                weight=ft.FontWeight.W_700,
+                                color=theme.PRIMARY,
+                                font_family=theme.FONT_FAMILY,
+                            ),
+                        ),
+                        lambda _: STATE.go("/home"),
+                    ),
                 ]
             ),
         )
@@ -315,8 +325,11 @@ def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
         STATE.snack(t("contact.notif_on") if muted else t("contact.muted"))
         STATE.go(contact_route(contact.id))
 
-    def search_soon(_e=None):
-        STATE.snack(t("contact.search_soon"))
+    def search_in_chat(_e=None):
+        STATE.draft["_open_chat_id"] = contact.id
+        STATE.draft["_open_is_group"] = False
+        STATE.draft["_chat_search_open"] = True
+        STATE.go("/chat")
 
     def open_report(_e=None):
         from flet_app.screens.report import report_route
@@ -330,7 +343,46 @@ def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
         STATE.go(report_route())
 
     def more_menu(_e=None):
-        open_report()
+        def close(_=None):
+            try:
+                page.pop_dialog()
+            except Exception:
+                pass
+
+        def do_block(_=None):
+            from core import blacklist
+
+            me = STATE.user.public_id if STATE.user else ""
+            if me and peer_pid:
+                blacklist.block(me, peer_pid, name=contact.display_name)
+            close()
+            STATE.go("/home")
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            bgcolor=theme.CARD,
+            title=ft.Text(
+                contact.display_name,
+                color=theme.INK,
+                font_family=theme.FONT_FAMILY,
+                weight=ft.FontWeight.W_700,
+            ),
+            content=ft.Column(
+                tight=True,
+                spacing=8,
+                width=260,
+                controls=[
+                    theme.action_button("Пожаловаться", lambda e: (close(), open_report()), width=260),
+                    theme.action_button("Заблокировать", do_block, width=260),
+                ],
+            ),
+            actions=[theme.action_button("Отмена", close, width=160)],
+            actions_alignment=ft.MainAxisAlignment.CENTER,
+        )
+        try:
+            page.show_dialog(dlg)
+        except Exception:
+            open_report()
 
     mute_label = t("contact.sound") if muted else t("notif.tone_none")
     mute_icon = ft.Icons.NOTIFICATIONS_OFF_OUTLINED if not muted else ft.Icons.NOTIFICATIONS_OUTLINED
@@ -338,7 +390,7 @@ def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
     action_items = [
         (ft.Icons.CHAT_BUBBLE_OUTLINED, t("appearance.section_chat"), open_chat),
         (mute_icon, mute_label, toggle_mute),
-        (ft.Icons.SEARCH, t("privacy.section_search"), search_soon),
+        (ft.Icons.SEARCH, t("privacy.section_search"), search_in_chat),
         ("more", t("profile.more"), more_menu),
     ]
 
@@ -386,6 +438,85 @@ def build_contact_profile(page: ft.Page, cid: str = "") -> ft.Control:
         title=t("home.default_profile"),
         on_back=_back_to_chat,
         body_controls=body,
+        edge_swipe=True,
+    )
+
+
+def build_group_profile(page: ft.Page) -> ft.Control:
+    gid = (STATE.draft.get("_profile_group_id") or "").strip()
+    group = chat_data.get_group(gid) if gid else None
+    if group is None:
+        return ft.Container(
+            expand=True,
+            bgcolor=theme.BG,
+            padding=24,
+            content=ft.Text("Группа не найдена", size=18, color=theme.INK, font_family=theme.FONT_FAMILY),
+        )
+
+    def back(_e=None):
+        STATE.draft["_open_chat_id"] = group.id
+        STATE.draft["_open_is_group"] = True
+        STATE.go("/chat")
+
+    def open_chat(_e=None):
+        back()
+
+    def search(_e=None):
+        STATE.draft["_open_chat_id"] = group.id
+        STATE.draft["_open_is_group"] = True
+        STATE.draft["_chat_search_open"] = True
+        STATE.go("/chat")
+
+    def report(_e=None):
+        from flet_app.screens.report import report_route
+
+        STATE.draft["_report_target_pid"] = group.id
+        STATE.draft["_report_target_name"] = group.name
+        STATE.draft["_report_chat_id"] = group.id
+        STATE.draft["_report_back"] = "/group_profile"
+        STATE.go(report_route())
+
+    avatar = ft.Container(
+        width=120,
+        height=120,
+        border_radius=60,
+        bgcolor=theme.PRIMARY,
+        alignment=ft.Alignment.CENTER,
+        content=ft.Text(
+            (group.name[:1] or "Г").upper(),
+            size=42,
+            weight=ft.FontWeight.W_700,
+            color=theme.PRIMARY_TEXT,
+            font_family=theme.FONT_FAMILY,
+        ),
+    )
+    head = profile_head_block(
+        avatar=avatar,
+        display_name=group.name,
+        status_line=f"{group.members} участников",
+    )
+    actions = actions_row(
+        [
+            (ft.Icons.CHAT_BUBBLE_OUTLINED, "Чат", open_chat),
+            (ft.Icons.SEARCH, "Поиск", search),
+            ("more", "Ещё", report),
+        ]
+    )
+    info = info_card(
+        [
+            ("Участники", str(group.members), None),
+            ("О чате", group.preview or "Общий чат класса или группы", None),
+        ]
+    )
+    return profile_shell(
+        page,
+        title=group.name,
+        on_back=back,
+        body_controls=[
+            ft.Container(alignment=ft.Alignment.CENTER, content=head),
+            ft.Container(alignment=ft.Alignment.CENTER, content=actions),
+            ft.Container(alignment=ft.Alignment.CENTER, content=info),
+        ],
         edge_swipe=True,
     )
 

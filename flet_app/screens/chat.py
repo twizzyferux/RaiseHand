@@ -345,7 +345,14 @@ def _text_bubble(
 _photo_viewer: dict = {"path": None, "close": None}
 
 
-def _show_photo(page: ft.Page, path: str) -> None:
+def _show_photo(
+    page: ft.Page,
+    path: str,
+    *,
+    msg_id: str | None = None,
+    chat_id: str | None = None,
+    on_changed=None,
+) -> None:
     """Фото на весь экран. Тап по фону или крестик закрывают."""
     if not path or not theme._image_exists(path):
         return
@@ -397,7 +404,7 @@ def _show_photo(page: ft.Page, path: str) -> None:
         ctrl.opacity = 0
         try:
             photo.opacity = 0
-            photo.scale = 0.96
+            photo.scale = 0.98
             ctrl.update()
         except Exception:
             _remove()
@@ -417,9 +424,9 @@ def _show_photo(page: ft.Page, path: str) -> None:
     photo = ft.Container(
         alignment=ft.Alignment.CENTER,
         opacity=1 if reduce else 0,
-        scale=1 if reduce else 0.92,
-        animate_opacity=ft.Animation(200, ft.AnimationCurve.EASE_OUT),
-        animate_scale=ft.Animation(280, ft.AnimationCurve.EASE_OUT_BACK),
+        scale=1 if reduce else 0.98,
+        animate_opacity=theme.motion_appear(280),
+        animate_scale=theme.motion_appear(360),
         content=ft.Image(src=path, fit=ft.BoxFit.CONTAIN, width=w, height=h),
     )
     close_btn = ft.Container(
@@ -432,22 +439,140 @@ def _show_photo(page: ft.Page, path: str) -> None:
         on_click=lambda e: _close(False),
     )
     close_top = 54.0 if theme.is_mobile_runtime() else float(theme.SAFE_MIN_TOP) + 8
+
+    def _photo_action(label: str, tap) -> ft.Control:
+        return theme.pressable(
+            ft.Container(
+                padding=ft.Padding.symmetric(horizontal=12, vertical=10),
+                border_radius=14,
+                bgcolor="#2A2A2EE6",
+                content=ft.Text(
+                    label,
+                    size=14,
+                    weight=ft.FontWeight.W_600,
+                    color="#FFFBFF",
+                    font_family=theme.FONT_FAMILY,
+                ),
+            ),
+            tap,
+        )
+
+    def _save(_e=None):
+        import shutil
+        from pathlib import Path
+
+        dest_dir = Path.home() / "Downloads"
+        try:
+            dest_dir.mkdir(exist_ok=True)
+            shutil.copy(path, dest_dir / Path(path).name)
+        except Exception:
+            pass
+
+    def _delete(_e=None):
+        if chat_id and msg_id:
+            try:
+                chat_data.delete_message(chat_id, msg_id)
+            except Exception:
+                pass
+            if on_changed:
+                on_changed()
+        _close(True)
+
+    def _forward(_e=None):
+        targets: list[ft.Control] = []
+
+        def _send(cid: str):
+            def _go(_e=None, target=cid):
+                chat_data.add_message(target, "", image=path, mine=True)
+                try:
+                    page.pop_dialog()
+                except Exception:
+                    pass
+                _close(True)
+
+            return _go
+
+        for c in chat_data.sorted_contacts_for_ui():
+            if c.id == chat_id:
+                continue
+            targets.append(
+                theme.pressable(
+                    ft.Container(
+                        padding=ft.Padding.symmetric(horizontal=8, vertical=10),
+                        content=ft.Text(c.display_name, size=16, color=theme.INK, font_family=theme.FONT_FAMILY),
+                    ),
+                    _send(c.id),
+                )
+            )
+        for g in chat_data.sorted_groups():
+            gid = g.id
+            if gid == chat_id:
+                continue
+
+            def _send_group(_e=None, target=gid):
+                msgs = chat_data._messages_of(target)
+                if msgs is not None:
+                    msgs.append(chat_data.Message(text="", image=path, mine=True, time="сейчас"))
+                try:
+                    page.pop_dialog()
+                except Exception:
+                    pass
+                _close(True)
+
+            targets.append(
+                theme.pressable(
+                    ft.Container(
+                        padding=ft.Padding.symmetric(horizontal=8, vertical=10),
+                        content=ft.Text(g.name, size=16, color=theme.INK, font_family=theme.FONT_FAMILY),
+                    ),
+                    _send_group,
+                )
+            )
+        pick = ft.AlertDialog(
+            modal=True,
+            bgcolor=theme.CARD,
+            title=ft.Text("Переслать", color=theme.INK, font_family=theme.FONT_FAMILY),
+            content=ft.Column(tight=True, scroll=ft.ScrollMode.AUTO, height=280, controls=targets or [
+                ft.Text("Нет других чатов", color=theme.MUTED, font_family=theme.FONT_FAMILY),
+            ]),
+            actions=[theme.action_button("Отмена", lambda e: page.pop_dialog(), width=160)],
+        )
+        try:
+            page.show_dialog(pick)
+        except Exception:
+            pass
+
+    actions_bar = ft.Container(
+        left=12,
+        right=12,
+        bottom=24,
+        content=ft.Row(
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=8,
+            controls=[
+                _photo_action("Переслать", _forward),
+                _photo_action("Сохранить", _save),
+                _photo_action("Удалить", _delete),
+            ],
+        ),
+    )
     ctrl = ft.Container(
         width=w,
         height=h,
         bgcolor="#F2000000",
         opacity=1 if reduce else 0,
         animate_opacity=ft.Animation(200, ft.AnimationCurve.EASE_OUT),
-        on_click=lambda e: _close(False),
         content=ft.Stack(
             controls=[
                 ft.Container(
                     width=w,
                     height=h,
                     alignment=ft.Alignment.CENTER,
+                    on_click=lambda e: _close(False),
                     content=photo,
                 ),
                 ft.Container(right=16, top=close_top, content=close_btn),
+                actions_bar,
             ]
         ),
     )
@@ -669,7 +794,10 @@ def _bubble(
     def _open_photo(path: str | None = None):
         opener = actions.get("open_photo")
         if opener and (path or msg.image):
-            opener(path or msg.image)
+            try:
+                opener(path or msg.image, msg.id)
+            except TypeError:
+                opener(path or msg.image)
 
     body = _bubble_body(
         msg, highlighted=highlighted, dp=dp, on_photo=_open_photo
@@ -760,18 +888,18 @@ def _bubble(
     # Появление «из композера»: рост из нижнего угла + подъём + лёгкий tilt
     origin = ft.Alignment(1, 1) if msg.mine else ft.Alignment(-1, 1)
     if animate_in and not dp.reduce_motion:
-        start_scale = ft.Scale(scale=0.82, alignment=origin)
+        start_scale = ft.Scale(scale=0.96, alignment=origin)
         start_offset = (
-            ft.Offset(0.04, 0.16) if msg.mine else ft.Offset(-0.03, 0.12)
+            ft.Offset(0.02, 0.06) if msg.mine else ft.Offset(-0.015, 0.05)
         )
         motion = ft.Container(
             content=row,
             opacity=0,
             scale=start_scale,
             offset=start_offset,
-            animate_opacity=ft.Animation(160, ft.AnimationCurve.EASE_OUT),
-            animate_scale=ft.Animation(280, ft.AnimationCurve.EASE_OUT_BACK),
-            animate_offset=ft.Animation(260, ft.AnimationCurve.EASE_OUT_CUBIC),
+            animate_opacity=theme.motion_appear(320),
+            animate_scale=theme.motion_appear(380),
+            animate_offset=theme.motion_appear(380),
         )
     else:
         motion = ft.Container(content=row)
@@ -816,7 +944,7 @@ def _menu_row(
         padding=ft.Padding.symmetric(horizontal=12, vertical=7),
         content=ft.Row(spacing=8, controls=left),
     )
-    return theme.pressable(row, on_click, scale_to=0.96)
+    return theme.pressable(row, on_click, scale_to=theme.PRESS_SCALE)
 
 
 def _context_menu_card(
@@ -863,14 +991,8 @@ def _context_menu_card(
         bgcolor=_menu_bg(),
         border_radius=MENU_RADIUS,
         padding=5,
-        blur=ft.Blur(12, 12, ft.BlurTileMode.CLAMP),
-        shadow=ft.BoxShadow(
-            blur_radius=14,
-            spread_radius=0,
-            color="#1A103830",
-            offset=ft.Offset(0, 4),
-        ),
-        border=ft.Border.all(1, liquid_glass.white_glass_border()),
+        shadow=theme.grounded_shadow(lift=6),
+        border=None,
         content=ft.Column(spacing=2, tight=True, controls=rows),
     )
 
@@ -885,6 +1007,19 @@ def _same_sender(a: Optional[chat_data.Message], b: chat_data.Message) -> bool:
     return (a.sender_seed or a.sender_nick) == (b.sender_seed or b.sender_nick)
 
 
+def _chat_top_inset() -> float:
+    """Отступ кнопок шапки под статус / Dynamic Island (полку фона не рисуем)."""
+    return 54.0 if theme.is_mobile_runtime() else float(theme.SAFE_MIN_TOP)
+
+
+def _chat_header_h() -> float:
+    return _chat_top_inset() + 58.0
+
+
+def _chat_composer_h() -> float:
+    return 48.0 + 4.0 + float(theme.bottom_inset()) + 14.0
+
+
 def _build_message_controls(
     messages: list[chat_data.Message],
     actions: dict,
@@ -892,8 +1027,12 @@ def _build_message_controls(
     is_group: bool = False,
     highlight_id: Optional[str] = None,
     dp: Optional[DisplayPrefs] = None,
+    top_inset: float = 0.0,
+    bottom_inset: float = 0.0,
 ) -> list[ft.Control]:
     out: list[ft.Control] = []
+    if top_inset > 0:
+        out.append(ft.Container(height=top_inset))
     prev: Optional[chat_data.Message] = None
     menu_open = bool(highlight_id)
     if dp is None:
@@ -925,6 +1064,8 @@ def _build_message_controls(
             )
         )
         prev = msg
+    if bottom_inset > 0:
+        out.append(ft.Container(height=bottom_inset))
     return out
 
 
@@ -939,57 +1080,75 @@ def _header(
     full_title: bool = False,
     on_report=None,
     on_profile=None,
+    on_search=None,
 ) -> ft.Control:
+    chrome_shadow = ft.BoxShadow(
+        blur_radius=22,
+        spread_radius=0,
+        color=liquid_glass.white_glass_shadow(),
+        offset=ft.Offset(0, 6),
+    )
+
     back_icon = mono_icons.ui_icon("back", size=22)
     back_btn = liquid_glass.glass_circle_button(
         on_back, content=back_icon, size=44, variant="white"
     )
+    try:
+        back_btn.shadow = chrome_shadow
+    except Exception:
+        pass
 
     short = title if full_title else (title.split()[0] if title else (first or "?"))
-    # Каждый элемент шапки — отдельный hit-target + своя анимация нажатия
-    avatar: ft.Control = _avatar_circle(seed, first or short[:1], last, size=40)
-    if on_profile is not None:
-        avatar = theme.pressable(avatar, on_profile, scale_to=0.90)
-
+    # Та же белая заливка и высота, что у кругов «назад» и «пожаловаться».
+    avatar: ft.Control = _avatar_circle(seed, first or short[:1], last, size=36)
     title_block: ft.Control = ft.Column(
-                    spacing=0,
-                    tight=True,
+        spacing=0,
+        tight=True,
         expand=True,
-                    controls=[
-                        ft.Text(
-                            short,
-                            size=16,
-                            weight=ft.FontWeight.W_600,
-                            color=theme.INK,
-                            font_family=theme.FONT_FAMILY,
+        alignment=ft.MainAxisAlignment.CENTER,
+        controls=[
+            ft.Text(
+                short,
+                size=16,
+                weight=ft.FontWeight.W_600,
+                color=theme.INK,
+                font_family=theme.FONT_FAMILY,
                 max_lines=1,
                 overflow=ft.TextOverflow.ELLIPSIS,
             ),
             online_label,
         ],
     )
-    if on_profile is not None:
-        title_block = theme.pressable(
-            title_block, on_profile, scale_to=0.96, expand=True
-        )
-
-    pill_inner = ft.Row(
-        spacing=10,
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        controls=[avatar, title_block],
+    account = ft.Container(
+        expand=True,
+        height=50,
+        border_radius=25,
+        bgcolor=liquid_glass.white_glass_tint(),
+        padding=ft.Padding.only(left=7, right=16),
+        alignment=ft.Alignment.CENTER_LEFT,
+        clip_behavior=ft.ClipBehavior.HARD_EDGE,
+        ink=False,
+        animate_scale=theme.motion_press_out(),
+        scale=1,
+        content=ft.Row(
+            spacing=8,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[avatar, title_block],
+        ),
     )
-    # Капсула только фон — без on_click/ink на весь блок
-    pill = liquid_glass.glass_capsule(
-        pill_inner,
-        radius=28,
-        blur=liquid_glass.BTN_BLUR,
-        tint=liquid_glass.white_glass_tint(),
-        border_color=liquid_glass.white_glass_border(),
-        padding=ft.Padding.only(left=6, right=16, top=6, bottom=6),
-        shadow=True,
-        highlight=True,
+    pressed = (
+        liquid_glass._press_wrap(account, on_profile, scale_to=0.97, expand=True)
+        if on_profile is not None
+        else account
     )
-    pill_wrap = ft.Container(expand=True, content=pill)
+    pill_wrap = ft.Container(
+        expand=True,
+        height=50,
+        border_radius=25,
+        clip_behavior=ft.ClipBehavior.NONE,
+        shadow=chrome_shadow,
+        content=pressed,
+    )
 
     report_btn = None
     if on_report is not None:
@@ -997,14 +1156,30 @@ def _header(
         report_btn = liquid_glass.glass_circle_button(
             on_report, content=flag, size=44, variant="white"
         )
+        try:
+            report_btn.shadow = chrome_shadow
+        except Exception:
+            pass
 
     row_controls: list[ft.Control] = [back_btn, pill_wrap]
+    if on_search is not None:
+        find_icon = ft.Icon(ft.Icons.SEARCH, size=20, color=theme.INK)
+        find_btn = liquid_glass.glass_circle_button(
+            on_search, content=find_icon, size=44, variant="white"
+        )
+        try:
+            find_btn.shadow = chrome_shadow
+        except Exception:
+            pass
+        row_controls.append(find_btn)
     if report_btn is not None:
         row_controls.append(report_btn)
 
     return ft.Container(
-        # сверху меньше — без лишней «полки» под статус-баром; размеры кнопок те же
-        padding=ft.Padding.only(left=12, right=12, top=4, bottom=10),
+        padding=ft.Padding.only(
+            left=12, right=12, top=_chat_top_inset(), bottom=0
+        ),
+        bgcolor=ft.Colors.TRANSPARENT,
         content=ft.Row(
             spacing=10,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1079,6 +1254,7 @@ def build_chat(page: ft.Page) -> ft.Control:
         "file_picker": None,
         "dp": _snapshot_display_prefs(),
         "pending_image": None,
+        "query": "",
     }
 
     online_label = ft.Text(
@@ -1087,8 +1263,27 @@ def build_chat(page: ft.Page) -> ft.Control:
         color=STATUS_MUTED,
         font_family=theme.FONT_FAMILY,
     )
-    banner_text = ft.Text("", size=12, color=theme.PRIMARY, font_family=theme.FONT_FAMILY, expand=True)
-    banner_bar = ft.Container(visible=False, padding=ft.Padding.symmetric(horizontal=16, vertical=4))
+    banner_text = ft.Text(
+        "",
+        size=14,
+        weight=ft.FontWeight.W_600,
+        color=theme.INK,
+        font_family=theme.FONT_FAMILY,
+        expand=True,
+    )
+    banner_bar = ft.Container(
+        visible=False,
+        opacity=0,
+        offset=ft.Offset(0, 0.08),
+        animate_opacity=theme.motion_appear(280),
+        animate_offset=theme.motion_appear(320),
+        margin=ft.Margin.symmetric(horizontal=12, vertical=6),
+        padding=ft.Padding.symmetric(horizontal=14, vertical=10),
+        border_radius=16,
+        bgcolor=theme.CARD,
+        border=None,
+        shadow=theme.grounded_shadow(lift=4),
+    )
     field_ref: dict = {}
 
     # Scrim ловит тап в «пустое» место; панель — поверх, с анимацией.
@@ -1097,11 +1292,11 @@ def build_chat(page: ft.Page) -> ft.Control:
         left=24,
         top=200,
         opacity=0,
-        scale=0.94,
+        scale=0.98,
         offset=ft.Offset(0, 0.06),
-        animate_opacity=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
-        animate_offset=ft.Animation(220, ft.AnimationCurve.EASE_OUT_CUBIC),
-        animate_scale=ft.Animation(260, ft.AnimationCurve.EASE_OUT_BACK),
+        animate_opacity=theme.motion_appear(280),
+        animate_offset=theme.motion_appear(320),
+        animate_scale=theme.motion_appear(340),
         content=None,
     )
     scrim = ft.Container(
@@ -1140,7 +1335,15 @@ def build_chat(page: ft.Page) -> ft.Control:
         return m.id if m is not None and not getattr(m, "date", None) else None
 
     def _refresh_list():
-        window = _page_msgs(PAGE_SIZE + state["offset"], 0)
+        query = (state.get("query") or "").strip().lower()
+        if query:
+            window = [
+                m
+                for m in _all_messages()
+                if not m.date and query in (m.text or "").lower()
+            ]
+        else:
+            window = _page_msgs(PAGE_SIZE + state["offset"], 0)
         state["loaded"] = len(window)
         list_col.controls = _build_message_controls(
             window,
@@ -1148,6 +1351,8 @@ def build_chat(page: ft.Page) -> ft.Control:
             is_group=is_group,
             highlight_id=_highlight_id(),
             dp=state.get("dp"),
+            top_inset=_chat_header_h(),
+            bottom_inset=_chat_composer_h(),
         )
         try:
             list_col.update()
@@ -1208,11 +1413,39 @@ def build_chat(page: ft.Page) -> ft.Control:
 
     def _set_banner(text: str, *, visible: bool) -> None:
         banner_text.value = text
-        banner_bar.visible = visible
+        if not visible:
+            banner_bar.opacity = 0
+            banner_bar.offset = ft.Offset(0, 0.08)
+            banner_bar.visible = False
+            try:
+                banner_bar.update()
+            except Exception:
+                pass
+            return
+        banner_bar.visible = True
+        banner_bar.opacity = 0
+        banner_bar.offset = ft.Offset(0, 0.08)
         try:
             banner_bar.update()
         except Exception:
             pass
+
+        async def _in():
+            import asyncio
+
+            await asyncio.sleep(0.02)
+            banner_bar.opacity = 1
+            banner_bar.offset = ft.Offset(0, 0)
+            try:
+                banner_bar.update()
+            except Exception:
+                pass
+
+        try:
+            page.run_task(_in)
+        except Exception:
+            banner_bar.opacity = 1
+            banner_bar.offset = ft.Offset(0, 0)
 
     def _clear_composer_modes() -> None:
         state["reply_to"] = None
@@ -1241,11 +1474,21 @@ def build_chat(page: ft.Page) -> ft.Control:
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         controls=[
             banner_text,
-            ft.Container(
-                on_click=cancel_banner,
-                padding=ft.Padding.symmetric(horizontal=8, vertical=4),
-                border_radius=12,
-                content=ft.Text(t("common.cancel"), size=12, color=STATUS_MUTED, font_family=theme.FONT_FAMILY),
+            theme.pressable(
+                ft.Container(
+                    padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+                    border_radius=12,
+                    bgcolor=theme.SURFACE,
+                    border=None,
+                    content=ft.Text(
+                        t("common.cancel"),
+                        size=14,
+                        weight=ft.FontWeight.W_700,
+                        color=theme.INK,
+                        font_family=theme.FONT_FAMILY,
+                    ),
+                ),
+                cancel_banner,
             ),
         ],
     )
@@ -1443,7 +1686,13 @@ def build_chat(page: ft.Page) -> ft.Control:
         "open_menu": open_menu,
         "close_menu": close_menu,
         "is_menu_open": lambda: state.get("menu_msg") is not None,
-        "open_photo": lambda path: _show_photo(page, path),
+        "open_photo": lambda path, mid=None: _show_photo(
+            page,
+            path,
+            msg_id=mid,
+            chat_id=cid,
+            on_changed=_refresh_list,
+        ),
     }
 
     initial = _page_msgs(PAGE_SIZE, 0)
@@ -1471,10 +1720,15 @@ def build_chat(page: ft.Page) -> ft.Control:
         list_col = ft.ListView(
             expand=True,
             spacing=0,
-            padding=ft.Padding.only(top=4, bottom=12),
+            padding=ft.Padding.only(top=4, bottom=8),
             auto_scroll=False,
             controls=_build_message_controls(
-                initial, actions, is_group=is_group, dp=state["dp"]
+                initial,
+                actions,
+                is_group=is_group,
+                dp=state["dp"],
+                top_inset=_chat_header_h(),
+                bottom_inset=_chat_composer_h(),
             ),
         )
     except Exception:
@@ -1483,7 +1737,12 @@ def build_chat(page: ft.Page) -> ft.Control:
             scroll=ft.ScrollMode.AUTO,
             expand=True,
             controls=_build_message_controls(
-                initial, actions, is_group=is_group, dp=state["dp"]
+                initial,
+                actions,
+                is_group=is_group,
+                dp=state["dp"],
+                top_inset=_chat_header_h(),
+                bottom_inset=_chat_composer_h(),
             ),
             auto_scroll=False,
         )
@@ -1716,6 +1975,10 @@ def build_chat(page: ft.Page) -> ft.Control:
     def _refresh_pending_preview() -> None:
         path_img = state.get("pending_image")
         tf = field_ref.get("tf")
+        sync = field_ref.get("sync_send")
+        if sync is not None:
+            typed = (tf.value or "") if tf is not None else ""
+            sync(typed, force=bool(path_img) or None)
         if not path_img or not theme._image_exists(path_img):
             pending_preview.visible = False
             pending_preview.content = None
@@ -1742,7 +2005,7 @@ def build_chat(page: ft.Page) -> ft.Control:
             bgcolor=theme.CARD,
             border_radius=16,
             padding=ft.Padding.all(8),
-            border=ft.Border.all(1, theme.STROKE),
+            border=None,
             content=ft.Row(
                 spacing=10,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -2032,7 +2295,7 @@ def build_chat(page: ft.Page) -> ft.Control:
                     ),
                 ),
                 _tap,
-                scale_to=0.96,
+                scale_to=theme.PRESS_SCALE,
             ),
         )
 
@@ -2045,22 +2308,18 @@ def build_chat(page: ft.Page) -> ft.Control:
     attach_card = ft.Container(
         visible=False,
         opacity=0,
-        scale=ft.Scale(0.55, alignment=_anchor),
-        offset=ft.Offset(0, 0.18),
-        animate_opacity=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
-        animate_scale=ft.Animation(320, ft.AnimationCurve.EASE_OUT_BACK),
-        animate_offset=ft.Animation(280, ft.AnimationCurve.EASE_OUT_CUBIC),
+        scale=ft.Scale(0.96, alignment=_anchor),
+        offset=ft.Offset(0, 0.06),
+        animate_opacity=theme.motion_appear(280),
+        animate_scale=theme.motion_appear(360),
+        animate_offset=theme.motion_appear(360),
         width=228,
         left=10,
         bottom=lift,
         border_radius=22,
         bgcolor=theme.CARD,
-        border=ft.Border.all(1, liquid_glass.white_glass_border()),
-        shadow=ft.BoxShadow(
-            blur_radius=24,
-            color="#00000033",
-            offset=ft.Offset(0, 8),
-        ),
+        border=None,
+        shadow=theme.grounded_shadow(lift=8),
         padding=ft.Padding.symmetric(horizontal=6, vertical=6),
         content=ft.Column(spacing=2, tight=True, controls=attach_rows),
     )
@@ -2346,6 +2605,48 @@ def build_chat(page: ft.Page) -> ft.Control:
         STATE.draft["_open_is_group"] = False
         STATE.go(contact_route(contact.id))
 
+    def open_group_profile(_=None):
+        if not is_group or group is None:
+            return
+        STATE.draft["_profile_group_id"] = group.id
+        STATE.draft["_open_chat_id"] = group.id
+        STATE.draft["_open_is_group"] = True
+        STATE.go("/group_profile")
+
+    search_field = ft.TextField(
+        hint_text="Поиск в чате",
+        filled=True,
+        bgcolor=theme.FIELD_BG,
+        color=theme.INK,
+        cursor_color=theme.PRIMARY,
+        border=theme.field_border(22, color="transparent", focused_color=theme.PRIMARY),
+        text_style=ft.TextStyle(font_family=theme.FONT_FAMILY, size=15, color=theme.INK),
+        hint_style=ft.TextStyle(font_family=theme.FONT_FAMILY, size=15, color=theme.HINT),
+        content_padding=ft.Padding.symmetric(horizontal=16, vertical=10),
+        on_change=lambda e: (
+            state.__setitem__("query", e.control.value or ""),
+            _refresh_list(),
+        ),
+    )
+    search_wrap = ft.Container(
+        visible=bool(STATE.draft.pop("_chat_search_open", False)),
+        padding=ft.Padding.only(left=12, right=12, bottom=8),
+        content=search_field,
+    )
+    if search_wrap.visible:
+        state["query"] = ""
+
+    def toggle_search(_=None):
+        search_wrap.visible = not search_wrap.visible
+        if not search_wrap.visible:
+            state["query"] = ""
+            search_field.value = ""
+            _refresh_list()
+        try:
+            search_wrap.update()
+        except Exception:
+            pass
+
     header_ctrl = _header(
         title=peer_title,
         seed=peer_seed,
@@ -2355,15 +2656,18 @@ def build_chat(page: ft.Page) -> ft.Control:
         online_label=online_label,
         full_title=is_group or is_favorites,
         on_report=None if (is_group or is_favorites) else on_report_user,
-        on_profile=None if (is_group or is_favorites) else open_contact_profile,
+        on_profile=open_group_profile if is_group else (None if is_favorites else open_contact_profile),
+        on_search=None,
     )
 
+    # Шапка и композер поверх ленты — без полос фона до края экрана.
     body_controls: list = [
-        header_ctrl,
+        search_wrap,
         ft.Container(padding=ft.Padding.symmetric(horizontal=12), content=load_older_btn),
         banner_bar,
         list_col,
     ]
+    dock_controls: list = []
     if is_group and group is not None:
         from flet_app import questions_data
 
@@ -2375,15 +2679,15 @@ def build_chat(page: ft.Page) -> ft.Control:
             STATE.draft["_open_is_group"] = True
             STATE.go("/questions")
 
-        body_controls.append(
+        dock_controls.append(
             _questions_plaque(count=q_count, on_open=_open_questions)
         )
-    body_controls.append(pending_preview)
-    body_controls.append(composer)
+    dock_controls.append(pending_preview)
+    dock_controls.append(composer)
 
     chat_body = ft.Column(
-            expand=True,
-            spacing=0,
+        expand=True,
+        spacing=0,
         controls=body_controls,
     )
 
@@ -2408,6 +2712,28 @@ def build_chat(page: ft.Page) -> ft.Control:
                 bgcolor=f"#000000{int(min(dim, 0.4) * 255):02X}",
             ),
         )
+    stack_controls.append(
+        ft.Container(
+            left=0,
+            right=0,
+            top=0,
+            bgcolor=ft.Colors.TRANSPARENT,
+            content=header_ctrl,
+        )
+    )
+    stack_controls.append(
+        ft.Container(
+            left=0,
+            right=0,
+            bottom=0,
+            bgcolor=ft.Colors.TRANSPARENT,
+            content=ft.Column(
+                spacing=0,
+                tight=True,
+                controls=dock_controls,
+            ),
+        )
+    )
     stack_controls.append(menu_host)
     stack_controls.append(attach_scrim)
     stack_controls.append(attach_card)
@@ -2528,7 +2854,7 @@ def _composer(on_send, on_attach, field_ref: dict, on_change=None) -> ft.Control
         on_submit=on_send
         if prefs.chat_enter_to_send() and not prefs.chat_send_by_ctrl_enter()
         else None,
-        on_change=on_change,
+        on_change=None,
     )
     field_ref["tf"] = tf
 
@@ -2537,9 +2863,8 @@ def _composer(on_send, on_attach, field_ref: dict, on_change=None) -> ft.Control
         expand=True,
         height=btn_size,
         border_radius=field_radius,
-        bgcolor=liquid_glass.white_glass_tint(),
-        blur=liquid_glass._blur(liquid_glass.BTN_BLUR),
-        border=ft.Border.all(1.0, liquid_glass.white_glass_border()),
+        bgcolor=theme.CARD,
+        border=None,
         clip_behavior=ft.ClipBehavior.HARD_EDGE,
         padding=0,
         alignment=ft.Alignment.CENTER_LEFT,
@@ -2551,12 +2876,7 @@ def _composer(on_send, on_attach, field_ref: dict, on_change=None) -> ft.Control
         border_radius=field_radius,
         clip_behavior=ft.ClipBehavior.NONE,
         alignment=ft.Alignment.CENTER,
-        shadow=ft.BoxShadow(
-            blur_radius=10,
-            spread_radius=0,
-            color=liquid_glass.white_glass_shadow(),
-            offset=ft.Offset(0, 2),
-        ),
+        shadow=theme.grounded_shadow(lift=4),
     )
 
     attach_icon = mono_icons.ui_icon("attach", size=28)
@@ -2568,37 +2888,65 @@ def _composer(on_send, on_attach, field_ref: dict, on_change=None) -> ft.Control
     send_btn = liquid_glass.glass_circle_button(
         on_send, content=send_icon, size=btn_size, variant="purple"
     )
-    # легче тень у кругов — как компактная TG-панель, не «парящие» шары
-    for ctrl in (attach, send_btn):
-        try:
-            ctrl.shadow = ft.BoxShadow(
-                blur_radius=10,
-                spread_radius=0,
-                color=liquid_glass.white_glass_shadow()
-                if ctrl is attach
-                else liquid_glass.accent_glass_shadow(),
-                offset=ft.Offset(0, 2),
-            )
-        except Exception:
-            pass
-
-    # glass_circle_button: outer → GestureDetector → body (scale)
+    try:
+        send_btn.shadow = None
+    except Exception:
+        pass
     gd = getattr(send_btn, "content", None)
     send_body = getattr(gd, "content", None) if gd is not None else None
     if send_body is not None:
-        send_body.animate_scale = ft.Animation(160, ft.AnimationCurve.EASE_OUT_CUBIC)
+        send_body.animate_scale = theme.motion_press_out()
         field_ref["send_body"] = send_body
 
+    send_host = ft.Container(
+        width=0,
+        height=btn_size,
+        opacity=0,
+        scale=0.35,
+        border_radius=btn_size / 2,
+        animate=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
+        animate_opacity=ft.Animation(160, ft.AnimationCurve.EASE_OUT),
+        animate_scale=ft.Animation(320, ft.AnimationCurve.EASE_OUT_BACK),
+        content=send_btn,
+    )
+
+    def _sync_send(text: str = "", *, force: bool | None = None) -> None:
+        show = bool(force) if force is not None else bool((text or "").strip())
+        if show:
+            send_host.animate_scale = ft.Animation(320, ft.AnimationCurve.EASE_OUT_BACK)
+            send_host.width = btn_size + gap
+            send_host.opacity = 1
+            send_host.scale = 1
+        else:
+            send_host.animate_scale = ft.Animation(140, ft.AnimationCurve.EASE_IN)
+            send_host.scale = 0.35
+            send_host.opacity = 0
+            send_host.width = 0
+        try:
+            send_host.update()
+        except Exception:
+            pass
+
+    def _changed(e):
+        _sync_send(getattr(e, "control", e).value if e is not None else "")
+        if on_change is not None:
+            on_change(e)
+
+    tf.on_change = _changed
+    field_ref["sync_send"] = _sync_send
+
+    # Без нижней «полки» фона: прозрачный контейнер; inset снизу сохраняем.
     return ft.Container(
+        bgcolor=ft.Colors.TRANSPARENT,
         padding=ft.Padding.only(
             left=8,
             right=8,
             top=4,
-            bottom=float(theme.bottom_inset()),
+            bottom=float(theme.bottom_inset()) + 14,
         ),
         content=ft.Row(
             spacing=gap,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[attach, message_field, send_btn],
+            controls=[attach, message_field, send_host],
         ),
     )

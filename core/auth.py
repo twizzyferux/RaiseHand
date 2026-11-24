@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 import secrets
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 
 from core import database as db
@@ -64,6 +65,11 @@ class User:
     class_name: Optional[str] = None
     school_name: Optional[str] = None
     is_banned: bool = False
+    terms_accepted: bool = False
+    terms_version: str = ""
+    terms_accepted_at: Optional[str] = None
+    inactive_delete_months: int = 12
+    last_active_at: Optional[str] = None
 
     @property
     def full_name(self) -> str:
@@ -120,6 +126,11 @@ def row_to_user(row) -> Optional[User]:
         class_name=_opt(row, "class_name"),
         school_name=_opt(row, "school_name"),
         is_banned=bool(_opt_int(row, "is_banned") or 0),
+        terms_accepted=bool(_opt_int(row, "terms_accepted") or 0),
+        terms_version=(_opt(row, "terms_version") or "") or "",
+        terms_accepted_at=_opt(row, "terms_accepted_at"),
+        inactive_delete_months=_opt_int(row, "inactive_delete_months") or 12,
+        last_active_at=_opt(row, "last_active_at"),
     )
 
 
@@ -393,6 +404,83 @@ def login(login_value: str, password: str) -> User:
             (new_hash, new_salt, row["id"]),
         )
     return row_to_user(row)
+
+
+# --------------------------------------------------------------------------- #
+#  Согласие, неактивность, удаление аккаунта
+# --------------------------------------------------------------------------- #
+
+INACTIVE_MONTH_CHOICES = (3, 6, 12, 18, 24)
+
+
+def _add_months(moment: datetime, months: int) -> datetime:
+    month_index = moment.month - 1 + int(months)
+    year = moment.year + month_index // 12
+    month = month_index % 12 + 1
+    leap = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+    month_days = [31, 29 if leap else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    day = min(moment.day, month_days[month - 1])
+    return moment.replace(year=year, month=month, day=day)
+
+
+def record_terms(user_id: int, version: str) -> User:
+    """Записать в профиль, что человек принял конкретную версию правил."""
+    version = (version or "").strip() or "2026-11-24"
+    db.execute(
+        """UPDATE users
+           SET terms_accepted = 1,
+               terms_version = ?,
+               terms_accepted_at = datetime('now')
+           WHERE id = ?""",
+        (version, user_id),
+    )
+    user = get_user_by_id(user_id)
+    if user is None:
+        raise AuthError("Аккаунт не найден")
+    return user
+
+
+def set_inactive_delete_months(user_id: int, months: int) -> User:
+    months = int(months)
+    if months not in INACTIVE_MONTH_CHOICES:
+        raise AuthError("Срок можно выбрать от 3 месяцев до 2 лет")
+    db.execute(
+        "UPDATE users SET inactive_delete_months = ? WHERE id = ?",
+        (months, user_id),
+    )
+    user = get_user_by_id(user_id)
+    if user is None:
+        raise AuthError("Аккаунт не найден")
+    return user
+
+
+def touch_last_active(user_id: int) -> None:
+    db.execute(
+        "UPDATE users SET last_active_at = datetime('now') WHERE id = ?",
+        (user_id,),
+    )
+
+
+def inactivity_due(user: User) -> bool:
+    """Срок вышел, если человек не открывал приложение дольше выбранного периода."""
+    raw = (user.last_active_at or "").strip()
+    if not raw:
+        return False
+    try:
+        seen = datetime.strptime(raw[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return False
+    months = int(user.inactive_delete_months or 12)
+    if months not in INACTIVE_MONTH_CHOICES:
+        months = 12
+    return datetime.utcnow() >= _add_months(seen, months)
+
+
+def delete_account(user_id: int) -> None:
+    """Удалить аккаунт и связанные строки. Чужие классы учителя остаются без владельца."""
+    db.execute("DELETE FROM reports WHERE reporter_id = ?", (user_id,))
+    db.execute("UPDATE classes SET teacher_id = NULL WHERE teacher_id = ?", (user_id,))
+    db.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
 
 # --------------------------------------------------------------------------- #

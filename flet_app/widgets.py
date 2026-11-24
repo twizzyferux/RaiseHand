@@ -19,7 +19,7 @@ from flet_app import theme
 FORM_WIDTH = 290          # поле
 BUTTON_WIDTH = 305        # «Далее» / «Начать общение»
 FIELD_HEIGHT = 52
-BUTTON_HEIGHT = 52
+BUTTON_HEIGHT = 56
 CARD_WIDTH = 334
 CARD_HEIGHT = 56
 NAV_HEIGHT = 60
@@ -220,7 +220,7 @@ def pill_field(
         fill_color=theme.FIELD_BG,
         bgcolor=theme.FIELD_BG,
         border=theme.field_border(
-            FIELD_HEIGHT / 2, color="transparent", focused_color=theme.PRIMARY
+            FIELD_HEIGHT / 2, color="transparent", focused_color=theme.PRIMARY, width=1.5
         ),
         cursor_color=theme.PRIMARY,
         text_size=16,
@@ -284,7 +284,7 @@ def pill_password_field(
         fill_color=theme.FIELD_BG,
         bgcolor=theme.FIELD_BG,
         border=theme.field_border(
-            FIELD_HEIGHT / 2, color="transparent", focused_color=theme.PRIMARY
+            FIELD_HEIGHT / 2, color="transparent", focused_color=theme.PRIMARY, width=1.5
         ),
         cursor_color=theme.PRIMARY,
         text_size=16,

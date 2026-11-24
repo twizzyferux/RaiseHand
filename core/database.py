@@ -142,6 +142,11 @@ def init_db() -> None:
         "ALTER TABLE messages ADD COLUMN edited_at TEXT",
         "ALTER TABLE messages ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN is_banned INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN terms_accepted INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN terms_version TEXT DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN terms_accepted_at TEXT",
+        "ALTER TABLE users ADD COLUMN inactive_delete_months INTEGER NOT NULL DEFAULT 12",
+        "ALTER TABLE users ADD COLUMN last_active_at TEXT",
         """
         CREATE TABLE IF NOT EXISTS reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

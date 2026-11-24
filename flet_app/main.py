@@ -31,6 +31,7 @@ from flet_app.screens import (
     contact_profile,
     report,
     new_chat,
+    legal,
 )
 
 
@@ -97,20 +98,36 @@ def main(page: ft.Page):
             pass
 
     def snack(message: str):
-        bar = ft.SnackBar(content=ft.Text(message))
-        try:
-            _show_dialog_control(bar)
-        except Exception:
-            pass
+        # Нижние всплывающие подтверждения «изменено» не показываем.
+        return
 
     def dialog(title: str, message: str):
         def close(_=None):
             _close_dialog(dlg)
 
+        dialog_w = max(220.0, float(theme.content_width()) - 88)
+        ok = theme.action_button("ОК", close, primary=True, width=dialog_w, height=48)
         dlg = ft.AlertDialog(
-            title=ft.Text(title),
-            content=ft.Text(message),
-            actions=[ft.TextButton("OK", on_click=close)],
+            modal=True,
+            title=ft.Text(
+                title,
+                size=20,
+                weight=ft.FontWeight.W_700,
+                color=theme.INK,
+                font_family=theme.FONT_FAMILY,
+            ),
+            title_padding=ft.Padding.only(left=24, right=24, top=22, bottom=4),
+            content=ft.Text(
+                message,
+                size=15,
+                color=theme.INK,
+                font_family=theme.FONT_FAMILY,
+                width=dialog_w,
+            ),
+            content_padding=ft.Padding.only(left=24, right=24, top=18, bottom=8),
+            actions=[ok],
+            actions_alignment=ft.MainAxisAlignment.CENTER,
+            actions_padding=ft.Padding.only(left=20, right=20, top=20, bottom=12),
         )
         try:
             _show_dialog_control(dlg)
@@ -132,9 +149,11 @@ def main(page: ft.Page):
             "/reg/done": register.build_reg_done,
             "/home": home.build_home,
             "/chat": chat.build_chat,
+            "/group_profile": contact_profile.build_group_profile,
             "/new_chat": new_chat.build_new_chat,
             "/new_group": new_chat.build_new_group,
             "/questions": questions.build_questions,
+            "/legal": legal.build_legal,
             "/verify": home.build_home,
             "/teacher_proof": home.build_home,
         }
@@ -149,7 +168,9 @@ def main(page: ft.Page):
             build = welcome.build_welcome
         body = build(page)
 
-        # SafeArea: Dynamic Island / статус-бар
+        # Чат: контент до края экрана (шапка сама держит top-inset).
+        # Остальные экраны — SafeArea под Dynamic Island / статус-бар.
+        edge_chat = route in ("/chat", "/questions")
         return theme.safe_shell(
             ft.Container(
                 content=body,
@@ -157,13 +178,15 @@ def main(page: ft.Page):
                 expand=True,
                 alignment=ft.Alignment.TOP_CENTER,
                 clip_behavior=ft.ClipBehavior.HARD_EDGE,
-            )
+            ),
+            top=not edge_chat,
         )
 
     def show_route(route: str, *, animate: bool = True):
         route = route or "/welcome"
         prev = current.get("route") or ""
         current["route"] = route
+        STATE.draft["_route"] = route
         try:
             page.route = route
         except Exception:
@@ -173,6 +196,13 @@ def main(page: ft.Page):
 
         # смена цвета/темы в оформлении — без повторного slide
         quiet_settings = bool(STATE.draft.get("_settings_no_anim"))
+        try:
+            from core import prefs as _prefs
+
+            if _prefs.reduce_motion():
+                animate = False
+        except Exception:
+            pass
 
         try:
             content = body_for(route)
@@ -192,12 +222,14 @@ def main(page: ft.Page):
             route.startswith("/contact")
             or route.startswith("/settings/")
             or route == "/report"
+            or route == "/legal"
         )
         from_sheet = (
             (
                 (prev or "").startswith("/contact")
                 or (prev or "").startswith("/settings/")
                 or prev == "/report"
+                or prev == "/legal"
             )
             and not to_sheet
         )
@@ -205,6 +237,8 @@ def main(page: ft.Page):
         from_chat = (prev in ("/chat", "/questions")) and not to_chat and not to_sheet
         to_auth = route.startswith("/reg/") or route == "/login"
         from_auth = (prev or "").startswith("/reg/") or prev in ("/login", "/welcome")
+        to_compose = route in ("/new_chat", "/new_group")
+        from_compose = prev in ("/new_chat", "/new_group") and not to_compose and not to_chat and not to_sheet
         # уход с чата/вопросов: на всякий случай закрыть клавиатуру (iOS sticky keyboard)
         if from_chat:
             try:
@@ -263,10 +297,33 @@ def main(page: ft.Page):
                 animate_opacity=ft.Animation(220, ft.AnimationCurve.EASE_OUT),
                 animate_offset=ft.Animation(240, ft.AnimationCurve.EASE_OUT),
             )
+        elif animate and to_compose:
+            # плюс: новый чат и группа мягко поднимаются, без отскока
+            wrap = _anim_wrap(
+                opacity=0,
+                offset=ft.Offset(0, 0.022),
+                scale=0.99,
+                animate_opacity=ft.Animation(420, ft.AnimationCurve.EASE_OUT),
+                animate_offset=ft.Animation(460, ft.AnimationCurve.EASE_OUT),
+                animate_scale=ft.Animation(460, ft.AnimationCurve.EASE_OUT),
+            )
+        elif animate and from_compose:
+            wrap = _anim_wrap(
+                opacity=0,
+                offset=ft.Offset(0, 0.012),
+                scale=0.994,
+                animate_opacity=ft.Animation(380, ft.AnimationCurve.EASE_OUT),
+                animate_offset=ft.Animation(420, ft.AnimationCurve.EASE_OUT),
+                animate_scale=ft.Animation(420, ft.AnimationCurve.EASE_OUT),
+            )
         elif animate:
             wrap = _anim_wrap(
                 opacity=0,
-                animate_opacity=ft.Animation(220, ft.AnimationCurve.EASE_OUT),
+                offset=ft.Offset(0, 0.014),
+                scale=0.994,
+                animate_opacity=ft.Animation(400, ft.AnimationCurve.EASE_OUT),
+                animate_offset=ft.Animation(440, ft.AnimationCurve.EASE_OUT),
+                animate_scale=ft.Animation(440, ft.AnimationCurve.EASE_OUT),
             )
         else:
             wrap = content if isinstance(content, ft.Container) else _anim_wrap()

@@ -38,6 +38,7 @@ _DEFAULTS = {
     "link_previews": True,
     # внешний вид
     "reduce_motion": False,
+    "frame_rate": 120,  # 60 | 120
     "haptic_feedback": True,
     "font_scale": 1.0,
     "bubble_corners": "round",  # sharp|round|super
@@ -377,6 +378,24 @@ def reduce_motion() -> bool:
 
 def set_reduce_motion(on: bool) -> None:
     _set_bool_val("reduce_motion", on)
+
+
+def frame_rate() -> int:
+    """60 или 120 кадров. Всё остальное считается как 60."""
+    try:
+        rate = int(get("frame_rate", 120) or 120)
+    except (TypeError, ValueError):
+        rate = 120
+    return 120 if rate >= 120 else 60
+
+
+def set_frame_rate(rate: int) -> None:
+    set_pref("frame_rate", 120 if int(rate) >= 120 else 60)
+
+
+def scroll_interval_ms() -> int:
+    """Интервал событий прокрутки: 120 Гц → 8 мс, 60 Гц → 16 мс."""
+    return 8 if frame_rate() >= 120 else 16
 
 
 def haptic_feedback() -> bool:

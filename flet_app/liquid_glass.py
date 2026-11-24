@@ -59,10 +59,10 @@ BTN_BLUR = 12
 
 
 def glass_surface_tint() -> str:
-    """Навбар / крупные капсулы."""
+    """Навбар / крупные капсулы: почти сплошная плита."""
     if theme.is_dark():
-        return _a("#1E1B2A", 0.88)
-    return GLASS_TINT
+        return _a("#16141C", 0.97)
+    return _a("#F6F3EE", 0.97)
 
 
 def glass_surface_border() -> str:
@@ -80,21 +80,21 @@ def glass_surface_edge() -> str:
 
 def glass_surface_shadow() -> str:
     if theme.is_dark():
-        return _a("#000000", 0.40)
-    return GLASS_SHADOW
+        return _a("#000000", 0.62)
+    return _a("#2A2438", 0.20)
 
 
 def glass_pill_active() -> str:
     if theme.is_dark():
-        return _a(theme.PRIMARY, 0.28)
-    return GLASS_PILL_ACTIVE
+        return _a(theme.PRIMARY, 0.46)
+    return "#FFFFFF"
 
 
 def white_glass_tint() -> str:
-    """Карточки настроек / композер / шапка."""
+    """Карточки настроек / композер / шапка — сплошная заливка."""
     if theme.is_dark():
-        return _a("#221F30", 0.92)
-    return WHITE_GLASS_TINT
+        return "#2C2A34"
+    return "#FFFCFA"
 
 
 def white_glass_border() -> str:
@@ -110,28 +110,76 @@ def white_glass_edge() -> str:
 
 
 def accent_glass_tint() -> str:
-    """Кнопки акцента (плюс, «Далее», отправка) — плотный цвет, без неона."""
-    return _a(theme.PRIMARY, 0.88 if theme.is_dark() else 0.94)
+    """Кнопки акцента — сплошной фирменный цвет."""
+    return theme.PRIMARY
 
 
 def accent_glass_border() -> str:
     if theme.is_dark():
-        return _a("#FFFFFF", 0.12)
-    return _a("#FFFFFF", 0.28)
+        return theme.PRIMARY
+    return _a("#FFFFFF", 0.34)
 
 
 def accent_glass_shadow() -> str:
-    return _a("#2A2830", 0.22 if theme.is_dark() else 0.14)
+    return _a("#1A1428", 0.42 if theme.is_dark() else 0.30)
 
 
 def white_glass_shadow() -> str:
     if theme.is_dark():
-        return _a("#000000", 0.35)
-    return WHITE_GLASS_SHADOW
+        return _a("#000000", 0.55)
+    return _a("#2A2438", 0.22)
 
 
 def purple_glass_border() -> str:
     return accent_glass_border()
+
+
+def _press_wrap(
+    body: ft.Container,
+    on_click,
+    *,
+    scale_to: float = 0.992,
+    expand: bool = False,
+) -> ft.Control:
+    """Нажатие мышью и пальцем: короткое сжатие, возврат без отскока."""
+
+    def _down(_e=None):
+        if theme.reduce_motion():
+            return
+        try:
+            body.animate_scale = theme.motion_press_in()
+            body.scale = scale_to
+            body.update()
+        except Exception:
+            pass
+
+    def _up(_e=None):
+        if theme.reduce_motion():
+            return
+        try:
+            body.animate_scale = theme.motion_press_out()
+            body.scale = 1
+            body.update()
+        except Exception:
+            pass
+
+    def _tap(e=None):
+        _up(e)
+        if on_click is None:
+            return
+        try:
+            on_click(e)
+        except TypeError:
+            on_click()
+
+    return ft.GestureDetector(
+        content=body,
+        expand=True if expand else None,
+        on_tap_down=_down,
+        on_tap_up=_up,
+        on_tap_cancel=_up,
+        on_tap=_tap,
+    )
 
 
 def glass_button(
@@ -163,7 +211,7 @@ def glass_button(
         text,
         color=text_color,
         size=font_size,
-        weight=ft.FontWeight.W_600,
+        weight=ft.FontWeight.W_700,
         text_align=ft.TextAlign.CENTER,
         font_family=theme.FONT_FAMILY,
     )
@@ -180,17 +228,6 @@ def glass_button(
     else:
         inner = label
 
-    if is_purple and not theme.is_dark():
-        border = ft.Border(
-            top=ft.BorderSide(1.6, edge),
-            left=ft.BorderSide(1.0, border_c),
-            right=ft.BorderSide(1.0, border_c),
-            bottom=ft.BorderSide(1.0, _a(border_c, 0.35)),
-        )
-    else:
-        # dark / white: ровный контур без белых бликов
-        border = ft.Border.all(1.1, border_c)
-
     body = ft.Container(
         content=inner,
         width=width,
@@ -198,29 +235,26 @@ def glass_button(
         expand=expand if width is None else None,
         border_radius=radius,
         bgcolor=tint,
-        blur=_blur(BTN_BLUR),
-        border=border,
+        border=None,
         alignment=ft.Alignment.CENTER,
         clip_behavior=ft.ClipBehavior.HARD_EDGE,
-        on_click=on_click,
         ink=False,
-        animate_scale=ft.Animation(120, ft.AnimationCurve.EASE_OUT),
+        animate_scale=theme.motion_press_out(),
         scale=1,
-        on_hover=theme._press_scale,
     )
 
     return ft.Container(
-        content=body,
+        content=_press_wrap(body, on_click, expand=bool(expand and width is None)),
         width=width,
         expand=expand if width is None else None,
         border_radius=radius,
         clip_behavior=ft.ClipBehavior.NONE,
         alignment=ft.Alignment.CENTER,
         shadow=ft.BoxShadow(
-            blur_radius=12,
+            blur_radius=22,
             spread_radius=0,
             color=shadow_c,
-            offset=ft.Offset(0, 3),
+            offset=ft.Offset(0, 7),
         ),
     )
 
@@ -268,47 +302,13 @@ def glass_circle_button(
         height=size,
         border_radius=radius,
         bgcolor=tint,
-        blur=_blur(BTN_BLUR),
-        border=ft.Border.all(1.0, border_c),
+        border=None,
         alignment=ft.Alignment.CENTER,
         clip_behavior=ft.ClipBehavior.HARD_EDGE,
         ink=False,
-        animate_scale=ft.Animation(160, ft.AnimationCurve.EASE_OUT),
+        animate_scale=theme.motion_press_out(),
         scale=1,
         content=content,
-    )
-
-    def _down(_e=None):
-        try:
-            body.animate_scale = ft.Animation(90, ft.AnimationCurve.EASE_OUT)
-            body.scale = 0.92
-            body.update()
-        except Exception:
-            pass
-
-    def _up(_e=None):
-        try:
-            body.animate_scale = ft.Animation(240, ft.AnimationCurve.EASE_OUT_BACK)
-            body.scale = 1
-            body.update()
-        except Exception:
-            pass
-
-    def _tap(e=None):
-        _up(e)
-        if on_click is None:
-            return
-        try:
-            on_click(e)
-        except TypeError:
-            on_click()
-
-    pressed = ft.GestureDetector(
-        content=body,
-        on_tap_down=_down,
-        on_tap_up=_up,
-        on_tap_cancel=_up,
-        on_tap=_tap,
     )
     return ft.Container(
         width=size,
@@ -317,12 +317,12 @@ def glass_circle_button(
         clip_behavior=ft.ClipBehavior.NONE,
         alignment=ft.Alignment.CENTER,
         shadow=ft.BoxShadow(
-            blur_radius=10,
+            blur_radius=18,
             spread_radius=0,
             color=shadow_c,
-            offset=ft.Offset(0, 2),
+            offset=ft.Offset(0, 5),
         ),
-        content=pressed,
+        content=_press_wrap(body, on_click, scale_to=0.97),
     )
 
 
@@ -357,16 +357,7 @@ def glass_capsule(
     if border_color is None:
         border_color = glass_surface_border()
     # dark: без яркого верхнего блика (белые «полосы»)
-    if theme.is_dark() or not highlight:
-        border = ft.Border.all(1.0, border_color)
-    else:
-        edge = glass_surface_edge()
-        border = ft.Border(
-            top=ft.BorderSide(1.6, edge),
-            left=ft.BorderSide(1.0, border_color),
-            right=ft.BorderSide(1.0, border_color),
-            bottom=ft.BorderSide(1.0, _a("#FFFFFF", 0.40)),
-        )
+    border = None
 
     body = ft.Container(
         content=content,
@@ -389,10 +380,10 @@ def glass_capsule(
         border_radius=radius,
         clip_behavior=ft.ClipBehavior.NONE,
         shadow=ft.BoxShadow(
-            blur_radius=16 if not theme.is_dark() else 14,
+            blur_radius=26,
             spread_radius=0,
             color=glass_surface_shadow(),
-            offset=ft.Offset(0, 4 if not theme.is_dark() else 3),
+            offset=ft.Offset(0, 8),
         ),
     )
 
@@ -458,18 +449,13 @@ class SlidingLiquidNav:
             top=(TAB_H - self.pill_h) / 2,
             border_radius=self.pill_h / 2,
             bgcolor=glass_pill_active(),
-            border=ft.Border.all(
-                1,
-                (_a(theme.PRIMARY, 0.35) if theme.is_dark() else glass_surface_edge()),
-            ),
-            animate_position=ft.Animation(
-                320, ft.AnimationCurve.EASE_OUT_BACK
-            ),
+            border=None,
+            animate_position=ft.Animation(340, ft.AnimationCurve.EASE_OUT),
             shadow=ft.BoxShadow(
-                blur_radius=8,
+                blur_radius=14,
                 spread_radius=0,
-                color=_a("#2A2830", 0.10),
-                offset=ft.Offset(0, 2),
+                color=_a("#2A2830", 0.18),
+                offset=ft.Offset(0, 3),
             ),
         )
 

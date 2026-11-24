@@ -37,25 +37,27 @@ _BUBBLE_W = 127.0
 _BUBBLE_H = 39.0
 Y_LIFT = 8.0  # подобрано вручную
 
+# Порядок совпадает с темами RaiseHand: фиолетовая, голубая, розовая,
+# зелёная, коралловая, оранжевая.
+_BUBBLE_THEMES = ("violet", "blue", "pink", "green", "coral", "orange")
 _RAW_BUBBLES = [
-    # фиолетовый
-    ((0.655, 0.545, 0.98), 56, 172, [(44, 147, 25), (34, 127, 20), (29, 110, 15)]),
-    # голубой
-    ((0.502, 0.749, 1.0), 276, 152, [(393, 129, 20), (406, 113, 15)]),
-    # розовый
-    ((1.0, 0.561, 0.671), 141, 125, [(134, 110, 15)]),
-    # зелёный
-    ((0.549, 0.878, 0.69), 230, 79, [(218, 54, 25), (208, 34, 20), (203, 17, 15)]),
-    # коралловый
-    ((1.0, 0.541, 0.502), 44, 64, [(159, 37, 25), (174, 17, 20)]),
-    # персиковый
-    ((1.0, 0.69, 0.486), 247, 34, [(367, 17, 15)]),
+    (56, 172, [(44, 147, 25), (34, 127, 20), (29, 110, 15)]),
+    (276, 152, [(393, 129, 20), (406, 113, 15)]),
+    (141, 125, [(134, 110, 15)]),
+    (230, 79, [(218, 54, 25), (208, 34, 20), (203, 17, 15)]),
+    (44, 64, [(159, 37, 25), (174, 17, 20)]),
+    (247, 34, [(367, 17, 15)]),
 ]
 
 
-def _rgba_to_hex(rgb) -> str:
-    r, g, b = rgb
-    return f"#{int(r * 255):02X}{int(g * 255):02X}{int(b * 255):02X}"
+def _bubble_color(index: int) -> str:
+    """Цвет пузыря — icon выбранной темы, тот же, что в настройках."""
+    from core.branding import theme_tokens
+
+    key = _BUBBLE_THEMES[index % len(_BUBBLE_THEMES)]
+    mode = "dark" if theme.is_dark() else "light"
+    tok = theme_tokens(key, mode)
+    return tok.get("icon") or tok.get("fill") or theme.PRIMARY
 
 
 def _build_bubbles_stack(target_w: float) -> ft.Stack:
@@ -69,7 +71,7 @@ def _build_bubbles_stack(target_w: float) -> ft.Stack:
     max_x = -1e9
     min_y = 1e9
     max_y = -1e9
-    for _rgb, x, y, dots in _RAW_BUBBLES:
+    for x, y, dots in _RAW_BUBBLES:
         min_x = min(min_x, x)
         max_x = max(max_x, x + _BUBBLE_W)
         min_y = min(min_y, y)
@@ -103,8 +105,8 @@ def _build_bubbles_stack(target_w: float) -> ft.Stack:
     bw = _BUBBLE_W * sx
     bh = _BUBBLE_H * sx
 
-    for rgb, x, y, dots in _RAW_BUBBLES:
-        color = _rgba_to_hex(rgb)
+    for i, (x, y, dots) in enumerate(_RAW_BUBBLES):
+        color = _bubble_color(i)
         # группа: таблетка + хвостики, двигаются вместе
         group_parts: list[ft.Control] = [
             ft.Container(

@@ -171,7 +171,7 @@ def _action_row(icon, label: str, on_click) -> ft.Control:
             ],
         ),
     )
-    return theme.pressable(row, on_click, scale_to=0.985, expand=True)
+    return theme.pressable(row, on_click, scale_to=theme.PRESS_SCALE, expand=True)
 
 
 def _person_row(user: auth.User, on_click, *, picked: bool = False) -> ft.Control:
@@ -222,7 +222,7 @@ def _person_row(user: auth.User, on_click, *, picked: bool = False) -> ft.Contro
             ],
         ),
     )
-    return theme.pressable(body, on_click, scale_to=0.985, expand=True)
+    return theme.pressable(body, on_click, scale_to=theme.PRESS_SCALE, expand=True)
 
 
 def _search_field(hint: str, on_change) -> ft.TextField:
@@ -249,7 +249,7 @@ def _ask_phone(page: ft.Page) -> None:
         bgcolor=theme.FIELD_BG,
         color=theme.INK,
         cursor_color=theme.PRIMARY,
-        border=theme.field_border(14, color=theme.STROKE, focused_color=theme.PRIMARY),
+        border=theme.field_border(14, color="transparent", focused_color=theme.PRIMARY),
         text_style=ft.TextStyle(font_family=theme.FONT_FAMILY, color=theme.INK),
         autofocus=True,
     )
@@ -276,10 +276,8 @@ def _ask_phone(page: ft.Page) -> None:
         modal=True,
         title=ft.Text(t("newchat.phone_title"), font_family=theme.FONT_FAMILY, color=theme.INK),
         content=field,
-        actions=[
-            ft.TextButton(t("common.cancel"), on_click=close),
-            ft.TextButton(t("newchat.find"), on_click=find),
-        ],
+        actions=[theme.dialog_buttons(t("common.cancel"), close, t("newchat.find"), find)],
+        actions_alignment=ft.MainAxisAlignment.CENTER,
     )
     try:
         page.show_dialog(dlg)
@@ -334,7 +332,7 @@ def build_new_chat(page: ft.Page) -> ft.Control:
                                     ),
                                 ),
                                 allow,
-                                scale_to=0.96,
+                                scale_to=theme.PRESS_SCALE,
                             ),
                         ],
                     ),
@@ -407,7 +405,7 @@ def build_new_chat(page: ft.Page) -> ft.Control:
                     tight=True,
                     controls=[
                         _action_row(ft.Icons.GROUPS_OUTLINED, t("newchat.group"), open_group),
-                        ft.Container(height=0.5, bgcolor=theme.DIVIDER, margin=ft.Margin.only(left=70)),
+                        ft.Container(height=1, bgcolor=theme.DIVIDER, margin=ft.Margin.only(left=70)),
                         _action_row(ft.Icons.PERSON_ADD_ALT_1_OUTLINED, t("newchat.contact"), lambda _: _ask_phone(page)),
                     ],
                 ),
@@ -424,12 +422,11 @@ def build_new_chat(page: ft.Page) -> ft.Control:
             ),
         ],
     )
-    panel = theme.live_panel(screen)
+    panel = theme.live_panel(screen, visible=True)
     try:
         panel.expand = True
     except Exception:
         pass
-    _reveal(panel, page)
     return panel
 
 
@@ -437,117 +434,168 @@ def build_new_group(page: ft.Page) -> ft.Control:
     mode = STATE.draft.get("_group_mode") or "group"
     back_tab = STATE.draft.get("_compose_back") or ("groups" if mode == "class" else "chats")
     is_class = mode == "class"
-    step = {"n": 0 if is_class else 2}
-    subject = {"v": ""}
+    subject = {"v": "math"}
     grade = {"num": "10", "letter": "А"}
     picked: set[int] = set()
     host = ft.Column(expand=True, spacing=0)
 
-    def _title() -> str:
-        if not is_class:
-            return t("newgroup.title")
-        if step["n"] == 0:
-            return t("newgroup.subject")
-        if step["n"] == 1:
-            return t("newgroup.class_step")
-        return t("newgroup.class_title")
+    def _generated() -> str:
+        return f"{t('subj.' + subject['v'])} · {grade['num']}{grade['letter']}"
+
+    name = {"v": _generated() if is_class else ""}
 
     def _go_back(_=None):
-        if step["n"] > (0 if is_class else 2):
-            go_step(step["n"] - 1)
-            return
         _close_to("groups" if is_class else back_tab)
 
-    def _chip(label: str, on, on_click) -> ft.Control:
+    def _chip_box(label: str, on: bool) -> tuple[ft.Control, float]:
+        # Ширина заранее: иначе ряд сжимается до экрана и сдвигать некуда.
+        width = 52 + len(label) * 12
         box = ft.Container(
-            border_radius=14,
-            padding=ft.Padding.symmetric(horizontal=14, vertical=10),
+            width=width,
+            height=44,
+            border_radius=16,
+            alignment=ft.Alignment.CENTER,
             bgcolor=theme.PRIMARY_SOFT if on else theme.FIELD_BG,
-            border=ft.Border.all(1.5, theme.PRIMARY if on else theme.STROKE),
+            border=ft.Border.all(2, theme.PRIMARY) if on else None,
             content=ft.Text(
                 label,
-                size=14,
+                size=15,
                 weight=ft.FontWeight.W_600 if on else ft.FontWeight.W_500,
                 color=theme.PRIMARY if on else theme.INK,
                 font_family=theme.FONT_FAMILY,
+                text_align=ft.TextAlign.CENTER,
+                no_wrap=True,
             ),
         )
-        return theme.pressable(box, on_click, scale_to=0.96)
+        return box, width
 
-    def _subjects() -> ft.Control:
-        chips = []
-        for key in SUBJECTS:
-            chips.append(
-                _chip(
-                    t(f"subj.{key}"),
-                    subject["v"] == key,
-                    lambda e, k=key: (subject.__setitem__("v", k), paint()),
-                )
-            )
+    def _pick_subject(key: str) -> None:
+        subject["v"] = key
+        name["v"] = _generated()
+        paint()
 
-        def nxt(_=None):
-            if not subject["v"]:
-                STATE.snack(t("newgroup.pick_subject"))
-                return
-            go_step(1)
+    def _pick_num(value: str) -> None:
+        grade["num"] = value
+        name["v"] = _generated()
+        paint()
 
-        return ft.Column(
-            expand=True,
-            spacing=12,
-            controls=[
-                ft.Container(
-                    padding=ft.Padding.symmetric(horizontal=16),
-                    content=ft.Row(spacing=8, wrap=True, controls=chips),
-                ),
-                ft.Container(expand=True),
-                ft.Container(
-                    padding=ft.Padding.symmetric(horizontal=16, vertical=12),
-                    content=theme.primary_button(t("newgroup.next"), nxt),
-                ),
-            ],
+    def _pick_letter(value: str) -> None:
+        grade["letter"] = value
+        name["v"] = _generated()
+        paint()
+
+    def _row_label(text: str) -> ft.Control:
+        return ft.Container(
+            padding=ft.Padding.only(left=16, right=16, top=12, bottom=6),
+            content=ft.Text(
+                text,
+                size=16,
+                weight=ft.FontWeight.W_600,
+                color=theme.INK,
+                font_family=theme.FONT_FAMILY,
+            ),
         )
 
-    def _class_step() -> ft.Control:
-        nums = [
-            _chip(n, grade["num"] == n, lambda e, v=n: (grade.__setitem__("num", v), paint()))
-            for n in CLASS_NUMBERS
-        ]
-        letters = [
-            _chip(ch, grade["letter"] == ch, lambda e, v=ch: (grade.__setitem__("letter", v), paint()))
-            for ch in CLASS_LETTERS
-        ]
+    row_shift = {"subject": 0.0, "num": 0.0, "letter": 0.0}
 
-        def nxt(_=None):
-            if not grade["num"] or not grade["letter"]:
-                STATE.snack(t("newgroup.pick_class"))
-                return
-            go_step(2)
-
-        return ft.Column(
-            expand=True,
-            spacing=14,
-            controls=[
-                ft.Container(
-                    padding=ft.Padding.symmetric(horizontal=16),
-                    content=ft.Row(spacing=8, wrap=True, controls=nums),
-                ),
-                ft.Container(
-                    padding=ft.Padding.symmetric(horizontal=16),
-                    content=ft.Row(spacing=8, wrap=True, controls=letters),
-                ),
-                ft.Container(expand=True),
-                ft.Container(
-                    padding=ft.Padding.symmetric(horizontal=16, vertical=12),
-                    content=theme.primary_button(t("newgroup.next"), nxt),
-                ),
-            ],
+    def _swipe_row(items: list[tuple[str, bool, object]], key: str) -> ft.Control:
+        """Строка чипов. Курсор и палец тянут её сами, без полосы прокрутки."""
+        gap = 8.0
+        chips: list[ft.Control] = []
+        widths: list[float] = []
+        picks = []
+        for label, on, pick in items:
+            box, width = _chip_box(label, on)
+            chips.append(box)
+            widths.append(width)
+            picks.append(pick)
+        content_w = sum(widths) + gap * max(0, len(widths) - 1)
+        shift = {
+            "x": float(row_shift.get(key) or 0.0),
+            "view": float(theme.PHONE_WIDTH) - 32.0,
+            "content": content_w,
+            "last": None,
+        }
+        inner = ft.Row(
+            spacing=gap,
+            tight=False,
+            wrap=False,
+            width=content_w,
+            controls=chips,
+        )
+        mover = ft.Container(
+            width=content_w,
+            margin=ft.Margin.only(left=shift["x"]),
+            content=inner,
+        )
+        frame = ft.Container(
+            height=44,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            content=mover,
         )
 
-    name = {"v": ""}
+        def _clamp(x: float) -> float:
+            lo = min(0.0, shift["view"] - shift["content"])
+            return max(lo, min(0.0, x))
+
+        def _apply() -> None:
+            shift["x"] = _clamp(shift["x"])
+            row_shift[key] = shift["x"]
+            mover.margin = ft.Margin.only(left=shift["x"])
+            try:
+                mover.update()
+            except Exception:
+                pass
+
+        def _on_view(e: ft.LayoutSizeChangeEvent) -> None:
+            width = float(getattr(e, "width", 0) or 0)
+            if width > 1:
+                shift["view"] = width
+            _apply()
+
+        frame.on_size_change = _on_view
+
+        def _start(e: ft.DragStartEvent) -> None:
+            pos = getattr(e, "local_position", None)
+            shift["last"] = float(pos.x) if pos is not None else None
+
+        def _move(e: ft.DragUpdateEvent) -> None:
+            pos = getattr(e, "local_position", None)
+            if pos is None:
+                return
+            x = float(pos.x)
+            last = shift["last"]
+            shift["last"] = x
+            if last is None:
+                return
+            shift["x"] = shift["x"] + (x - last)
+            _apply()
+
+        def _tap(e: ft.TapEvent) -> None:
+            pos = getattr(e, "local_position", None)
+            if pos is None or not picks:
+                return
+            x = float(pos.x) - shift["x"]
+            acc = 0.0
+            for i, w in enumerate(widths):
+                if acc <= x <= acc + w:
+                    picks[i]()
+                    return
+                acc += w + gap
+
+        return ft.Container(
+            padding=ft.Padding.symmetric(horizontal=16),
+            content=ft.GestureDetector(
+                mouse_cursor=ft.MouseCursor.GRAB,
+                drag_interval=0,
+                on_horizontal_drag_start=_start,
+                on_horizontal_drag_update=_move,
+                on_tap=_tap,
+                content=frame,
+            ),
+        )
 
     def _details() -> ft.Control:
-        if is_class and subject["v"] and not name["v"].strip():
-            name["v"] = f"{t('subj.' + subject['v'])} · {grade['num']}{grade['letter']}"
         name_field = ft.TextField(
             value=name["v"],
             hint_text=t("newgroup.name_hint"),
@@ -617,6 +665,34 @@ def build_new_group(page: ft.Page) -> ft.Control:
             alignment=ft.Alignment.CENTER,
             content=ft.Icon(ft.Icons.GROUPS_ROUNDED, size=46, color=theme.PRIMARY),
         )
+        class_rows: list[ft.Control] = []
+        if is_class:
+            class_rows = [
+                _row_label(t("newgroup.subject")),
+                _swipe_row(
+                    [
+                        (t(f"subj.{key}"), subject["v"] == key, (lambda k=key: _pick_subject(k)))
+                        for key in SUBJECTS
+                    ],
+                    "subject",
+                ),
+                _row_label(t("newgroup.class_number")),
+                _swipe_row(
+                    [
+                        (n, grade["num"] == n, (lambda v=n: _pick_num(v)))
+                        for n in CLASS_NUMBERS
+                    ],
+                    "num",
+                ),
+                _row_label(t("newgroup.class_letter")),
+                _swipe_row(
+                    [
+                        (ch, grade["letter"] == ch, (lambda v=ch: _pick_letter(v)))
+                        for ch in CLASS_LETTERS
+                    ],
+                    "letter",
+                ),
+            ]
         return ft.Column(
             expand=True,
             spacing=0,
@@ -627,19 +703,30 @@ def build_new_group(page: ft.Page) -> ft.Control:
                     padding=ft.Padding.only(left=48, right=48, top=16, bottom=8),
                     content=name_field,
                 ),
+                *class_rows,
                 ft.Container(
                     padding=ft.Padding.only(left=16, right=16, top=12, bottom=4),
                     content=ft.Text(
                         t("newgroup.members"),
-                        size=13,
+                        size=16,
                         weight=ft.FontWeight.W_600,
-                        color=theme.MUTED,
+                        color=theme.INK,
                         font_family=theme.FONT_FAMILY,
                     ),
                 ),
-                ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, spacing=0, controls=rows),
                 ft.Container(
-                    padding=ft.Padding.symmetric(horizontal=16, vertical=12),
+                    expand=True,
+                    clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                    content=ft.Column(
+                        expand=True,
+                        scroll=ft.ScrollMode.AUTO,
+                        spacing=0,
+                        controls=rows + [ft.Container(height=8)],
+                    ),
+                ),
+                ft.Container(
+                    bgcolor=theme.BG,
+                    padding=ft.Padding.only(left=16, right=16, top=8, bottom=12),
                     content=theme.primary_button(t("newgroup.create"), create),
                 ),
             ],
@@ -648,20 +735,14 @@ def build_new_group(page: ft.Page) -> ft.Control:
     body_slot = ft.Container(expand=True)
 
     def paint(*, appear: bool = False):
-        body: ft.Control
-        if step["n"] == 0:
-            body = _subjects()
-        elif step["n"] == 1:
-            body = _class_step()
-        else:
-            body = _details()
+        body = _details()
         shown = theme.live_panel(body) if appear else body
         try:
             shown.expand = True
         except Exception:
             pass
         host.controls = [
-            _header(_title(), _go_back),
+            _header(t("newgroup.class_title") if is_class else t("newgroup.title"), _go_back),
             body_slot,
         ]
         body_slot.content = shown
@@ -672,11 +753,7 @@ def build_new_group(page: ft.Page) -> ft.Control:
         if appear:
             _reveal(shown, page)
 
-    def go_step(n: int) -> None:
-        step["n"] = n
-        paint(appear=True)
-
-    paint(appear=True)
+    paint()
     return host
 
 
@@ -708,10 +785,8 @@ def ask_contacts_permission(page: ft.Page) -> None:
         modal=True,
         title=ft.Text(t("newchat.perm_title"), font_family=theme.FONT_FAMILY, color=theme.INK),
         content=ft.Text(t("newchat.perm_body"), size=14, font_family=theme.FONT_FAMILY, color=theme.INK),
-        actions=[
-            ft.TextButton(t("newchat.deny"), on_click=deny),
-            ft.TextButton(t("newchat.allow"), on_click=allow),
-        ],
+        actions=[theme.dialog_buttons(t("newchat.deny"), deny, t("newchat.allow"), allow)],
+        actions_alignment=ft.MainAxisAlignment.CENTER,
     )
 
     async def _show():

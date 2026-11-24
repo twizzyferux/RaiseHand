@@ -84,7 +84,7 @@ def _settings_row(
             ],
         ),
     )
-    return theme.pressable(row, on_click, scale_to=0.985, expand=True)
+    return theme.pressable(row, on_click, scale_to=theme.PRESS_SCALE, expand=True)
 
 
 def _settings_group(rows: list[ft.Control]) -> ft.Control:
@@ -542,7 +542,7 @@ def _chat_action_row(label: str, on_click, *, danger: bool = False) -> ft.Contro
             font_family=theme.FONT_FAMILY,
         ),
     )
-    return theme.pressable(row, on_click, scale_to=0.97, expand=True)
+    return theme.pressable(row, on_click, scale_to=theme.PRESS_SCALE, expand=True)
 
 
 def _show_chat_actions(page: ft.Page, contact: chat_data.Contact, on_done) -> None:
@@ -610,13 +610,7 @@ def _show_chat_actions(page: ft.Page, contact: chat_data.Contact, on_done) -> No
         ),
         bgcolor=theme.CARD,
         content=ft.Column(spacing=8, tight=True, controls=rows),
-        actions=[
-            ft.TextButton(
-                t("common.cancel"),
-                on_click=_close,
-                style=ft.ButtonStyle(color=theme.MUTED),
-            )
-        ],
+        actions=[theme.action_button(t("common.cancel"), _close, width=160)],
     )
 
     try:
@@ -630,7 +624,13 @@ def _show_chat_actions(page: ft.Page, contact: chat_data.Contact, on_done) -> No
             STATE.snack(t("common.menu_open_failed"))
 
 
-def _chat_row(contact: chat_data.Contact, on_click, *, on_long=None) -> ft.Control:
+def _chat_row(
+    contact: chat_data.Contact,
+    on_click,
+    *,
+    on_long=None,
+    full_divider: bool = False,
+) -> ft.Control:
     preview_color = theme.INK if contact.unread else theme.MUTED
     preview_weight = ft.FontWeight.W_600 if contact.unread else ft.FontWeight.NORMAL
     preview = contact.preview or t("chat.no_messages")
@@ -661,9 +661,9 @@ def _chat_row(contact: chat_data.Contact, on_click, *, on_long=None) -> ft.Contr
                                     font_family=theme.FONT_FAMILY,
                                     max_lines=1,
                                     overflow=ft.TextOverflow.ELLIPSIS,
-                                    expand=True,
                                 ),
                                 *_badges_for(contact),
+                                ft.Container(expand=True),
                             ],
                         ),
                         ft.Text(
@@ -682,11 +682,11 @@ def _chat_row(contact: chat_data.Contact, on_click, *, on_long=None) -> ft.Contr
         ),
     )
     inner.scale = 1
-    inner.animate_scale = ft.Animation(200, ft.AnimationCurve.EASE_OUT_BACK)
+    inner.animate_scale = theme.motion_press_out()
 
     def _down(_e=None):
         try:
-            inner.scale = 0.985
+            inner.scale = theme.PRESS_SCALE
             inner.update()
         except Exception:
             pass
@@ -707,19 +707,21 @@ def _chat_row(contact: chat_data.Contact, on_click, *, on_long=None) -> ft.Contr
         on_long_press_start=(lambda e: on_long(contact)) if on_long else None,
         on_secondary_tap=(lambda e: on_long(contact)) if on_long else None,
     )
+    divider = (
+        ft.Container(height=1, bgcolor=theme.DIVIDER)
+        if full_divider
+        else ft.Row(
+            spacing=0,
+            controls=[
+                ft.Container(width=_ROW_DIVIDER_INSET),
+                ft.Container(expand=True, height=1, bgcolor=theme.DIVIDER),
+            ],
+        )
+    )
     return ft.Column(
         spacing=0,
         tight=True,
-        controls=[
-            row,
-            ft.Row(
-                spacing=0,
-                controls=[
-                    ft.Container(width=_ROW_DIVIDER_INSET),
-                    ft.Container(expand=True, height=0.5, bgcolor=theme.DIVIDER),
-                ],
-            ),
-        ],
+        controls=[row, divider],
     )
 
 
@@ -829,7 +831,7 @@ def _group_row(group: chat_data.Group, on_click) -> ft.Control:
                 spacing=0,
                 controls=[
                     ft.Container(width=_ROW_DIVIDER_INSET),
-                    ft.Container(expand=True, height=0.5, bgcolor=theme.DIVIDER),
+                    ft.Container(expand=True, height=1, bgcolor=theme.DIVIDER),
                 ],
             ),
         ],
@@ -840,8 +842,8 @@ def _row_press(e, down: bool) -> None:
     box = getattr(e.control, "content", None)
     if box is None:
         return
-    box.animate_scale = ft.Animation(200, ft.AnimationCurve.EASE_OUT_BACK)
-    box.scale = 0.985 if down else 1
+    box.animate_scale = theme.motion_press_out()
+    box.scale = theme.PRESS_SCALE if down else 1
     try:
         box.update()
     except Exception:
@@ -934,7 +936,7 @@ def _search_person_row(
             ],
         ),
     )
-    return theme.pressable(body, on_click, scale_to=0.985, expand=True)
+    return theme.pressable(body, on_click, scale_to=theme.PRESS_SCALE, expand=True)
 
 
 def _open_found_account(
@@ -995,7 +997,7 @@ def _open_found_account(
         opener()
 
 
-def _search_view(on_open, header=None) -> ft.Control:
+def _search_view(on_open, on_scroll=None) -> ft.Control:
     """Поиск по ID: live-подсказки + активная история."""
     owner = _search_owner_id()
     gen = {"n": 0}
@@ -1250,10 +1252,13 @@ def _search_view(on_open, header=None) -> ft.Control:
     empty_hint.visible = not hist_rows
     section_title.value = _title_history
 
-    search_controls: list[ft.Control] = []
-    if header is not None:
-        search_controls.append(header)
-    search_controls.extend([
+    return ft.Column(
+        expand=True,
+        spacing=0,
+        scroll=ft.ScrollMode.AUTO,
+        on_scroll=on_scroll,
+        scroll_interval=prefs.scroll_interval_ms(),
+        controls=[
             ft.Container(
                 padding=ft.Padding.symmetric(horizontal=16, vertical=8),
                 content=ft.Row(
@@ -1273,17 +1278,50 @@ def _search_view(on_open, header=None) -> ft.Control:
             results,
             empty_hint,
             ft.Container(height=132),
-    ])
-    return ft.Column(
-        expand=True,
-        spacing=0,
-        scroll=ft.ScrollMode.AUTO,
-        controls=search_controls,
+        ],
     )
 
 
 def _nav_icon_control(key: str, active: bool) -> ft.Control:
     return mono_icons.nav_icon(key, active, size=liquid_glass.ICON)
+
+
+def _pop_in(child: ft.Control, page: ft.Page | None) -> ft.Control:
+    """Плюс и такие же кнопки выезжают пружиной, когда экран уже на месте."""
+    try:
+        if prefs.reduce_motion():
+            return child
+    except Exception:
+        pass
+    box = ft.Container(
+        content=child,
+        scale=0.97,
+        opacity=0,
+        animate_scale=ft.Animation(420, ft.AnimationCurve.EASE_OUT),
+        animate_opacity=ft.Animation(360, ft.AnimationCurve.EASE_OUT),
+    )
+
+    async def _go():
+        import asyncio
+
+        await asyncio.sleep(0.06)
+        box.scale = 1
+        box.opacity = 1
+        try:
+            box.update()
+        except Exception:
+            pass
+
+    if page is None:
+        box.scale = 1
+        box.opacity = 1
+        return box
+    try:
+        page.run_task(_go)
+    except Exception:
+        box.scale = 1
+        box.opacity = 1
+    return box
 
 
 def _home_tab_body(
@@ -1299,13 +1337,26 @@ def _home_tab_body(
     # место под увеличенную nav-капсулу + home indicator
     list_bottom_pad = 132
     fab_size = 48.0
+    header_h = 100.0
+    scroll_interval = prefs.scroll_interval_ms()
 
-    fab = liquid_glass.purple_glass_fab(on_fab, size=fab_size, icon="+")
+    fab = _pop_in(
+        liquid_glass.purple_glass_fab(on_fab, size=fab_size, icon="+"),
+        page,
+    )
 
-    welcome_btn = ft.TextButton(
-        t("home.welcome_link"),
-        on_click=lambda _: STATE.go("/welcome"),
-        style=ft.ButtonStyle(color=theme.MUTED, padding=0),
+    welcome_btn = theme.pressable(
+        ft.Container(
+            padding=ft.Padding.symmetric(horizontal=2, vertical=6),
+            content=ft.Text(
+                t("home.welcome_link"),
+                size=16,
+                weight=ft.FontWeight.W_700,
+                color=theme.INK,
+                font_family=theme.FONT_FAMILY,
+            ),
+        ),
+        lambda _: STATE.go("/welcome"),
     )
 
     title_label = ft.Text(
@@ -1357,10 +1408,9 @@ def _home_tab_body(
         ],
     )
 
-    # Заголовок — первый элемент списка, едет вместе с пальцем.
-    # Отдельный оверлей, который догоняет scroll-события, на телефоне дёргается.
-    title_block = ft.Container(
-        padding=ft.Padding.only(left=16, right=16, top=0, bottom=8),
+    header_layer = ft.Container(
+        height=header_h,
+        padding=ft.Padding.only(left=16, right=16, top=0, bottom=12),
         bgcolor=theme.BG,
         content=ft.Column(
             spacing=0,
@@ -1371,6 +1421,54 @@ def _home_tab_body(
             ],
         ),
     )
+    # top в пикселях, без анимации на каждом кадре — слой совпадает со списком
+    header_slot = ft.Container(
+        content=header_layer,
+        top=0,
+        left=0,
+        right=0,
+        animate_position=None,
+    )
+    scroll_ui = {"pos": 0.0, "y": 0.0}
+
+    def _place_header(y: float) -> None:
+        y = max(-header_h, min(0.0, float(y)))
+        if abs(y - scroll_ui["y"]) < 0.25:
+            return
+        scroll_ui["y"] = y
+        # Анимация здесь держит шапку, пока палец не отпущен.
+        header_slot.animate_position = None
+        header_slot.top = y
+        try:
+            header_slot.update()
+        except Exception:
+            pass
+
+    def on_scroll(e=None):
+        try:
+            pixels = float(getattr(e, "pixels", 0) or 0)
+        except Exception:
+            return
+        kind = getattr(getattr(e, "event_type", None), "value", None)
+        if kind is None:
+            kind = str(getattr(e, "event_type", "") or "")
+        if kind in ("overscroll", "ScrollType.OVERSCROLL"):
+            return
+        # Пока жест не отпущен, pixels иногда замирает.
+        # Тогда едем по scroll_delta, чтобы шапка сразу шла и обратно.
+        moved = abs(pixels - scroll_ui["pos"])
+        if kind == "end" or moved > 0.4:
+            pos = pixels
+        else:
+            try:
+                delta = float(getattr(e, "scroll_delta", 0) or 0)
+            except Exception:
+                delta = 0.0
+            pos = scroll_ui["pos"] + delta
+        if pos < 0:
+            pos = 0.0
+        scroll_ui["pos"] = pos
+        _place_header(-min(pos, header_h))
 
     if active == "groups":
         groups = chat_data.sorted_groups()
@@ -1422,21 +1520,23 @@ def _home_tab_body(
                 ),
             ),
         )
-        rows.insert(0, title_block)
         title_label.value = t("home.groups")
         main_list = None
     elif active == "search":
         title_label.value = t("home.search")
-        main_list = _search_view(open_chat, header=title_block)
+        main_list = _search_view(open_chat, on_scroll=on_scroll)
         rows = []
     elif active == "settings":
         # в макете нет крупного «Настройки» — сразу профиль
         title_label.value = ""
+        header_slot.visible = False
         settings_body = _settings_view(page) if page is not None else ft.Text(t("nav.settings"))
         main_list = ft.Column(
             expand=True,
             spacing=0,
             scroll=ft.ScrollMode.AUTO,
+            on_scroll=on_scroll,
+            scroll_interval=scroll_interval,
             controls=[
                 settings_body,
                 ft.Container(height=list_bottom_pad),
@@ -1461,15 +1561,21 @@ def _home_tab_body(
             else:
                 _show_chat_actions(page, c, on_chats_changed)
 
-        rows = [
-            _chat_row(c, open_chat(c), on_long=_long if page is not None else None)
-            for c in contacts
-        ]
-        rows.insert(0, title_block)
+        rows = []
+        for i, c in enumerate(contacts):
+            nxt = contacts[i + 1] if i + 1 < len(contacts) else None
+            rows.append(
+                _chat_row(
+                    c,
+                    open_chat(c),
+                    on_long=_long if page is not None else None,
+                    full_divider=bool(c.pinned and (nxt is None or not nxt.pinned)),
+                )
+            )
         title_label.value = t("home.chats")
         main_list = None
 
-    top_pad = 8.0 if active == "settings" else 0.0
+    top_pad = 8.0 if active == "settings" else header_h
     if main_list is None:
         try:
             chat_list = ft.ListView(
@@ -1477,6 +1583,8 @@ def _home_tab_body(
                 spacing=0,
                 padding=ft.Padding.only(top=top_pad, bottom=list_bottom_pad),
                 controls=rows,
+                on_scroll=on_scroll,
+                scroll_interval=scroll_interval,
                 scrollbar_theme=ft.ScrollbarTheme(thickness=0)
                 if hasattr(ft, "ScrollbarTheme")
                 else None,
@@ -1486,6 +1594,8 @@ def _home_tab_body(
                 spacing=0,
                 scroll=ft.ScrollMode.AUTO,
                 expand=True,
+                on_scroll=on_scroll,
+                scroll_interval=scroll_interval,
                 controls=[ft.Container(height=top_pad)]
                 + rows
                 + [ft.Container(height=list_bottom_pad)],
@@ -1501,7 +1611,15 @@ def _home_tab_body(
     return ft.Column(
         expand=True,
         spacing=0,
-        controls=[chat_list],
+        controls=[
+            ft.Stack(
+                expand=True,
+                controls=[
+                    chat_list,
+                    header_slot,
+                ],
+            ),
+        ],
     )
 
 
@@ -1661,7 +1779,7 @@ def build_home(page: ft.Page) -> ft.Control:
     nav_bar = ft.Container(
         left=0,
         right=0,
-        bottom=float(theme.bottom_inset()),
+        bottom=float(theme.bottom_inset()) + 16,
         alignment=ft.Alignment.CENTER,
         content=nav_ctrl,
     )

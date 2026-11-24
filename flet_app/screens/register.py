@@ -70,7 +70,7 @@ def _pill_field(
         can_reveal_password=password,
         filled=True,
         bgcolor=theme.FIELD_BG,
-        border=theme.field_border(28, color=theme.FIELD_BG, focused_color=theme.PRIMARY),
+        border=theme.field_border(28, color="transparent", focused_color=theme.PRIMARY, width=1.5),
         cursor_color=theme.PRIMARY,
         text_size=16,
         color=theme.INK,
@@ -78,7 +78,12 @@ def _pill_field(
         height=52,
         content_padding=ft.Padding.symmetric(horizontal=20, vertical=14),
         text_style=ft.TextStyle(font_family=theme.FONT_FAMILY, size=16, color=theme.INK),
-        hint_style=ft.TextStyle(color=theme.HINT, font_family=theme.FONT_FAMILY),
+        hint_style=ft.TextStyle(
+            color=theme.HINT,
+            font_family=theme.FONT_FAMILY,
+            size=15,
+            italic=True,
+        ),
         on_change=on_change,
     )
 
@@ -133,10 +138,18 @@ def _back_row(header: str, back_route: str) -> ft.Control:
             ),
         )
     else:
-        back_ctrl = ft.TextButton(
-            "← Назад",
-            on_click=lambda _: STATE.go(back_route),
-            style=ft.ButtonStyle(color=theme.PRIMARY),
+        back_ctrl = theme.pressable(
+            ft.Container(
+                padding=ft.Padding.symmetric(horizontal=4, vertical=8),
+                content=ft.Text(
+                    "← Назад",
+                    size=16,
+                    weight=ft.FontWeight.W_700,
+                    color=theme.PRIMARY,
+                    font_family=theme.FONT_FAMILY,
+                ),
+            ),
+            lambda _: STATE.go(back_route),
         )
 
     # back_ctrl поверх заголовка — иначе клик не доходит
@@ -263,17 +276,71 @@ def _chrome(
 
     footer: list = []
     if show_consent:
+        def _open_rules(_=None):
+            from flet_app.screens.legal import TERMS_VERSION
+
+            STATE.draft["_legal_back"] = STATE.draft.get("_route") or "/reg/name"
+            STATE.draft["terms_version"] = TERMS_VERSION
+            STATE.go("/legal")
+
+        continue_next = on_next
+
+        def _next_with_terms(e=None):
+            from flet_app.screens.legal import TERMS_VERSION
+
+            STATE.draft["terms_accepted"] = True
+            STATE.draft["terms_version"] = TERMS_VERSION
+            try:
+                continue_next(e)
+            except TypeError:
+                continue_next()
+
+        on_next = _next_with_terms
+        link = ft.Container(
+            border=ft.Border(bottom=ft.BorderSide(1.5, theme.PRIMARY)),
+            padding=ft.Padding.only(bottom=1),
+            on_click=_open_rules,
+            ink=False,
+            content=ft.Text(
+                "правилами RaiseHand",
+                size=16,
+                weight=ft.FontWeight.W_700,
+                color=theme.PRIMARY,
+                font_family=theme.FONT_FAMILY,
+            ),
+        )
         footer.append(
             ft.Container(
                 width=content_w,
                 alignment=ft.Alignment.CENTER,
-                content=ft.Text(
-                    "Нажимая далее вы соглашаетесь\nс правилами RaiseHand",
-                    size=13,
-                    color=theme.HINT,
-                    font_family=theme.FONT_FAMILY,
-                    text_align=ft.TextAlign.CENTER,
-                    width=content_w,
+                on_click=_open_rules,
+                content=ft.Column(
+                    spacing=2,
+                    tight=True,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Text(
+                            "Нажимая «Далее», вы соглашаетесь",
+                            size=16,
+                            color=theme.INK,
+                            font_family=theme.FONT_FAMILY,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                        ft.Row(
+                            tight=True,
+                            alignment=ft.MainAxisAlignment.CENTER,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[
+                                ft.Text(
+                                    "с ",
+                                    size=16,
+                                    color=theme.INK,
+                                    font_family=theme.FONT_FAMILY,
+                                ),
+                                link,
+                            ],
+                        ),
+                    ],
                 ),
             )
         )
@@ -347,10 +414,16 @@ def _chrome(
 
 def build_reg_name(page: ft.Page) -> ft.Control:
     first_col, first = _pill_field(
-        t("profile.first_name"), "Иван", value=STATE.draft.get("first_name", ""), helper="Видно всем"
+        t("profile.first_name"),
+        "например, Иван",
+        value=STATE.draft.get("first_name", ""),
+        helper="Имя видят все в приложении",
     )
     last_col, last = _pill_field(
-        t("profile.last_name"), "Иванов", value=STATE.draft.get("last_name", ""), helper="Видно всем"
+        t("profile.last_name"),
+        "например, Иванов",
+        value=STATE.draft.get("last_name", ""),
+        helper="Фамилию видят все в приложении",
     )
 
     def next_(_):
@@ -605,6 +678,21 @@ def build_reg_contact(page: ft.Page) -> ft.Control:
                 (user.id,),
             )
             user.contact_verified = True
+        except Exception:
+            pass
+        if STATE.draft.get("terms_accepted"):
+            try:
+                from flet_app.screens.legal import TERMS_VERSION
+
+                user = auth.record_terms(
+                    user.id,
+                    STATE.draft.get("terms_version") or TERMS_VERSION,
+                )
+                user.contact_verified = True
+            except Exception:
+                pass
+        try:
+            auth.touch_last_active(user.id)
         except Exception:
             pass
         STATE.draft["user"] = user

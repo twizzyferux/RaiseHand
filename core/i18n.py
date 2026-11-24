@@ -981,6 +981,8 @@ _COMPOSE = {
         "newgroup.need_name": "Введите название",
         "newgroup.subject": "Выберите предмет",
         "newgroup.class_step": "Выберите класс",
+        "newgroup.class_number": "Номер класса",
+        "newgroup.class_letter": "Буква класса",
         "newgroup.next": "Дальше",
         "newgroup.invite": "Код приглашения: {code}",
         "newgroup.pick_subject": "Сначала выберите предмет",
@@ -995,6 +997,8 @@ _COMPOSE = {
         "subj.cs": "Информатика",
         "subj.english": "Английский",
         "subj.russian": "Русский язык",
+        "appearance.frame_rate": "Кадры в секунду",
+        "appearance.frame_rate_hint": "60 спокойнее для батареи, 120 — плавнее прокрутка и анимации.",
     },
     "en": {
         "newchat.title": "New chat",
@@ -1020,6 +1024,8 @@ _COMPOSE = {
         "newgroup.need_name": "Enter a name",
         "newgroup.subject": "Choose a subject",
         "newgroup.class_step": "Choose a class",
+        "newgroup.class_number": "Class number",
+        "newgroup.class_letter": "Class letter",
         "newgroup.next": "Next",
         "newgroup.invite": "Invite code: {code}",
         "newgroup.pick_subject": "Choose a subject first",
@@ -1034,6 +1040,8 @@ _COMPOSE = {
         "subj.cs": "Computer science",
         "subj.english": "English",
         "subj.russian": "Russian",
+        "appearance.frame_rate": "Frames per second",
+        "appearance.frame_rate_hint": "60 is easier on the battery, 120 makes scrolling and motion smoother.",
     },
 }
 for _code, _pack in _COMPOSE.items():

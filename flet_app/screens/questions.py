@@ -32,7 +32,7 @@ def _answer_palette() -> dict[str, str]:
     if theme.is_dark():
         return {
             "bg": theme.PRIMARY_SOFT or "#2A2832",
-            "border": theme.STROKE,
+            "border": "transparent",
             "title": theme.PRIMARY,
             "body": theme.INK,
         }
@@ -59,7 +59,7 @@ def _dialog_field(
         min_lines=min_lines,
         max_lines=max_lines,
         autofocus=True,
-        border=theme.field_border(16, color=theme.STROKE, focused_color=theme.PRIMARY),
+        border=theme.field_border(16, color="transparent", focused_color=theme.PRIMARY),
         bgcolor=theme.FIELD_BG,
         filled=True,
         color=theme.INK,
@@ -137,7 +137,7 @@ def _like_control(q: questions_data.Question, on_toggle) -> ft.Control:
             ),
         ),
         lambda e, qid=q.id: on_toggle(qid),
-        scale_to=0.9,
+        scale_to=theme.PRESS_SCALE,
     )
 
 
@@ -218,10 +218,12 @@ def _question_row(
     if is_teacher:
         actions.insert(
             0,
-            ft.TextButton(
+            theme.action_button(
                 t("profile.edit") if q.answered else t("chat.reply"),
-                on_click=lambda e, qid=q.id: on_answer(qid),
-                style=ft.ButtonStyle(color=theme.PRIMARY, padding=ft.Padding.symmetric(horizontal=8)),
+                lambda e, qid=q.id: on_answer(qid),
+                primary=True,
+                width=120,
+                height=40,
             ),
         )
 
@@ -400,17 +402,9 @@ def build_questions(page: ft.Page) -> ft.Control:
                 ],
             ),
             actions=[
-                ft.TextButton(
-                    t("common.cancel"),
-                    on_click=_close_dlg,
-                    style=ft.ButtonStyle(color=theme.PRIMARY),
-                ),
-                ft.TextButton(
-                    t("common.save"),
-                    on_click=submit,
-                    style=ft.ButtonStyle(color=theme.PRIMARY),
-                ),
+                theme.dialog_buttons(t("common.cancel"), _close_dlg, t("common.save"), submit)
             ],
+            actions_alignment=ft.MainAxisAlignment.CENTER,
         )
         try:
             page.show_dialog(dlg)
@@ -470,17 +464,11 @@ def build_questions(page: ft.Page) -> ft.Control:
                 ],
             ),
             actions=[
-                ft.TextButton(
-                    t("common.cancel"),
-                    on_click=_close_dlg,
-                    style=ft.ButtonStyle(color=theme.PRIMARY),
-                ),
-                ft.TextButton(
-                    t("questions.add_btn"),
-                    on_click=submit,
-                    style=ft.ButtonStyle(color=theme.PRIMARY),
-                ),
+                theme.dialog_buttons(
+                    t("common.cancel"), _close_dlg, t("questions.add_btn"), submit
+                )
             ],
+            actions_alignment=ft.MainAxisAlignment.CENTER,
         )
         try:
             page.show_dialog(dlg)
@@ -491,7 +479,7 @@ def build_questions(page: ft.Page) -> ft.Control:
         t("questions.add"),
         open_add,
         width=min(float(theme.PHONE_WIDTH - theme.PAGE_PADDING * 2) * 0.92, 340.0),
-        height=52,
+        height=56,
     )
 
     header = ft.Container(

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Цвета, фиолетовые PNG-кнопки, SF Pro, фиксированный телефон (Flet 1.x)."""
+"""Цвета, фиолетовые PNG-кнопки, SF Pro Display, фиксированный телефон (Flet 1.x)."""
 from __future__ import annotations
 
 import os
@@ -17,38 +17,38 @@ DOT_OFF = "#C4BED8"
 BADGE = "#C46B8A"
 
 _LIGHT = {
-    "BG": "#F4F2EE",
-    "SURFACE": "#EBE8E3",
-    "CARD": "#FBF9F6",
-    "FIELD_BG": "#E6E2DC",
-    "INK": "#3A3644",
-    "MUTED": "#7A7486",
-    "HINT": "#A39EAE",
-    "STROKE": "#E0DCD6",
+    "BG": "#EFEBE6",
+    "SURFACE": "#E6E1DA",
+    "CARD": "#FFFFFF",
+    "FIELD_BG": "#E2DDD6",
+    "INK": "#2E2A36",
+    "MUTED": "#6E6878",
+    "HINT": "#8F8998",
+    "STROKE": "#C8C2B8",
     "BUBBLE_IN": "#E8E4DE",
     "BUBBLE_OUT": "#6A5AC8",
     "TIME_IN": "#8A8496",
     "TIME_OUT": "#F3EEF8",
-    "DIVIDER": "#E4E0DA",
+    "DIVIDER": "#C8C2B8",
     "DATE_CHIP": "#E6E2DC",
     "MENU_SCRIM": "#2A243844",
     "NAV_IDLE": "#6E6878",
     "PRIMARY_SOFT": "#E8E4F4",
 }
 _DARK = {
-    "BG": "#141318",
-    "SURFACE": "#1C1B22",
-    "CARD": "#24232C",
-    "FIELD_BG": "#2A2832",
-    "INK": "#D2CEDC",
-    "MUTED": "#8A8498",
-    "HINT": "#6A6576",
-    "STROKE": "#34323C",
+    "BG": "#121116",
+    "SURFACE": "#1A191F",
+    "CARD": "#26242E",
+    "FIELD_BG": "#302E38",
+    "INK": "#E6E2EE",
+    "MUTED": "#A39CB0",
+    "HINT": "#7A7486",
+    "STROKE": "#322F3A",
     "BUBBLE_IN": "#2C2A36",
     "BUBBLE_OUT": "#7A6BC4",
     "TIME_IN": "#8A8496",
     "TIME_OUT": "#E4DFF0",
-    "DIVIDER": "#2E2C36",
+    "DIVIDER": "#2A2832",
     "DATE_CHIP": "#26242E",
     "MENU_SCRIM": "#0A0910CC",
     "NAV_IDLE": "#8A8496",
@@ -90,7 +90,7 @@ SAFE_MIN_TOP = 47
 HOME_INDICATOR_PAD = 34
 NAV_BOTTOM_GAP = 34
 
-FONT_FAMILY = "SFPro"
+FONT_FAMILY = "SFPro"  # файл — SF Pro Display, имя семейства прежнее
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -468,9 +468,11 @@ SPRITE_STUDENT_DOWN = asset("assets", "images", "buttons", "btn_student.png")
 SPRITE_LOGO = asset("assets", "images", "raisehand", "logo.png")
 SPRITE_WORDMARK = asset("assets", "images", "raisehand", "wordmark.png")
 
-FONT_REGULAR = asset("assets", "fonts", "SF-Pro-Text-Regular.otf")
-FONT_SEMIBOLD = asset("assets", "fonts", "SF-Pro-Text-Semibold.otf")
+FONT_REGULAR = asset("assets", "fonts", "SF-Pro-Display-Regular.otf")
+FONT_SEMIBOLD = asset("assets", "fonts", "SF-Pro-Display-Semibold.otf")
 FONT_DISPLAY = asset("assets", "fonts", "SF-Pro-Display-Semibold.otf")
+FONT_MEDIUM = asset("assets", "fonts", "SF-Pro-Display-Medium.otf")
+FONT_BOLD = asset("assets", "fonts", "SF-Pro-Display-Bold.otf")
 
 
 def _image_exists(path: str) -> bool:
@@ -478,12 +480,16 @@ def _image_exists(path: str) -> bool:
 
 
 def setup_fonts(page: ft.Page) -> None:
-    """Регистрирует SF Pro и делает его шрифтом по умолчанию."""
+    """Регистрирует SF Pro Display и делает его шрифтом всего приложения."""
     fonts = {}
     if _image_exists(FONT_REGULAR):
         fonts["SFPro"] = FONT_REGULAR
+    if _image_exists(FONT_MEDIUM):
+        fonts["SFPro-Medium"] = FONT_MEDIUM
     if _image_exists(FONT_SEMIBOLD):
         fonts["SFPro-Semibold"] = FONT_SEMIBOLD
+    if _image_exists(FONT_BOLD):
+        fonts["SFPro-Bold"] = FONT_BOLD
     if _image_exists(FONT_DISPLAY):
         fonts["SFPro-Display"] = FONT_DISPLAY
     if fonts:
@@ -718,31 +724,66 @@ def sync_window_bg(page: Optional[ft.Page] = None) -> None:
             pass
 
 
+# Короткий ход и мягкая остановка: элемент тяжёлый, без пружинного отскока.
+PRESS_SCALE = 0.992
+MOTION_PRESS_IN_MS = 140
+MOTION_PRESS_OUT_MS = 280
+MOTION_APPEAR_MS = 420
+
+
+def reduce_motion() -> bool:
+    try:
+        from core import prefs
+
+        return bool(prefs.reduce_motion())
+    except Exception:
+        return False
+
+
+def motion_press_in() -> ft.Animation:
+    return ft.Animation(MOTION_PRESS_IN_MS, ft.AnimationCurve.EASE_OUT)
+
+
+def motion_press_out() -> ft.Animation:
+    return ft.Animation(MOTION_PRESS_OUT_MS, ft.AnimationCurve.EASE_OUT)
+
+
+def motion_appear(ms: int | None = None) -> ft.Animation:
+    return ft.Animation(int(ms or MOTION_APPEAR_MS), ft.AnimationCurve.EASE_OUT)
+
+
+def grounded_shadow(*, lift: float = 6, primary: bool = False) -> ft.BoxShadow:
+    """Тень с опорой, а не лёгкое парение."""
+    color = "#2A183848" if primary else ("#00000066" if is_dark() else "#2A243830")
+    return ft.BoxShadow(
+        blur_radius=22 if primary else 18,
+        spread_radius=0,
+        color=color,
+        offset=ft.Offset(0, lift),
+    )
+
+
 def _press_scale(e):
     try:
-        e.control.scale = 0.98 if e.data == "true" else 1.0
+        e.control.animate_scale = motion_press_in() if e.data == "true" else motion_press_out()
+        e.control.scale = PRESS_SCALE if e.data == "true" else 1.0
         e.control.update()
     except Exception:
         pass
 
 
 def live_panel(child: ft.Control, *, visible: bool = False) -> ft.Container:
-    """Появление панели: fade + лёгкий подъём и масштаб, как iOS sheet."""
-    try:
-        from core import prefs
-
-        if prefs.reduce_motion():
-            return ft.Container(content=child, opacity=1, offset=ft.Offset(0, 0), scale=1)
-    except Exception:
-        pass
+    """Появление панели: короткий подъём, без отскока."""
+    if reduce_motion():
+        return ft.Container(content=child, opacity=1, offset=ft.Offset(0, 0), scale=1)
     return ft.Container(
         content=child,
         opacity=1 if visible else 0,
-        offset=ft.Offset(0, 0) if visible else ft.Offset(0, 0.018),
-        scale=1 if visible else 0.985,
-        animate_opacity=ft.Animation(240, ft.AnimationCurve.EASE_OUT_CUBIC),
-        animate_offset=ft.Animation(280, ft.AnimationCurve.EASE_OUT_CUBIC),
-        animate_scale=ft.Animation(300, ft.AnimationCurve.EASE_OUT_BACK),
+        offset=ft.Offset(0, 0) if visible else ft.Offset(0, 0.012),
+        scale=1 if visible else 0.992,
+        animate_opacity=motion_appear(),
+        animate_offset=motion_appear(),
+        animate_scale=motion_appear(),
     )
 
 
@@ -750,28 +791,32 @@ def pressable(
     content: ft.Control,
     on_tap=None,
     *,
-    scale_to: float = 0.96,
+    scale_to: float = PRESS_SCALE,
     expand: bool = False,
 ) -> ft.Control:
-    """Лёгкий scale при нажатии (touch + mouse), без квадратного ink."""
+    """Плотное нажатие: еле заметное сжатие и спокойный возврат."""
     box = ft.Container(
         content=content,
         scale=1,
-        animate_scale=ft.Animation(160, ft.AnimationCurve.EASE_OUT),
+        animate_scale=motion_press_out(),
         expand=expand if expand else None,
     )
 
     def _down(_e=None):
+        if reduce_motion():
+            return
         try:
-            box.animate_scale = ft.Animation(90, ft.AnimationCurve.EASE_OUT)
+            box.animate_scale = motion_press_in()
             box.scale = float(scale_to)
             box.update()
         except Exception:
             pass
 
     def _up(_e=None):
+        if reduce_motion():
+            return
         try:
-            box.animate_scale = ft.Animation(220, ft.AnimationCurve.EASE_OUT_BACK)
+            box.animate_scale = motion_press_out()
             box.scale = 1
             box.update()
         except Exception:
@@ -804,7 +849,7 @@ def primary_button(text: str, on_click, *, expand: bool = True) -> ft.Control:
     from flet_app import liquid_glass as lg
 
     return lg.purple_glass_button(
-        text, on_click, width=None if expand else _btn_width(), height=52, expand=expand
+        text, on_click, width=None if expand else _btn_width(), height=56, expand=expand
     )
 
 
@@ -812,7 +857,7 @@ def outline_button(text: str, on_click, *, expand: bool = True) -> ft.Control:
     from flet_app import liquid_glass as lg
 
     return lg.white_glass_button(
-        text, on_click, width=None if expand else _btn_width(), height=52, expand=expand
+        text, on_click, width=None if expand else _btn_width(), height=56, expand=expand
     )
 
 
@@ -924,22 +969,22 @@ def primary_image_button(text: str, on_click, *, expand: bool = True) -> ft.Cont
     w = _btn_width()
     label = (text or "").strip().lower()
     if label in ("далее", "next"):
-        return lg.next_glass_button(text, on_click, width=w, height=52)
-    return lg.purple_glass_button(text, on_click, width=w, height=52)
+        return lg.next_glass_button(text, on_click, width=w, height=56)
+    return lg.purple_glass_button(text, on_click, width=w, height=56)
 
 
 def secondary_image_button(text: str, on_click, *, expand: bool = True) -> ft.Control:
     """«Я учитель» — белый liquid glass."""
     from flet_app import liquid_glass as lg
 
-    return lg.white_glass_button(text, on_click, width=_btn_width(), height=52)
+    return lg.white_glass_button(text, on_click, width=_btn_width(), height=56)
 
 
 def student_image_button(text: str, on_click, *, expand: bool = True) -> ft.Control:
     """«Я ученик» — фиолетовый liquid glass."""
     from flet_app import liquid_glass as lg
 
-    return lg.purple_glass_button(text, on_click, width=_btn_width(), height=52)
+    return lg.purple_glass_button(text, on_click, width=_btn_width(), height=56)
 
 
 def field_border(
@@ -962,6 +1007,63 @@ def field_border(
     }
 
 
+def action_button(
+    text: str,
+    on_click,
+    *,
+    primary: bool = False,
+    width: float | None = None,
+    height: float = 48,
+) -> ft.Control:
+    """Плотная кнопка диалога и баннера: заливка, контур, нажатие."""
+    bg = PRIMARY if primary else CARD
+    fg = PRIMARY_TEXT if primary else INK
+    body = ft.Container(
+        width=width,
+        height=height,
+        border_radius=16,
+        bgcolor=bg,
+        border=None,
+        alignment=ft.Alignment.CENTER,
+        padding=None if width is not None else ft.Padding.symmetric(horizontal=18),
+        shadow=grounded_shadow(lift=4, primary=primary) if primary else None,
+        content=ft.Text(
+            text,
+            size=16,
+            weight=ft.FontWeight.W_700,
+            color=fg,
+            font_family=FONT_FAMILY,
+            text_align=ft.TextAlign.CENTER,
+        ),
+    )
+    return pressable(body, on_click)
+
+
+def dialog_buttons(
+    cancel_text: str,
+    on_cancel,
+    ok_text: str,
+    on_ok,
+    *,
+    width: float | None = None,
+) -> ft.Control:
+    """Две кнопки диалога в один ряд, одинаковой ширины."""
+    w = float(width or max(220.0, content_width() - 72))
+    gap = 10.0
+    half = max(96.0, (w - gap) / 2)
+    return ft.Container(
+        width=w,
+        content=ft.Row(
+            spacing=gap,
+            alignment=ft.MainAxisAlignment.CENTER,
+            controls=[
+                action_button(cancel_text, on_cancel, width=half),
+                action_button(ok_text, on_ok, primary=True, width=half),
+            ],
+        ),
+    )
+
+
 def field(label: str, hint: str = "", password: bool = False, value: str = "", on_change=None) -> ft.TextField:
     # Flet 1.x: шрифт через text_style / label_style, не font_family у TextField
     return ft.TextField(
@@ -972,7 +1074,7 @@ def field(label: str, hint: str = "", password: bool = False, value: str = "", o
         can_reveal_password=password,
         filled=True,
         bgcolor=SURFACE,
-        border=field_border(24, color="transparent", focused_color=PRIMARY),
+        border=field_border(18, color="transparent", focused_color=PRIMARY, width=1.5),
         cursor_color=PRIMARY,
         text_size=16,
         on_change=on_change,
@@ -994,9 +1096,9 @@ def fade_box(
     return ft.Container(
         content=control,
         opacity=0,
-        offset=ft.Offset(0, 0.05),
-        animate_opacity=ft.Animation(360, ft.AnimationCurve.EASE_OUT),
-        animate_offset=ft.Animation(360, ft.AnimationCurve.EASE_OUT),
+        offset=ft.Offset(0, 0.016),
+        animate_opacity=motion_appear(),
+        animate_offset=motion_appear(),
         data={"delay": delay_ms},
         width=w,
         alignment=ft.Alignment.CENTER_LEFT,

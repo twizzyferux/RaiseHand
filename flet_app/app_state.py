@@ -57,6 +57,15 @@ class AppState:
         if user is None:
             session.clear()
             return "/welcome"
+        if auth.inactivity_due(user):
+            auth.delete_account(user.id)
+            session.clear()
+            return "/welcome"
+        try:
+            auth.touch_last_active(user.id)
+            user = auth.get_user_by_id(uid) or user
+        except Exception:
+            pass
         self.user = user
         if not user.contact_verified:
             return "/verify"

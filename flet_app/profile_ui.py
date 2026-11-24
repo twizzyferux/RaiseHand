@@ -35,7 +35,7 @@ def profile_avatar_from_seed(
             border_radius=size / 2,
             bgcolor=theme.FIELD_BG,
             alignment=ft.Alignment.CENTER,
-            border=ft.Border.all(1, theme.STROKE),
+            border=None,
             content=ft.Icon(ft.Icons.PERSON_OUTLINE, size=size * 0.42, color=theme.MUTED),
         )
     path = (image_path or "").strip()
@@ -90,7 +90,7 @@ def action_button(
         border_radius=28,
         bgcolor=theme.CARD,
         alignment=ft.Alignment.CENTER,
-        border=ft.Border.all(1, theme.STROKE),
+        border=None,
         shadow=ft.BoxShadow(
             blur_radius=8,
             color=liquid_glass.white_glass_shadow(),

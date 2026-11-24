@@ -22,7 +22,7 @@ def _pill_field(label: str, hint: str = "", *, value: str = "", password: bool =
         can_reveal_password=password,
         filled=True,
         bgcolor=theme.FIELD_BG,
-        border=theme.field_border(28, color=theme.FIELD_BG, focused_color=theme.PRIMARY),
+        border=theme.field_border(28, color="transparent", focused_color=theme.PRIMARY, width=1.5),
         cursor_color=theme.PRIMARY,
         text_size=16,
         color=theme.INK,
@@ -60,6 +60,10 @@ def build_login(page: ft.Page) -> ft.Control:
             pass_tf.update()
         except Exception:
             pass
+        try:
+            auth.touch_last_active(user.id)
+        except Exception:
+            pass
         STATE.user = user
 
         if remember.value:
@@ -79,10 +83,18 @@ def build_login(page: ft.Page) -> ft.Control:
         else:
             STATE.go("/home")
 
-    back = ft.TextButton(
-        t("common.back"),
-        on_click=lambda _: STATE.go("/welcome"),
-        style=ft.ButtonStyle(color=theme.PRIMARY),
+    back = theme.pressable(
+        ft.Container(
+            padding=ft.Padding.symmetric(horizontal=4, vertical=8),
+            content=ft.Text(
+                t("common.back"),
+                size=16,
+                weight=ft.FontWeight.W_700,
+                color=theme.PRIMARY,
+                font_family=theme.FONT_FAMILY,
+            ),
+        ),
+        lambda _: STATE.go("/welcome"),
     )
     content_w = float(theme.content_width())
     head = theme.fade_box(
